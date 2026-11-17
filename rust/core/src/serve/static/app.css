@@ -4124,3 +4124,136 @@ body {
   background: var(--line);
   color: var(--ink);
 }
+
+/* The signed-out banner: shown in place when a background request answers 401,
+ * so a draft on screen is never thrown away by a redirect. */
+.signed-out[hidden] {
+  display: none;
+}
+
+.signed-out {
+  margin: 0;
+  border-radius: 0;
+  border-width: 0 0 var(--hairline) 0;
+}
+
+.signed-out__link {
+  color: inherit;
+  font-weight: 600;
+}
+
+.shell__signout {
+  margin: 0;
+}
+
+.shell__signout-button {
+  height: var(--space-control);
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.shell__signout-button:hover {
+  background: var(--parchment);
+  color: var(--ink);
+}
+
+.shell__signout-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The login page: one card, one field. 16px text keeps iOS from zooming. */
+.login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--parchment);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+.login__card {
+  width: min(380px, calc(100vw - 32px));
+  padding: 28px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+}
+
+.login__wordmark {
+  margin: 0 0 var(--space-label);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.login__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-chip);
+}
+
+.login__label {
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.login__input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+}
+
+.login__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.login__username {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  opacity: 0;
+}
+
+.login__error {
+  margin: 0;
+  color: var(--ember-deep);
+  font-size: 13px;
+}
+
+.login__submit {
+  height: 40px;
+  margin-top: var(--space-chip);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  color: var(--paper);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.login__submit:hover {
+  background: var(--accent-deep);
+}
+
+.login__notice {
+  margin: 0 0 var(--space-label);
+}

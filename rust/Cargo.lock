@@ -1446,6 +1446,7 @@ dependencies = [
  "axum",
  "comrak",
  "flate2",
+ "getrandom 0.4.3",
  "http-body-util",
  "libc",
  "rusqlite",

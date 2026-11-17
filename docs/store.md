@@ -35,7 +35,11 @@ mv ~/.tandem/tandem.db.bak ~/.tandem/tandem.db
 
 **Quit the server first.** `tandem serve` holds `tandem.db` open for as long as it runs. On macOS and Linux the rename over the held file is allowed, and the running server notices the replacement and re-attaches to the restored store by itself. Windows does not allow it: SQLite opens the database without `FILE_SHARE_DELETE`, so the `rm` and the `mv` over it fail with *The process cannot access the file because it is being used by another process.* Close `tandem serve`, and any process holding the store open, before the two commands, then start them again: the next open attaches to the restored file, and its first write switches it back to WAL.
 
-See [ADR 0018](adr/0018-rolling-store-backup.md).
+The backup is a whole-file copy, so it also carries the `browser_sessions` rows (below), which hold only keyed digests. See [ADR 0018](adr/0018-rolling-store-backup.md).
+
+## Browser sessions
+
+A token-mode `tandem serve` signs a browser in with a cookie. Each session is one row of `browser_sessions` (schema v13): a keyed digest of the session id, when it was created and when it was last used. The id is never stored, the digest is keyed with the token's digest (so changing `TANDEM_TOKEN` signs every browser out), and a session is dropped after 30 days without use. These rows are not board data: writing one never moves the revision or rolls the backup, they are outside the MCP tools, and the export leaves them out. See [ADR 0049](adr/0049-a-browser-signs-in-to-a-token-guarded-serve.md).
 
 ## Moving and restoring a home
 

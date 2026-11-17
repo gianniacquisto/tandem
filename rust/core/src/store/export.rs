@@ -50,9 +50,9 @@ pub(crate) const CARRIED_TABLES: &[&str] = &[
 
 /// Tables whose rows are secrets and never travel: the scrub deletes their rows
 /// from the export's copy only, and an import refuses an archive that carries
-/// any. CUT-34 adds `browser_sessions` here and CUT-36 its token table, in their
-/// own changes.
-pub(crate) const EMPTIED_TABLES: &[&str] = &[];
+/// any. `browser_sessions` (CUT-34, schema v13) is the sign-in session table;
+/// CUT-36 adds its token table here in its own change.
+pub(crate) const EMPTIED_TABLES: &[&str] = &["browser_sessions"];
 
 /// The file the export archives: a committed generation of the store, scrubbed,
 /// vacuumed and left in `journal_mode=DELETE`, so no emptied row survives in a

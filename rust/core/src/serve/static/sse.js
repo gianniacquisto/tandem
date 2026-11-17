@@ -215,12 +215,31 @@ This extension adds support for Server Sent Events to htmx.  See /www/extensions
 
       // Otherwise, try to reconnect the EventSource
       if (source.readyState === EventSource.CLOSED) {
-        retryCount = retryCount || 0
-        retryCount = Math.max(Math.min(retryCount * 2, 128), 1)
-        var timeout = retryCount * 500
-        window.setTimeout(function() {
-          ensureEventSourceOnElement(elt, retryCount)
-        }, timeout)
+        var retry = function() {
+          retryCount = retryCount || 0
+          retryCount = Math.max(Math.min(retryCount * 2, 128), 1)
+          var timeout = retryCount * 500
+          window.setTimeout(function() {
+            ensureEventSourceOnElement(elt, retryCount)
+          }, timeout)
+        }
+        // A closed source carries no status. One fetch of the same URL tells
+        // a refused stream (401: the session ended, stop retrying and say so)
+        // from a network drop (retry as before).
+        fetch(url, { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'text/event-stream' } })
+          .then(function(response) {
+            if (response.body && response.body.cancel) {
+              response.body.cancel()
+            }
+            if (response.status === 401) {
+              if (window.tandemSignedOut) {
+                window.tandemSignedOut()
+              }
+              return
+            }
+            retry()
+          })
+          .catch(retry)
       }
     }
 

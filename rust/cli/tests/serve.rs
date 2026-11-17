@@ -394,8 +394,18 @@ fn serve_on_a_non_loopback_host_with_a_token_gates_every_route_but_health() {
     );
     assert_eq!(
         get(server.port, "/").status,
+        303,
+        "a page load with no credential goes to the login page"
+    );
+    assert_eq!(
+        get(server.port, "/events").status,
         401,
-        "the board wants the token"
+        "the stream wants the token"
+    );
+    assert_eq!(
+        get(server.port, "/login").status,
+        200,
+        "the login page is open"
     );
     assert_eq!(get(server.port, "/health").status, 200);
     let bearer = format!("Bearer {token}");
@@ -899,4 +909,197 @@ fn an_unparsable_tandem_log_still_serves_and_warns_once_without_echoing_it() {
         !line.contains("not[valid"),
         "the value is never echoed: {line}"
     );
+}
+
+// CUT-37: --public-origin.
+
+const PUBLIC_ORIGIN: &str = "https://ws.example.com";
+
+/// A serve run that must refuse before binding: its exit code and stderr.
+fn origin_refusal(
+    sandbox: &Sandbox,
+    host: &str,
+    flag: Option<&str>,
+    variable: Option<&str>,
+) -> (Option<i32>, String) {
+    let mut command = sandbox.command();
+    command
+        .args(["serve", "--host", host, "--port", "0"])
+        .env("TANDEM_TOKEN", "t".repeat(32))
+        .env_remove("TANDEM_PUBLIC_ORIGIN")
+        .stdin(Stdio::null());
+    if let Some(flag) = flag {
+        command.args(["--public-origin", flag]);
+    }
+    if let Some(variable) = variable {
+        command.env("TANDEM_PUBLIC_ORIGIN", variable);
+    }
+    let output = command.output().expect("the binary runs");
+    (
+        output.status.code(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+    )
+}
+
+fn assert_origin_refused(flag: Option<&str>, variable: Option<&str>, host: &str, wanted: &str) {
+    let sandbox = Sandbox::new("origin-refusal");
+    let (code, stderr) = origin_refusal(&sandbox, host, flag, variable);
+    assert_eq!(code, Some(2), "{stderr}");
+    assert!(stderr.contains(wanted), "wanted {wanted:?} in {stderr}");
+    for value in [flag, variable].into_iter().flatten() {
+        if !value.is_empty() {
+            assert!(!stderr.contains(value), "the value is not echoed: {stderr}");
+        }
+    }
+}
+
+#[test]
+fn serve_refuses_a_public_origin_that_is_http() {
+    assert_origin_refused(
+        Some("http://ws.example.com"),
+        None,
+        "0.0.0.0",
+        "must be https",
+    );
+}
+
+#[test]
+fn serve_refuses_a_public_origin_with_a_path_or_trailing_slash() {
+    assert_origin_refused(
+        Some("https://ws.example.com/"),
+        None,
+        "0.0.0.0",
+        "write https://workspace.example, not https://workspace.example/",
+    );
+    assert_origin_refused(Some("https://ws.example.com/x"), None, "0.0.0.0", "path");
+}
+
+#[test]
+fn serve_refuses_a_public_origin_with_userinfo() {
+    assert_origin_refused(
+        Some("https://me:secret@ws.example.com"),
+        None,
+        "0.0.0.0",
+        "userinfo",
+    );
+}
+
+#[test]
+fn serve_refuses_a_public_origin_on_a_loopback_bind() {
+    assert_origin_refused(Some(PUBLIC_ORIGIN), None, "127.0.0.1", "non-loopback");
+    assert_origin_refused(None, Some(PUBLIC_ORIGIN), "127.0.0.1", "non-loopback");
+}
+
+#[test]
+fn serve_refuses_a_public_origin_that_is_empty_as_a_flag() {
+    assert_origin_refused(Some(""), None, "0.0.0.0", "--public-origin is empty");
+}
+
+#[test]
+fn serve_refuses_a_public_origin_malformed_in_the_env_even_with_the_flag() {
+    assert_origin_refused(
+        Some(PUBLIC_ORIGIN),
+        Some("http://ws.example.com"),
+        "0.0.0.0",
+        "TANDEM_PUBLIC_ORIGIN",
+    );
+}
+
+#[test]
+fn serve_prints_the_public_origin_after_the_listening_line_and_the_flag_wins() {
+    let sandbox = Sandbox::new("origin-line");
+    let token = "t".repeat(32);
+    let server = Server::start_with_env(
+        &sandbox,
+        &[
+            "--host",
+            "0.0.0.0",
+            "--public-origin",
+            "HTTPS://WS.Example.com:443",
+        ],
+        &[
+            ("TANDEM_TOKEN", token.as_str()),
+            ("TANDEM_PUBLIC_ORIGIN", "https://other.example"),
+        ],
+    );
+    assert!(
+        server.listening.contains("listening on http://"),
+        "{}",
+        server.listening
+    );
+    let line = server.next_line(Duration::from_secs(10));
+    assert_eq!(line, format!("tandem serve: public origin {PUBLIC_ORIGIN}"));
+}
+
+#[test]
+fn an_empty_env_origin_is_unset_and_the_env_alone_configures_the_origin() {
+    let sandbox = Sandbox::new("origin-env");
+    let token = "t".repeat(32);
+    let server = Server::start_with_env(
+        &sandbox,
+        &["--host", "0.0.0.0"],
+        &[
+            ("TANDEM_TOKEN", token.as_str()),
+            ("TANDEM_PUBLIC_ORIGIN", ""),
+        ],
+    );
+    let started = server.next_line_with("tandem serve started", Duration::from_secs(10));
+    assert!(started.contains("origin=\"none\""), "{started}");
+    drop(server);
+
+    let server = Server::start_with_env(
+        &sandbox,
+        &["--host", "0.0.0.0"],
+        &[
+            ("TANDEM_TOKEN", token.as_str()),
+            ("TANDEM_PUBLIC_ORIGIN", PUBLIC_ORIGIN),
+        ],
+    );
+    assert_eq!(
+        server.next_line(Duration::from_secs(10)),
+        format!("tandem serve: public origin {PUBLIC_ORIGIN}")
+    );
+}
+
+#[test]
+fn a_configured_origin_passes_a_form_write_and_mcp_that_it_refuses_unconfigured() {
+    let token = "t".repeat(32);
+    let bearer = format!("Bearer {token}");
+    let form_headers = [
+        ("Authorization", bearer.as_str()),
+        ("Origin", PUBLIC_ORIGIN),
+        ("Content-Type", "application/x-www-form-urlencoded"),
+    ];
+    let mcp_headers = [
+        ("Authorization", bearer.as_str()),
+        ("Origin", PUBLIC_ORIGIN),
+        ("Content-Type", "application/json"),
+    ];
+    let ping = r#"{"jsonrpc":"2.0","id":1,"method":"ping","params":{}}"#;
+    for (extra, configured) in [
+        (&["--host", "0.0.0.0"][..], false),
+        (
+            &["--host", "0.0.0.0", "--public-origin", PUBLIC_ORIGIN][..],
+            true,
+        ),
+    ] {
+        let sandbox = Sandbox::new("origin-live");
+        let server = Server::start_with_env(&sandbox, extra, &[("TANDEM_TOKEN", token.as_str())]);
+        // The request's Host is the upstream's, as behind nginx's default.
+        let form = request(
+            server.port,
+            "POST",
+            "/tickets",
+            &form_headers,
+            Some("title=x"),
+        );
+        let mcp = request(server.port, "POST", "/mcp", &mcp_headers, Some(ping));
+        if configured {
+            assert_ne!(form.status, 403, "the form write passes: {}", form.body);
+            assert_eq!(mcp.status, 200, "/mcp passes");
+        } else {
+            assert_eq!(form.status, 403, "the form write is refused");
+            assert_eq!(mcp.status, 403, "/mcp is refused");
+        }
+    }
 }

@@ -32,7 +32,7 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 
 use axum::{Extension, Router};
-pub use guard::Access;
+pub use guard::{Access, normalize_public_origin};
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
@@ -50,6 +50,7 @@ mod assets;
 mod board;
 mod events;
 mod guard;
+mod login;
 mod markdown;
 mod mcp;
 mod notes;
@@ -204,7 +205,13 @@ pub fn router(context: SessionContext) -> Router {
 /// watcher on the same broadcast every connected stream listens to.
 pub fn router_with(context: SessionContext, changes: broadcast::Sender<i64>) -> Router {
     let access = context.access.clone();
-    layered(routes(), changes, access).with_state(Arc::new(context))
+    let store = context.store.clone();
+    if access.is_token()
+        && let Err(error) = store.browser_sessions_sweep(crate::store::unix_now())
+    {
+        tracing::warn!(error = ?error, "the expired browser sessions could not be swept");
+    }
+    layered(routes(), changes, access, store).with_state(Arc::new(context))
 }
 
 /// Every route the loopback face serves, before its layers and its state. One
@@ -216,6 +223,8 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/board", get(board::board_page))
         .route("/events", get(events::events))
         .route("/health", get(mcp::health))
+        .route("/login", get(login::login_page_get).post(login::login_post))
+        .route("/logout", post(login::logout_post))
         .route("/mcp", post(mcp::mcp_post))
         .route("/static/{*path}", get(assets::static_asset))
         .route("/tickets", post(board::add_ticket))
@@ -251,15 +260,22 @@ fn layered(
     router: Router<Arc<SessionContext>>,
     changes: broadcast::Sender<i64>,
     access: Access,
+    store: Store,
 ) -> Router<Arc<SessionContext>> {
     router
         .layer(middleware::from_fn(guard::access_guard))
         .layer(Extension(access))
+        .layer(Extension(store))
+        .layer(Extension(login::LoginThrottle::new()))
         .layer(DefaultBodyLimit::max(crate::rpc::MAX_FRAME))
         .layer(Extension(changes))
         .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn(request_log))
 }
+
+/// A request slower than this logs a `slow` warning after its request line:
+/// the cheapest signal that the store has outgrown the whole-board reads.
+const SLOW_REQUEST: Duration = Duration::from_millis(500);
 
 /// What every answer carries, whatever its type or status: the guard's
 /// refusals, the 404, assets and the stream included, so a route added later
@@ -310,9 +326,22 @@ async fn request_log(request: Request, next: Next) -> Response {
         .map(|matched| matched.as_str().to_string())
         .unwrap_or_else(|| request.uri().path().to_string());
     let response = next.run(request).await;
-    let status = response.status().as_u16();
-    let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-    let quiet = method == Method::GET && (route.starts_with("/static/") || route == "/events");
+    log_request(
+        &method,
+        &route,
+        response.status().as_u16(),
+        started.elapsed(),
+        SLOW_REQUEST,
+    );
+    response
+}
+
+/// The request line, and a `slow` warning when `latency` passes `slow`. The
+/// event stream is open-ended and `/health` is a probe, so neither is ever
+/// slow; `/mcp` is, since every agent session shares this server.
+fn log_request(method: &Method, route: &str, status: u16, latency: Duration, slow: Duration) {
+    let latency_ms = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
+    let quiet = *method == Method::GET && (route.starts_with("/static/") || route == "/events");
     if status >= 500 {
         tracing::error!(method = %method, route = ?route, status, latency_ms, "request");
     } else if status >= 400 {
@@ -322,7 +351,9 @@ async fn request_log(request: Request, next: Next) -> Response {
     } else {
         tracing::info!(method = %method, route = ?route, status, latency_ms, "request");
     }
-    response
+    if latency > slow && route != "/events" && route != guard::HEALTH_ROUTE {
+        tracing::warn!(method = %method, route = ?route, latency_ms, "slow request");
+    }
 }
 
 /// The store watch: one read-only connection, a 40 ms stat and a 5 s fallback,
@@ -585,6 +616,15 @@ struct PageView {
     /// sheet does not: the stream pauses until the sheet closes, so a store
     /// change cannot re-draw the form under the human's cursor.
     stream: bool,
+    /// Whether the header carries a Sign out control: token mode only.
+    sign_out: bool,
+}
+
+impl PageView {
+    /// The release that drew the page, on `<html data-version>`.
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
 }
 fn is_partial(headers: &HeaderMap) -> bool {
     headers.get("hx-request").is_some()

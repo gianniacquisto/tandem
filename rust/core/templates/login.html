@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign in - Tandem</title>
+    <script src="{{ assets.theme }}"></script>
+    <link rel="stylesheet" href="{{ assets.tokens_css }}">
+    <link rel="stylesheet" href="{{ assets.app_css }}">
+  </head>
+  <body class="login">
+    <main class="login__card">
+      <h1 class="login__wordmark">Tandem</h1>
+      {%- if let Some(notice) = notice %}
+      <p class="banner banner--notice login__notice" role="status">{{ notice }}</p>
+      {%- endif %}
+      <form class="login__form" method="post" action="/login">
+        <input type="hidden" name="next" value="{{ next }}">
+        <input class="login__username" type="text" name="username" value="tandem" autocomplete="username" readonly tabindex="-1" aria-hidden="true">
+        <label class="login__label" for="login-token">Access token</label>
+        <input class="login__input" id="login-token" type="password" name="password" autocomplete="current-password" autofocus required
+          {%- if error.is_some() %} aria-invalid="true" aria-describedby="login-error"{% endif %}>
+        {%- if let Some(error) = error %}
+        <p class="login__error" id="login-error" role="alert">{{ error }}</p>
+        {%- endif %}
+        <button class="login__submit" type="submit">Sign in</button>
+      </form>
+    </main>
+  </body>
+</html>

@@ -347,6 +347,36 @@ fn the_archive_holds_the_store_the_notes_and_the_manifest_last_and_nothing_else(
 }
 
 #[test]
+fn an_exported_archive_carries_no_browser_session() {
+    let sandbox = Sandbox::new("no-sessions");
+    let source = sandbox.home("source");
+    seed(&source, 1);
+    let store = Store::new(source.clone());
+    store
+        .browser_session_open("digest-of-a-live-session", None, crate::store::unix_now())
+        .expect("a browser session is minted");
+    assert_eq!(count(&source, "browser_sessions"), 1);
+
+    let archive = export_bytes(&source);
+    let entries = entries_of(&archive);
+    let exported = sandbox.root.join("exported.db");
+    fs::write(&exported, &entries[0].1).unwrap();
+    let connection = Connection::open_with_flags(&exported, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .expect("the exported store opens");
+    let rows: i64 = connection
+        .query_row("SELECT COUNT(*) FROM browser_sessions", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(rows, 0, "the export carries no browser session");
+    let needle = b"digest-of-a-live-session";
+    assert!(
+        !entries[0].1.windows(needle.len()).any(|w| w == needle),
+        "the session digest survives in the file's bytes"
+    );
+}
+
+#[test]
 fn the_manifest_names_the_format_the_schema_and_each_entrys_size_and_digest() {
     let sandbox = Sandbox::new("manifest");
     let source = sandbox.home("source");
@@ -528,7 +558,7 @@ fn import_refuses_a_cut_archive_a_missing_manifest_and_a_digest_or_size_mismatch
 
     // A digest that does not match.
     let wrong_digest = Manifested::Text(format!(
-        r#"{{"format":1,"schema_version":12,"tandem_version":"t","created_at":"{LATER}","entries":[{{"path":"tandem.db","size":{},"sha256":"{}"}}]}}"#,
+        r#"{{"format":1,"schema_version":13,"tandem_version":"t","created_at":"{LATER}","entries":[{{"path":"tandem.db","size":{},"sha256":"{}"}}]}}"#,
         db.len(),
         "0".repeat(64)
     ));
@@ -543,7 +573,7 @@ fn import_refuses_a_cut_archive_a_missing_manifest_and_a_digest_or_size_mismatch
 
     // A size that does not match.
     let wrong_size = Manifested::Text(format!(
-        r#"{{"format":1,"schema_version":12,"tandem_version":"t","created_at":"{LATER}","entries":[{{"path":"tandem.db","size":1,"sha256":"{}"}}]}}"#,
+        r#"{{"format":1,"schema_version":13,"tandem_version":"t","created_at":"{LATER}","entries":[{{"path":"tandem.db","size":1,"sha256":"{}"}}]}}"#,
         sha(&db)
     ));
     match is_refused(import(
@@ -557,7 +587,7 @@ fn import_refuses_a_cut_archive_a_missing_manifest_and_a_digest_or_size_mismatch
 
     // A listed file the archive does not hold.
     let missing = Manifested::Text(format!(
-        r#"{{"format":1,"schema_version":12,"tandem_version":"t","created_at":"{LATER}","entries":[{{"path":"tandem.db","size":{},"sha256":"{}"}},{{"path":"bikeshed/gone.md","size":1,"sha256":"{}"}}]}}"#,
+        r#"{{"format":1,"schema_version":13,"tandem_version":"t","created_at":"{LATER}","entries":[{{"path":"tandem.db","size":{},"sha256":"{}"}},{{"path":"bikeshed/gone.md","size":1,"sha256":"{}"}}]}}"#,
         db.len(),
         sha(&db),
         "0".repeat(64)
@@ -573,7 +603,7 @@ fn import_refuses_a_cut_archive_a_missing_manifest_and_a_digest_or_size_mismatch
 
     // A format this build does not know.
     let future = Manifested::Text(format!(
-        r#"{{"format":2,"schema_version":12,"tandem_version":"t","created_at":"{LATER}","entries":[]}}"#
+        r#"{{"format":2,"schema_version":13,"tandem_version":"t","created_at":"{LATER}","entries":[]}}"#
     ));
     assert!(matches!(
         is_refused(import(
@@ -667,7 +697,7 @@ fn import_refuses_hostile_entries() {
         // The unlisted case needs a manifest that does not list its entry.
         let manifest = if name == "unlisted" {
             Manifested::Text(format!(
-                r#"{{"format":1,"schema_version":12,"tandem_version":"t","created_at":"{LATER}","entries":[{{"path":"tandem.db","size":{},"sha256":"{}"}}]}}"#,
+                r#"{{"format":1,"schema_version":13,"tandem_version":"t","created_at":"{LATER}","entries":[{{"path":"tandem.db","size":{},"sha256":"{}"}}]}}"#,
                 db.len(),
                 sha(&db)
             ))
@@ -755,7 +785,7 @@ fn import_refuses_a_store_with_a_foreign_trigger_or_a_filled_emptied_table() {
             "store_meta",
             "schema_migrations",
         ],
-        &["secret_probe"],
+        &["browser_sessions", "secret_probe"],
     )
     .expect_err("a filled emptied table is refused");
     assert!(

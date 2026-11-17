@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-version="{{ self.version() }}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -39,7 +39,16 @@
           <button type="button" class="menu__option" data-theme-appearance="dark" aria-pressed="false">Dark</button>
         </div>
       </details>
+      {%- if sign_out %}
+      <form class="shell__signout" method="post" action="/logout">
+        <button type="submit" class="shell__signout-button">Sign out</button>
+      </form>
+      {%- endif %}
     </header>
+    <div id="signed-out-banner" class="banner signed-out" role="alert" hidden>
+      <span>You are signed out. What is on this page is not saved until you sign in again.</span>
+      <a id="signed-out-link" class="signed-out__link" href="/login" target="_blank" rel="noopener">Sign in</a>
+    </div>
     <main class="shell__body shell__body--bleed">
       {{ body }}
     </main>
