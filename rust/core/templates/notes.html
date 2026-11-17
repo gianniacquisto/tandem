@@ -9,6 +9,15 @@
   {% if let Some(notice) = notice %}
   <div class="banner banner--notice" role="status">
     <span>{{ notice }}</span>
+    {% if let Some(undo) = undo %}
+    <form class="banner__undo" method="post" action="/notes/restore" hx-post="/notes/restore"
+          hx-target="#notes-root" hx-swap="outerHTML">
+      <input type="hidden" name="project" value="{{ active_project }}">
+      <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+      <input type="hidden" name="trash" value="{{ undo.trash }}">
+      <button class="banner__dismiss" type="submit">Undo</button>
+    </form>
+    {% endif %}
     <a class="banner__dismiss" href="{{ focus_url }}">Dismiss</a>
   </div>
   {% endif %}
@@ -148,7 +157,7 @@
               {% endif %}
               <form class="row-menu__form" method="post" action="/notes/delete" hx-post="/notes/delete"
                     hx-target="#notes-root" hx-swap="outerHTML"
-                    data-confirm="{% if row.folder %}Delete the folder {{ row.name }} and everything in it?{% else %}Delete {{ row.name }}?{% endif %}">
+                    {% if row.folder %}data-confirm="Delete the folder {{ row.name }} and everything in it?"{% endif %}>
                 <input type="hidden" name="project" value="{{ active_project }}">
                 <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
                 <input type="hidden" name="open" value="{% if let Some(open) = path %}{{ open }}{% endif %}">

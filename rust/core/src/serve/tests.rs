@@ -1731,6 +1731,92 @@ async fn post_notes_rename_and_delete_manage_a_note_and_the_open_page_follows() 
 }
 
 #[tokio::test]
+async fn deleting_a_note_offers_an_undo_and_posting_it_restores_and_reopens_the_note() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-undo");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    let app = router(context(store));
+
+    let (status, _, _) = send(
+        &app,
+        form_request(
+            "/notes/create",
+            "path=projects/tandem/Undoable.md&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _, body) = send(
+        &app,
+        form_request(
+            "/notes/delete",
+            "path=projects/tandem/Undoable.md&open=projects/tandem/Undoable.md&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the delete answers: {body}");
+    assert!(
+        notes.read("projects/tandem/Undoable.md").is_err(),
+        "the note left the vault"
+    );
+    assert!(
+        body.contains("Deleted projects/tandem/Undoable.md"),
+        "the notice names the delete: {body}"
+    );
+    assert!(
+        body.contains("action=\"/notes/restore\""),
+        "the notice carries the undo control: {body}"
+    );
+    let marker = "name=\"trash\" value=\"";
+    let start = body.find(marker).expect("the undo names its trash entry") + marker.len();
+    let end = start + body[start..].find('"').expect("the entry value closes");
+    let trash = body[start..end].to_string();
+    assert!(
+        trash.contains("/projects/tandem/Undoable.md"),
+        "the entry names the original path: {trash}"
+    );
+
+    let (status, _, body) = send(
+        &app,
+        form_request("/notes/restore", &format!("trash={trash}&project=tandem")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the restore answers: {body}");
+    assert!(
+        notes.read("projects/tandem/Undoable.md").is_ok(),
+        "the undo puts the note back"
+    );
+    assert!(
+        body.contains("Restored projects/tandem/Undoable.md"),
+        "the notice names the restore: {body}"
+    );
+    assert!(
+        body.contains("Undoable"),
+        "the restored note is open again: {body}"
+    );
+
+    let (status, _, body) = send(
+        &app,
+        form_request(
+            "/notes/restore",
+            "trash=..%2F..%2Foutside.md&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "a refused restore still answers: {body}"
+    );
+    assert!(
+        body.contains("banner"),
+        "a crafted restore is refused on the page: {body}"
+    );
+}
+
+#[tokio::test]
 async fn the_notes_page_carries_the_tab_strip_hooks_and_rename_names_both_paths() {
     let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("notes-tabs");

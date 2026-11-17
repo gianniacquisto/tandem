@@ -28,7 +28,7 @@ pub mod wikilink;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
 
@@ -220,6 +220,21 @@ pub struct Recovery {
     pub file: String,
     pub bytes: u64,
     pub modified_at: SystemTime,
+}
+
+/// The vault's trash, a hidden folder the tree, search, health and backlink
+/// walks skip: a deleted note or folder sits at `.trash/<stamp>/<path>`.
+const TRASH_DIR: &str = ".trash";
+
+/// How long a trash entry is kept: the next delete past this age sweeps it.
+const TRASH_RETENTION: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+
+/// What a `delete` left in the trash: the id `restore` takes (`<stamp>/<original
+/// path>`) and the path the entry was deleted from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrashEntry {
+    pub id: String,
+    pub path: String,
 }
 
 /// The vault: the directory and the sidecar lockfile.
@@ -755,25 +770,96 @@ impl Bikeshed {
 
     // MARK: - delete
 
-    /// `delete(path)`: remove the note, or the folder recursively. Links to it
-    /// become broken; nothing is rewritten.
-    pub fn delete(&self, path: &str) -> DomainResult<Operation<()>> {
+    /// `delete(path)`: move the note, or the folder with everything in it, into
+    /// the vault's trash (`.trash/<UTC stamp>/<path>`). Links to it become broken;
+    /// nothing is rewritten, and `restore` brings it back.
+    pub fn delete(&self, path: &str) -> DomainResult<Operation<TrashEntry>> {
+        self.delete_at(path, SystemTime::now())
+    }
+
+    /// `delete` with the clock passed in: the stamp of the trash entry and the
+    /// retention sweep both read `now`, so a test pins them without sleeping.
+    pub(crate) fn delete_at(
+        &self,
+        path: &str,
+        now: SystemTime,
+    ) -> DomainResult<Operation<TrashEntry>> {
         let Some(url) = self.file_url(path) else {
             return Err(DomainError::InvalidName(path.to_string()));
         };
+        if path.split('/').any(is_hidden) {
+            return Err(DomainError::InvalidName(path.to_string()));
+        }
+        let id = format!("{}/{path}", stamp(now));
+        let Some(trash_url) = BikeshedPath::url(&self.directory, &format!("{TRASH_DIR}/{id}"))
+        else {
+            return Err(DomainError::InvalidName(path.to_string()));
+        };
         self.locked(|| {
-            let metadata =
-                fs::metadata(&url).map_err(|_| DomainError::UnknownNote(path.to_string()))?;
-            let removed = if metadata.is_dir() {
-                fs::remove_dir_all(&url)
-            } else {
-                fs::remove_file(&url)
-            };
-            removed.map_err(|error| {
+            fs::metadata(&url).map_err(|_| DomainError::UnknownNote(path.to_string()))?;
+            // Best effort: a sweep that cannot read the trash must not block a delete.
+            sweep_trash(&self.directory.join(TRASH_DIR), now);
+            if fs::symlink_metadata(&trash_url).is_ok() {
+                return Err(DomainError::NoteAlreadyExists(id.clone()));
+            }
+            if let Some(parent) = trash_url.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    DomainError::BikeshedIo(format!(
+                        "could not create \"{}\": {error}",
+                        parent.display()
+                    ))
+                })?;
+            }
+            fs::rename(&url, &trash_url).map_err(|error| {
                 DomainError::BikeshedIo(format!("could not delete \"{path}\": {error}"))
             })?;
             Ok(Operation {
-                value: (),
+                value: TrashEntry {
+                    id,
+                    path: path.to_string(),
+                },
+                note: None,
+            })
+        })
+    }
+
+    /// `restore(id)`: move a trash entry back to the path it was deleted from.
+    /// The id is the entry's `<stamp>/<original path>`; both halves pass the same
+    /// path rule as any note, so an id cannot name a file outside the trash or
+    /// the vault. A taken path is refused and nothing moves. Returns the path.
+    pub fn restore(&self, id: &str) -> DomainResult<Operation<String>> {
+        let refused = || DomainError::InvalidName(id.to_string());
+        let (stamp_part, original) = id.split_once('/').ok_or_else(refused)?;
+        if parse_stamp(stamp_part).is_none()
+            || original.is_empty()
+            || original.split('/').any(is_hidden)
+        {
+            return Err(refused());
+        }
+        let source =
+            BikeshedPath::url(&self.directory, &format!("{TRASH_DIR}/{id}")).ok_or_else(refused)?;
+        let destination = BikeshedPath::url(&self.directory, original).ok_or_else(refused)?;
+        self.locked(|| {
+            fs::symlink_metadata(&source).map_err(|_| DomainError::UnknownNote(id.to_string()))?;
+            if fs::symlink_metadata(&destination).is_ok() {
+                return Err(DomainError::NoteAlreadyExists(original.to_string()));
+            }
+            if let Some(taken) = self.file_collision(original, true) {
+                return Err(DomainError::NoteAlreadyExists(taken));
+            }
+            if let Some(parent) = destination.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    DomainError::BikeshedIo(format!(
+                        "could not create \"{}\": {error}",
+                        parent.display()
+                    ))
+                })?;
+            }
+            fs::rename(&source, &destination).map_err(|error| {
+                DomainError::BikeshedIo(format!("could not restore \"{original}\": {error}"))
+            })?;
+            Ok(Operation {
+                value: original.to_string(),
                 note: None,
             })
         })
@@ -904,6 +990,93 @@ fn translate_store(error: StoreError) -> DomainError {
 
 fn is_hidden(name: &str) -> bool {
     name.starts_with('.')
+}
+
+/// The UTC stamp a trash entry folder is named by: `YYYYMMDDTHHMMSSmmmZ`, with
+/// milliseconds so two deletes in one second keep their own folders.
+fn stamp(at: SystemTime) -> String {
+    let since = at.duration_since(UNIX_EPOCH).unwrap_or_default();
+    let secs = since.as_secs() as i64;
+    let (year, month, day) = civil_from_days(secs.div_euclid(86_400));
+    let rest = secs.rem_euclid(86_400);
+    format!(
+        "{year:04}{month:02}{day:02}T{:02}{:02}{:02}{:03}Z",
+        rest / 3600,
+        rest % 3600 / 60,
+        rest % 60,
+        since.subsec_millis()
+    )
+}
+
+/// The time a trash folder's stamp names, or `None` for any other name. The
+/// stamp must round-trip, so a date that does not exist is not a stamp.
+fn parse_stamp(name: &str) -> Option<SystemTime> {
+    let bytes = name.as_bytes();
+    if bytes.len() != 19 || bytes[8] != b'T' || bytes[18] != b'Z' {
+        return None;
+    }
+    if !bytes
+        .iter()
+        .enumerate()
+        .all(|(index, byte)| matches!(index, 8 | 18) || byte.is_ascii_digit())
+    {
+        return None;
+    }
+    let number = |range: std::ops::Range<usize>| name[range].parse::<i64>().ok();
+    let days = days_from_civil(number(0..4)?, number(4..6)?, number(6..8)?);
+    let secs = days * 86_400 + number(9..11)? * 3600 + number(11..13)? * 60 + number(13..15)?;
+    let millis = number(15..18)?;
+    let at = UNIX_EPOCH + Duration::from_millis(u64::try_from(secs).ok()? * 1000 + millis as u64);
+    (stamp(at) == name).then_some(at)
+}
+
+/// Days since the Unix epoch to a proleptic Gregorian `(year, month, day)`.
+fn civil_from_days(days: i64) -> (i64, i64, i64) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    (year, month, day)
+}
+
+/// The inverse of [`civil_from_days`].
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let mp = if month > 2 { month - 3 } else { month + 9 };
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// Remove the trash folders whose stamp is older than [`TRASH_RETENTION`]. An
+/// entry of exactly the retention is kept; anything that is not a stamp, a
+/// folder or readable is left alone.
+fn sweep_trash(trash: &Path, now: SystemTime) {
+    let Ok(entries) = fs::read_dir(trash) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let Some(at) = parse_stamp(&name) else {
+            continue;
+        };
+        if now
+            .duration_since(at)
+            .is_ok_and(|age| age > TRASH_RETENTION)
+        {
+            let _ = fs::remove_dir_all(entry.path());
+        }
+    }
 }
 
 fn is_note_name(name: &str) -> bool {
