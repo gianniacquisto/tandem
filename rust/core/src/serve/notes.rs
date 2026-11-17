@@ -404,6 +404,7 @@ fn notes_response(
         return html_response(body, StatusCode::OK);
     }
     match (PageView {
+        assets: assets::urls(),
         body: askama::filters::Safe(body),
         stream: true,
     })

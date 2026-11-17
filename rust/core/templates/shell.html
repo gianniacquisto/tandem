@@ -4,12 +4,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Tandem</title>
-    <script src="/static/theme.js"></script>
-    <link rel="stylesheet" href="/static/tokens.css">
-    <link rel="stylesheet" href="/static/app.css">
-    <script src="/static/htmx.min.js" defer></script>
-    <script src="/static/sse.js" defer></script>
-    <script src="/static/tandem.js" defer></script>
+    <script src="{{ assets.theme }}"></script>
+    <link rel="stylesheet" href="{{ assets.tokens_css }}">
+    <link rel="stylesheet" href="{{ assets.app_css }}">
+    <script src="{{ assets.htmx }}" defer></script>
+    <script src="{{ assets.sse }}" defer></script>
+    <script src="{{ assets.tandem }}" defer></script>
   </head>
   {#- The change stream pauses while a ticket sheet is open: the root swaps
       itself on a store change, and a swap under the human's cursor would clear

@@ -1,4 +1,4 @@
-//! The change stream and the static assets the shell loads.
+//! The change stream.
 
 use super::*;
 
@@ -49,42 +49,4 @@ pub(super) async fn events(
         }
     });
     Sse::new(initial.chain(updates)).keep_alive(KeepAlive::default())
-}
-
-pub(super) async fn static_asset(Path(path): Path<String>) -> Response {
-    let asset: Option<(&'static str, &'static [u8])> = match path.as_str() {
-        "tokens.css" => Some((
-            "text/css; charset=utf-8",
-            include_bytes!("static/tokens.css"),
-        )),
-        "app.css" => Some(("text/css; charset=utf-8", include_bytes!("static/app.css"))),
-        "htmx.min.js" => Some((
-            "text/javascript; charset=utf-8",
-            include_bytes!("static/htmx.min.js"),
-        )),
-        "sse.js" => Some((
-            "text/javascript; charset=utf-8",
-            include_bytes!("static/sse.js"),
-        )),
-        "theme.js" => Some((
-            "text/javascript; charset=utf-8",
-            include_bytes!("static/theme.js"),
-        )),
-        "tandem.js" => Some((
-            "text/javascript; charset=utf-8",
-            include_bytes!("static/tandem.js"),
-        )),
-        _ => None,
-    };
-    match asset {
-        Some((kind, bytes)) => (
-            [
-                (header::CONTENT_TYPE, HeaderValue::from_static(kind)),
-                (header::CACHE_CONTROL, HeaderValue::from_static("no-cache")),
-            ],
-            bytes,
-        )
-            .into_response(),
-        None => StatusCode::NOT_FOUND.into_response(),
-    }
 }
