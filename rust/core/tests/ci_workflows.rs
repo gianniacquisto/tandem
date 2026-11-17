@@ -124,25 +124,50 @@ fn steps(text: &str) -> Vec<(&str, String)> {
     steps
 }
 
-/// The release pipeline CUT-16 delivers: one archive per platform, a smoke test
-/// that extracts that archive and runs the binary inside it, and one aggregator
-/// that keeps the required check name `release`.
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// The release pipeline CUT-16 delivers, as one matrix job (CUT-32): one
+/// archive per platform, a smoke test that extracts that archive and runs the
+/// binary inside it, and one aggregator that keeps the required check name
+/// `release`. Adding a target is one matrix row, so the job is defined once.
 #[test]
 fn the_release_workflow_builds_three_platform_archives() {
     let text = std::fs::read_to_string(workflows().join("release.yml")).expect("release.yml reads");
-    for job in ["build-macos:", "build-linux:", "build-windows:"] {
-        assert!(text.contains(job), "release.yml still names `{job}`");
+    assert_eq!(
+        text.matches("\n  build:\n").count(),
+        1,
+        "release.yml defines one `build` job"
+    );
+    for retired in ["build-macos:", "build-linux:", "build-windows:"] {
+        assert!(
+            !text.contains(retired),
+            "release.yml still copies `{retired}`"
+        );
     }
     assert!(
-        text.contains("needs: [build-macos, build-linux, build-windows]"),
-        "the `release` aggregator waits for all three builds"
+        text.contains("needs: [changes, build]"),
+        "the `release` aggregator waits for the build matrix"
+    );
+    for row in [
+        "target: darwin-arm64",
+        "target: linux-x86_64",
+        "target: windows-x86_64",
+    ] {
+        assert!(text.contains(row), "the build matrix has the row `{row}`");
+    }
+    assert_eq!(
+        text.matches("target: ").count(),
+        3,
+        "the build matrix has exactly three rows"
     );
     for archive in [
         "tandem-$version-darwin-arm64.tar.gz",
         "tandem-$version-linux-x86_64.tar.gz",
         "tandem-$version-windows-x86_64.zip",
     ] {
-        assert!(text.contains(archive), "release.yml packages `{archive}`");
+        assert!(text.contains(archive), "release.yml verifies `{archive}`");
     }
     assert!(
         text.contains("Scripts/stage-release-assets.sh"),
@@ -155,8 +180,9 @@ fn the_release_workflow_builds_three_platform_archives() {
 }
 
 /// The gate's finding on #433: the smoke steps ran the build tree, so a broken
-/// tar or zip was caught only after a user downloaded it. Each build job must
-/// extract the archive it just wrote and smoke the binary that archive carries.
+/// tar or zip was caught only after a user downloaded it. The build job must
+/// extract the archive it just wrote and smoke the binary that archive carries:
+/// the unix step in place, the Windows step through `Scripts/smoke-binary.ps1`.
 #[test]
 fn every_smoke_step_extracts_its_archive_and_runs_the_extracted_binary() {
     let text = std::fs::read_to_string(workflows().join("release.yml")).expect("release.yml reads");
@@ -170,22 +196,122 @@ fn every_smoke_step_extracts_its_archive_and_runs_the_extracted_binary() {
             !body.contains("target/release") && !body.contains("target\\release"),
             "`{name}` smokes the build tree, not the archive the tag publishes"
         );
+        if body.contains("smoke-binary.ps1") {
+            assert!(
+                body.contains("dist"),
+                "`{name}` does not read the archive the job packaged into dist"
+            );
+            continue;
+        }
         assert!(
-            body.contains("tar -xzf") || body.contains("Expand-Archive"),
+            body.contains("tar -xzf"),
             "`{name}` does not extract the archive before it smokes it"
         );
         assert!(
-            body.contains("dist/tandem-$version-")
-                || body.contains("dist\\tandem-$($env:version)-"),
+            body.contains("dist/tandem-$version-${{ matrix.target }}."),
             "`{name}` does not read the archive the job packaged into dist"
         );
         assert!(
-            body.contains("$smoke/tandem") || body.contains("Join-Path $smoke 'tandem.exe'"),
+            body.contains("$smoke/tandem"),
             "`{name}` does not run the binary the archive carried"
         );
     }
     assert_eq!(
-        smoke_steps, 3,
-        "release.yml smokes each platform's extracted archive ({smoke_steps} smoke steps read)"
+        smoke_steps, 2,
+        "release.yml smokes each archive kind ({smoke_steps} smoke steps read)"
     );
+    let script = std::fs::read_to_string(repo_root().join("Scripts/smoke-binary.ps1"))
+        .expect("Scripts/smoke-binary.ps1 reads");
+    assert!(
+        script.contains("Expand-Archive"),
+        "the Windows smoke extracts the zip"
+    );
+    assert!(
+        !script.contains("target\\release"),
+        "the Windows smoke runs the extracted exe"
+    );
+}
+
+/// A filter must never let a change to a workflow, an action, `install.sh` or
+/// the Rust tree skip its own gates, and a docs-only change must skip them.
+#[test]
+fn the_changed_paths_filter_runs_the_gates_for_code_and_skips_docs() {
+    let dir = std::env::temp_dir().join(format!("tandem-changed-paths-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .args([
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(args)
+            .current_dir(&dir)
+            .output()
+            .expect("git runs");
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    git(&["init", "-q"]);
+    std::fs::write(dir.join("seed"), "x").unwrap();
+    git(&["add", "-A"]);
+    git(&["commit", "-qm", "seed"]);
+    let script = repo_root().join("Scripts/changed-paths.sh");
+    let prefixes = [
+        "rust/",
+        "Scripts/",
+        "Fixtures/",
+        ".github/workflows/",
+        ".github/actions/",
+    ];
+    let answer = |event: &str| {
+        let out = std::process::Command::new("bash")
+            .arg(&script)
+            .args(prefixes)
+            .env("GITHUB_EVENT_NAME", event)
+            .current_dir(&dir)
+            .output()
+            .expect("the script runs");
+        assert!(out.status.success());
+        String::from_utf8(out.stdout).unwrap().trim().to_string()
+    };
+    let touch = |path: &str| {
+        let file = dir.join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, path).unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", path]);
+    };
+    touch("docs/a.md");
+    assert_eq!(answer("pull_request"), "false", "a docs-only change skips");
+    touch("examples/skills/x.md");
+    assert_eq!(
+        answer("pull_request"),
+        "false",
+        "an examples-only change skips"
+    );
+    for path in [
+        "rust/core/src/lib.rs",
+        "Scripts/install.sh",
+        "Fixtures/f.json",
+        ".github/workflows/rust.yml",
+        ".github/actions/rust-setup/action.yml",
+    ] {
+        touch(path);
+        assert_eq!(answer("pull_request"), "true", "{path} runs the gates");
+    }
+    touch("docs/b.md");
+    assert_eq!(
+        answer("push"),
+        "true",
+        "a push is already filtered by `on.push.paths`"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
