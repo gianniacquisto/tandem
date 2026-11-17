@@ -32,7 +32,7 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 
 use axum::{Extension, Router};
-pub use guard::Access;
+pub use guard::{Access, normalize_public_origin};
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
