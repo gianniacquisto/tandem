@@ -27,6 +27,7 @@ mod bikeshed_scale;
 mod bikeshed_search;
 mod bikeshed_stats;
 mod bikeshed_support;
+mod bikeshed_trash;
 mod bikeshed_wikilink;
 mod examples_tools;
 mod fixture_bikeshed;

@@ -46,6 +46,7 @@ use crate::domain::{
 use crate::env::Environment;
 use crate::store::{Actor, RevisionWatch, Store};
 
+mod assets;
 mod board;
 mod events;
 mod guard;
@@ -213,7 +214,7 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/events", get(events::events))
         .route("/health", get(mcp::health))
         .route("/mcp", post(mcp::mcp_post))
-        .route("/static/{*path}", get(events::static_asset))
+        .route("/static/{*path}", get(assets::static_asset))
         .route("/tickets", post(board::add_ticket))
         .route(
             "/tickets/{id}",
@@ -236,6 +237,7 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/notes/move", post(notes::note_move))
         .route("/notes/rename", post(notes::note_rename))
         .route("/notes/delete", post(notes::note_delete))
+        .route("/notes/restore", post(notes::note_restore))
 }
 
 /// The layers every route carries: the access guard, the body ceiling and the
@@ -535,6 +537,8 @@ fn field<'a>(params: &'a HashMap<String, String>, key: &str) -> &'a str {
 #[derive(Template)]
 #[template(path = "shell.html")]
 struct PageView {
+    /// The hashed URL of each asset the shell links.
+    assets: assets::Urls,
     /// The face template's own output, already HTML: the shell embeds it
     /// rather than escaping it a second time.
     body: askama::filters::Safe<String>,

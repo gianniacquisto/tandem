@@ -21,3 +21,5 @@
 - `Bikeshed.fileURL(for:)` becomes a one-line delegate; its signature and its tolerance of `#` / `|` (pre-existing on-disk violators) are unchanged.
 - `BikeshedModel.existingVaultFile` validates through the rule before its case-insensitive walk, dropping its inline copy of the component check.
 - The divergence cannot recur: there is one copy.
+
+**A link is never followed.** A symlink (and on Windows a junction) inside the vault is refused by the same rule: a path with an existing component that is a link is no URL, so `read`, `write`, `create`, `move`, `rename`, `delete` and `asset` refuse it before the file is touched, and the tree, search, health, backlinks and stats walks skip it, which also bounds them against a cycle. The vault root may itself be a link, since a human may keep the vault on another volume: the walk starts below the root, so the root is never refused. The rule is one check in `BikeshedPath::url`, because a link inside the vault is a read and write path out of it once `tandem serve` binds beyond loopback.

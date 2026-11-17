@@ -755,6 +755,136 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
     assert_eq!(status, StatusCode::NOT_FOUND, "an unknown asset is a 404");
 }
 
+/// The hash a hashed asset URL carries, read off the `v=` parameter.
+fn hash_of(url: &str) -> &str {
+    url.rsplit("v=").next().expect("the URL carries a hash")
+}
+
+async fn get_with(
+    app: &Router,
+    uri: &str,
+    name: header::HeaderName,
+    value: &str,
+) -> (StatusCode, HeaderMap, String) {
+    let request = Request::builder()
+        .uri(uri)
+        .header(header::HOST, "127.0.0.1:7700")
+        .header(name, value)
+        .body(Body::empty())
+        .expect("the request builds");
+    send(app, request).await
+}
+
+#[test]
+fn an_asset_digest_is_twelve_hex_characters_and_follows_the_bytes() {
+    let first = assets::digest(b"a { color: red }");
+    assert_eq!(first.len(), 12, "the hash is a short hex prefix: {first}");
+    assert!(first.chars().all(|c| c.is_ascii_hexdigit()));
+    assert_eq!(
+        first,
+        assets::digest(b"a { color: red }"),
+        "the hash is stable"
+    );
+    assert_ne!(
+        first,
+        assets::digest(b"a { color: blue }"),
+        "a changed byte changes the hash"
+    );
+}
+
+#[tokio::test]
+async fn the_shell_links_content_hashed_assets() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-asset-urls");
+    let app = router(context(sandbox.store()));
+
+    let (status, _, body) = get(&app, "/").await;
+    assert_eq!(status, StatusCode::OK);
+    let urls = assets::urls();
+    assert!(
+        body.contains(&format!("href=\"{}\"", urls.app_css)),
+        "the shell links the hashed styles: {body}"
+    );
+    assert!(
+        body.contains(&format!("src=\"{}\"", urls.htmx)),
+        "the shell links the hashed htmx"
+    );
+    assert!(
+        body.contains(&format!("src=\"{}\"", urls.tandem)),
+        "the shell links the hashed tandem.js"
+    );
+    assert!(
+        !body.contains("href=\"/static/app.css\""),
+        "no unhashed styles link remains"
+    );
+    assert!(
+        !body.contains("src=\"/static/tandem.js\""),
+        "no unhashed script link remains"
+    );
+}
+
+#[tokio::test]
+async fn a_hashed_asset_is_immutable_and_an_unhashed_one_revalidates() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-asset-cache");
+    let app = router(context(sandbox.store()));
+    let urls = assets::urls();
+    let hash = hash_of(&urls.app_css).to_string();
+
+    let (status, headers, _) = get(&app, &urls.app_css).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        headers[header::CACHE_CONTROL],
+        "public, max-age=31536000, immutable",
+        "the current hash is immutable"
+    );
+    assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+    assert_eq!(headers[header::CONTENT_TYPE], "text/css; charset=utf-8");
+
+    let (status, headers, _) = get(&app, "/static/app.css").await;
+    assert_eq!(status, StatusCode::OK, "the unhashed URL still answers");
+    assert_eq!(
+        headers[header::CACHE_CONTROL],
+        "no-cache",
+        "an unhashed asset revalidates"
+    );
+    assert_eq!(
+        headers[header::ETAG],
+        format!("\"{hash}\"").as_str(),
+        "the unhashed asset carries its hash as ETag"
+    );
+    assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+
+    let (status, headers, _) = get(&app, "/static/app.css?v=stale0000000").await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        headers[header::CACHE_CONTROL],
+        "no-cache",
+        "a stale hash revalidates"
+    );
+}
+
+#[tokio::test]
+async fn a_matching_if_none_match_answers_not_modified() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-asset-304");
+    let app = router(context(sandbox.store()));
+    let hash = hash_of(&assets::urls().app_css).to_string();
+    let etag = format!("\"{hash}\"");
+
+    let (status, _, body) = get_with(&app, "/static/app.css", header::IF_NONE_MATCH, &etag).await;
+    assert_eq!(
+        status,
+        StatusCode::NOT_MODIFIED,
+        "a matching validator answers 304"
+    );
+    assert!(body.is_empty(), "a 304 carries no body");
+
+    let (status, _, _) =
+        get_with(&app, "/static/app.css", header::IF_NONE_MATCH, "\"other\"").await;
+    assert_eq!(status, StatusCode::OK, "a stale validator gets the bytes");
+}
+
 // MARK: - The watch
 
 #[test]
@@ -1597,6 +1727,92 @@ async fn post_notes_rename_and_delete_manage_a_note_and_the_open_page_follows() 
     assert!(
         body.contains("data-gone=\"projects/tandem/Final.md\""),
         "the delete names the path for the tab strip: {body}"
+    );
+}
+
+#[tokio::test]
+async fn deleting_a_note_offers_an_undo_and_posting_it_restores_and_reopens_the_note() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-undo");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    let app = router(context(store));
+
+    let (status, _, _) = send(
+        &app,
+        form_request(
+            "/notes/create",
+            "path=projects/tandem/Undoable.md&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _, body) = send(
+        &app,
+        form_request(
+            "/notes/delete",
+            "path=projects/tandem/Undoable.md&open=projects/tandem/Undoable.md&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the delete answers: {body}");
+    assert!(
+        notes.read("projects/tandem/Undoable.md").is_err(),
+        "the note left the vault"
+    );
+    assert!(
+        body.contains("Deleted projects/tandem/Undoable.md"),
+        "the notice names the delete: {body}"
+    );
+    assert!(
+        body.contains("action=\"/notes/restore\""),
+        "the notice carries the undo control: {body}"
+    );
+    let marker = "name=\"trash\" value=\"";
+    let start = body.find(marker).expect("the undo names its trash entry") + marker.len();
+    let end = start + body[start..].find('"').expect("the entry value closes");
+    let trash = body[start..end].to_string();
+    assert!(
+        trash.contains("/projects/tandem/Undoable.md"),
+        "the entry names the original path: {trash}"
+    );
+
+    let (status, _, body) = send(
+        &app,
+        form_request("/notes/restore", &format!("trash={trash}&project=tandem")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the restore answers: {body}");
+    assert!(
+        notes.read("projects/tandem/Undoable.md").is_ok(),
+        "the undo puts the note back"
+    );
+    assert!(
+        body.contains("Restored projects/tandem/Undoable.md"),
+        "the notice names the restore: {body}"
+    );
+    assert!(
+        body.contains("Undoable"),
+        "the restored note is open again: {body}"
+    );
+
+    let (status, _, body) = send(
+        &app,
+        form_request(
+            "/notes/restore",
+            "trash=..%2F..%2Foutside.md&project=tandem",
+        ),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "a refused restore still answers: {body}"
+    );
+    assert!(
+        body.contains("banner"),
+        "a crafted restore is refused on the page: {body}"
     );
 }
 
