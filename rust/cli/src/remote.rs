@@ -213,15 +213,20 @@ fn call_for(command: &Command) -> Result<(String, Map<String, Value>), Failure> 
             ));
         }
         Command::Export(_) | Command::Import(_) => {
-            // Neither verb is an MCP tool: a remote user downloads from the
-            // board, and a move into a hosted workspace is the service's act.
+            // Neither verb is an MCP tool: both open the home's files.
             let name = if matches!(command, Command::Export(_)) {
                 "export"
             } else {
                 "import"
             };
             return Err(Failure::message(format!(
-                "tandem {name}: this verb has no remote form; it runs against the local home only."
+                "tandem {name}: this verb has no remote form; it opens a home on this machine. Unset \
+                 TANDEM_SERVER, or run it on the machine that holds the home{}.",
+                if name == "import" {
+                    " (for import, pass --home <empty dir>)"
+                } else {
+                    ""
+                }
             )));
         }
         Command::Doctor => "doctor",

@@ -1281,8 +1281,18 @@ fn export(home: &Home, args: &ExportArgs) -> Result<(), Failure> {
         let line = start_export(&principal)?;
         eprintln!("{line}");
         let writer = io::BufWriter::new(io::stdout().lock());
-        let summary = archive::export(home, writer).map_err(archive_failure)?;
-        eprintln!("Exported {} bytes to standard output.", summary.bytes);
+        let summary = archive::export(home, writer)
+            .map_err(|error| match error {
+                // A write to the pipe may have failed after bytes went out.
+                archive::ArchiveError::Io(message) => archive::ArchiveError::Stream(message),
+                other => other,
+            })
+            .map_err(archive_failure)?;
+        eprintln!(
+            "Exported {} bytes to standard output. Next: restore it with `tandem import -` \
+             against a new, empty --home.",
+            summary.bytes
+        );
         return Ok(());
     }
     let path = Path::new(out);
@@ -1311,6 +1321,10 @@ fn export(home: &Home, args: &ExportArgs) -> Result<(), Failure> {
     match outcome {
         Ok(summary) => {
             println!("{} ({} bytes)", path.display(), summary.bytes);
+            eprintln!(
+                "Next: restore it with `tandem import {}` against a new, empty --home.",
+                path.display()
+            );
             Ok(())
         }
         Err(failure) => {
@@ -1342,9 +1356,8 @@ fn import(home: &Home, args: &ImportArgs) -> Result<(), Failure> {
     }
     .map_err(archive_failure)?;
     println!(
-        "Imported into {}: schema v{}, {} ticket{}, {} note{}.",
+        "Imported into {}: {} ticket{}, {} note{}.",
         home.directory().display(),
-        summary.schema_version,
         summary.tickets,
         if summary.tickets == 1 { "" } else { "s" },
         summary.notes,

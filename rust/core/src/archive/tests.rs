@@ -898,3 +898,27 @@ fn the_export_record_names_the_actor_the_time_and_the_door_and_nothing_else() {
     assert_eq!(odd.split(' ').count(), 4, "{odd}");
     assert!(!odd.contains('/'), "{odd}");
 }
+
+#[test]
+fn commit_refuses_a_store_that_appeared_after_the_emptiness_check_and_leaves_it() {
+    let sandbox = Sandbox::new("racing-store");
+    let home = sandbox.root.join("home");
+    let scratch = sandbox.root.join("scratch");
+    fs::create_dir_all(&home).unwrap();
+    fs::create_dir_all(&scratch).unwrap();
+    fs::write(scratch.join("tandem.db"), "imported").unwrap();
+    // A `tandem serve` made a live store between the check and the commit.
+    fs::write(home.join("tandem.db"), "live").unwrap();
+
+    let error = commit(&home, &scratch).expect_err("a live store must refuse");
+    assert!(matches!(error, ArchiveError::NotEmpty { .. }), "{error:?}");
+    assert_eq!(fs::read_to_string(home.join("tandem.db")).unwrap(), "live");
+    assert!(!home.join("bikeshed").exists());
+}
+
+#[test]
+fn a_stream_failure_says_partial_bytes_were_written_and_not_check_the_path() {
+    let message = ArchiveError::Stream("Cannot write: broken pipe.".into()).to_string();
+    assert!(message.contains("partial"), "{message}");
+    assert!(!message.contains("Check the path"), "{message}");
+}

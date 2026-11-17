@@ -158,8 +158,10 @@ pub enum ArchiveError {
     TooLarge { limit: u64 },
     /// The store inside is not one this build trusts.
     Refused(String),
-    /// A filesystem failure.
+    /// A filesystem failure; the message names the act and carries its own next step.
     Io(String),
+    /// A write to the export's output failed part way (a broken pipe, a full disk).
+    Stream(String),
 }
 
 impl fmt::Display for ArchiveError {
@@ -175,14 +177,15 @@ impl fmt::Display for ArchiveError {
             Self::NotEmpty { home, found } => write!(
                 f,
                 "Cannot import into {}: the home is not empty ({}). Import never merges and has \
-                 no force: point --home at a new, empty directory.",
+                 no force: point --home at a new, empty directory. (A `tandem serve` started on \
+                 this home earlier creates an empty store, which counts.)",
                 home.display(),
                 found.join(", ")
             ),
             Self::Newer { version } => write!(
                 f,
-                "Cannot import: the archive's store is schema v{version}, newer than this \
-                 build's v{}. Upgrade tandem, then import again. Nothing was written.",
+                "Cannot import: the archive's store is a newer version ({version}) than this \
+                 build reads ({}). Upgrade tandem, then import again. Nothing was written.",
                 store::CURRENT_VERSION
             ),
             Self::Format { found } => write!(
@@ -210,7 +213,16 @@ impl fmt::Display for ArchiveError {
                 "Cannot import: the archive's store is not trusted ({why}). Export it again \
                  from the source. Nothing was written."
             ),
-            Self::Io(message) => write!(f, "{message} Check the path and try again."),
+            Self::Io(message) => write!(
+                f,
+                "{message} Check the path, the free space and the permissions, then try again."
+            ),
+            Self::Stream(message) => write!(
+                f,
+                "{message} The archive was cut off while it was written to standard output, so \
+                 some bytes were already sent and what the reader holds is partial. Discard it \
+                 and export again."
+            ),
         }
     }
 }
@@ -701,6 +713,9 @@ fn verify_against_manifest(
 /// arrival is the commit. A crash between them leaves notes and no store, which
 /// the next import refuses as non-empty by name (`docs/store.md`).
 fn commit(home: &Path, scratch: &Path) -> Result<(), ArchiveError> {
+    // The home was empty when the import began; a `tandem serve` or another
+    // import may have made a store since. Look again right before the moves.
+    refuse_if_not_empty(home)?;
     let notes_from = scratch.join(NOTES_ENTRY);
     let notes_to = home.join(NOTES_ENTRY);
     let moved_notes = notes_from.is_dir();
@@ -712,8 +727,21 @@ fn commit(home: &Path, scratch: &Path) -> Result<(), ArchiveError> {
         }
         fs::rename(&notes_from, &notes_to).map_err(io_error("move the notes into the home"))?;
     }
-    let outcome = fs::rename(scratch.join(STORE_ENTRY), home.join(STORE_ENTRY))
-        .map_err(io_error("move the store into the home"));
+    // A hard link fails when the name exists, where a rename would replace a
+    // store that appeared after the check: no merge, no force.
+    let store_to = home.join(STORE_ENTRY);
+    let outcome = match fs::hard_link(scratch.join(STORE_ENTRY), &store_to) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            Err(refuse_if_not_empty(home).err().unwrap_or_else(|| {
+                ArchiveError::Io(format!(
+                    "Cannot move the store into the home: {} appeared during the import.",
+                    store_to.display()
+                ))
+            }))
+        }
+        Err(error) => Err(io_error("move the store into the home")(error)),
+    };
     if outcome.is_err() && moved_notes {
         let _ = fs::rename(&notes_to, &notes_from);
     }

@@ -36,6 +36,8 @@ pub(crate) const CARRIED_TABLES: &[&str] = &[
     "schema_migrations",
     // Older stores, before their first migrating write.
     "lanes",
+    // The legacy agent-session table of older stores, carried as data. It is
+    // not CUT-34's `browser_sessions` (sign-in sessions), which never travel.
     "sessions",
     "sprints",
     "workflow_runs",
