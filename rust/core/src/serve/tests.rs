@@ -3963,7 +3963,6 @@ async fn a_flood_of_wrong_tokens_is_throttled_and_a_right_token_still_signs_in()
     let flood: Vec<_> = (0..12).map(|n| tokio::spawn(wrong(n))).collect();
     // While the wrong ones wait, a right token is neither delayed nor refused.
     tokio::task::yield_now().await;
-    let started = Instant::now();
     let (status, _, _) = send(
         &app,
         remote_form("/login", &login_body(TOKEN, "/"), Some(REMOTE_ORIGIN), None),

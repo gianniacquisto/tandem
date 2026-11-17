@@ -15,7 +15,7 @@ use crate::store::{SESSION_IDLE_SECONDS, unix_now};
 #[cfg(not(test))]
 const WRONG_TOKEN_DELAY: Duration = Duration::from_secs(1);
 #[cfg(test)]
-const WRONG_TOKEN_DELAY: Duration = Duration::from_millis(150);
+const WRONG_TOKEN_DELAY: Duration = Duration::from_millis(600);
 
 /// How many wrong tokens may wait at once; the excess is turned away with `429`.
 /// Global, not per address: the peer is the proxy and `X-Forwarded-For` is
