@@ -189,3 +189,52 @@ fn every_smoke_step_extracts_its_archive_and_runs_the_extracted_binary() {
         "release.yml smokes each platform's extracted archive ({smoke_steps} smoke steps read)"
     );
 }
+
+/// CUT-33: a moved tag must not run new code in a job that holds a token, so
+/// every `uses:` names a 40-hex commit SHA, with the version in a comment.
+#[test]
+fn every_action_is_pinned_to_a_commit_sha() {
+    for file in ["rust.yml", "release.yml"] {
+        let text = std::fs::read_to_string(workflows().join(file)).expect("workflow reads");
+        for line in text.lines() {
+            let Some(rest) = line.trim_start().strip_prefix("uses:") else {
+                continue;
+            };
+            let pin = rest.trim().split('@').nth(1).unwrap_or("");
+            let sha = pin.split_whitespace().next().unwrap_or("");
+            assert!(
+                sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit()),
+                "{file}: `{}` is not pinned to a commit SHA",
+                line.trim()
+            );
+        }
+    }
+}
+
+/// CUT-33: the publish step never deletes a release, so `latest/download` is
+/// never a 404 mid-run; and the audit job exists.
+#[test]
+fn the_publish_step_never_deletes_a_release_and_the_audit_runs() {
+    let release = std::fs::read_to_string(workflows().join("release.yml")).expect("release.yml");
+    assert!(
+        !release.contains("gh release delete"),
+        "release.yml deletes a release"
+    );
+    assert!(
+        release.contains("gh release upload"),
+        "re-cut uploads with --clobber"
+    );
+    assert!(
+        release.contains("--clobber"),
+        "re-cut uploads with --clobber"
+    );
+    assert!(
+        release.contains("attest-build-provenance"),
+        "archives are attested"
+    );
+    let rust = std::fs::read_to_string(workflows().join("rust.yml")).expect("rust.yml");
+    assert!(
+        rust.contains("cargo-deny-action"),
+        "rust.yml runs cargo deny"
+    );
+}

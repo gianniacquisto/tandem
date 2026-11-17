@@ -20,8 +20,9 @@ name: Rust
 # blocks the merge of a PR that touches no `rust/**` file. So `push` keeps its
 # filter, where a skipped run costs nothing, and `pull_request` does not filter.
 #
-# No third-party action: `actions/checkout` and `actions/cache` are GitHub's
-# own, `rust-toolchain.toml` pins the version and the two components, rustup
+# Every action is pinned to a full commit SHA (Dependabot keeps them current).
+# `actions/checkout` and `actions/cache` are GitHub's own, `deny` is the one
+# third-party action, `rust-toolchain.toml` pins the version and the two components, rustup
 # ships on every hosted runner, and nothing here reads a secret or prints an
 # environment. The cargo and target cache is saved only by a push to `main`;
 # pull-request runs restore it and never write, so a PR cannot poison the cache
@@ -34,6 +35,10 @@ on:
       - "rust/**"
       - ".github/workflows/rust.yml"
   pull_request:
+  # The advisory audit alone runs weekly, so a new advisory is found without a
+  # push; every other job skips on this event.
+  schedule:
+    - cron: "17 5 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -48,13 +53,32 @@ defaults:
     working-directory: rust
 
 jobs:
-  fmt:
-    name: fmt
+  deny:
+    name: deny
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Check out the source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: "Gate: cargo deny check (advisories, licences, bans, sources)"
+        uses: EmbarkStudios/cargo-deny-action@70f81531115945ba6eb6b941ec9d39d063438eb9 # v2
+        with:
+          manifest-path: rust/Cargo.toml
+          command: check advisories licenses bans sources
+
+  fmt:
+    name: fmt
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Warm the toolchain proxy
         # rustup reads `rust/rust-toolchain.toml` on first proxy use and
@@ -67,6 +91,7 @@ jobs:
 
   clippy:
     name: clippy (${{ matrix.os }})
+    if: github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -75,7 +100,9 @@ jobs:
         os: [macos-latest, ubuntu-latest, windows-latest]
     steps:
       - name: Check out the source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Warm the toolchain proxy
         run: cargo --version
@@ -89,7 +116,7 @@ jobs:
 
       - name: Restore the cargo and target cache
         id: cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry/index
@@ -105,7 +132,7 @@ jobs:
 
       - name: Save the cache (main pushes only)
         if: github.event_name == 'push' && steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry/index
@@ -116,6 +143,7 @@ jobs:
 
   test:
     name: test (${{ matrix.os }})
+    if: github.event_name != 'schedule'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -124,7 +152,9 @@ jobs:
         os: [macos-latest, ubuntu-latest, windows-latest]
     steps:
       - name: Check out the source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Warm the toolchain proxy
         run: cargo --version
@@ -138,7 +168,7 @@ jobs:
 
       - name: Restore the cargo and target cache
         id: cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry/index
@@ -176,7 +206,7 @@ jobs:
 
       - name: Save the cache (main pushes only)
         if: github.event_name == 'push' && steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry/index
@@ -187,11 +217,14 @@ jobs:
 
   contention:
     name: contention (windows-latest)
+    if: github.event_name != 'schedule'
     runs-on: windows-latest
     timeout-minutes: 15
     steps:
       - name: Check out the source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Warm the toolchain proxy
         run: cargo --version
@@ -205,7 +238,7 @@ jobs:
 
       - name: Restore the cargo and target cache
         id: cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry/index
@@ -271,7 +304,7 @@ jobs:
 
       - name: Save the cache (main pushes only)
         if: github.event_name == 'push' && steps.cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry/index

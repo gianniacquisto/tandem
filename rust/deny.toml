@@ -1,0 +1,46 @@
+# `cargo deny check`, the supply-chain gate in `.github/workflows/rust.yml`
+# (CUT-33): a published advisory against anything in `Cargo.lock` fails the
+# `deny` job, which also runs weekly with no push. Licences are checked against
+# the MIT distribution; the list is what the tree already uses.
+[graph]
+all-features = true
+
+[advisories]
+version = 2
+# These three are "unmaintained" notices, not vulnerabilities, and each is a
+# transitive dependency of a direct one (syntect via comrak, and
+# askama_derive) with no safe upgrade. Revisit when the parent
+# crate moves off them; any other advisory still fails the job.
+ignore = [
+    { id = "RUSTSEC-2025-0141", reason = "bincode 1.3.3 is complete and frozen; reached only through comrak's syntect" },
+    { id = "RUSTSEC-2026-0374", reason = "basic-toml, reached only through askama_derive at build time" },
+    { id = "RUSTSEC-2024-0320", reason = "yaml-rust, reached only through comrak's syntect" },
+]
+
+[licenses]
+version = 2
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "Zlib",
+    "Unlicense",
+    "CDLA-Permissive-2.0",
+    "BSL-1.0",
+    "MITNFA",
+]
+confidence-threshold = 0.8
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
