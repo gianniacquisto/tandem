@@ -326,3 +326,73 @@ fn the_changed_paths_filter_runs_the_gates_for_code_and_skips_docs() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// The gates fail open (CUT-32): a `changes` output that is empty, because
+/// `Scripts/changed-paths.sh` is missing or crashed, must still run them. So
+/// no condition may demand `== 'true'`, and the setup action runs unless the
+/// answer is exactly `false`.
+#[test]
+fn an_empty_changes_output_still_runs_the_gates() {
+    for name in ["rust.yml", "release.yml"] {
+        let text = std::fs::read_to_string(workflows().join(name)).expect("workflow reads");
+        assert!(
+            !text.contains("outputs.code == 'true'"),
+            "{name}: a gate guarded on `== 'true'` is skipped when the script prints nothing"
+        );
+        assert!(
+            text.contains("outputs.code != 'false'"),
+            "{name}: the gates are guarded on `!= 'false'`"
+        );
+    }
+    let action = std::fs::read_to_string(repo_root().join(".github/actions/rust-setup/action.yml"))
+        .expect("the setup action reads");
+    assert!(
+        !action.contains("inputs.enabled == 'true'")
+            && action.contains("inputs.enabled != 'false'"),
+        "the setup runs unless it is told `false`"
+    );
+
+    // A missing script prints nothing, which the step writes as `code=`: that
+    // is not `false`, so the gates run.
+    let out = std::process::Command::new("bash")
+        .arg(repo_root().join("Scripts/no-such-changed-paths.sh"))
+        .output()
+        .expect("bash runs");
+    assert!(String::from_utf8_lossy(&out.stdout).trim().is_empty());
+
+    // A pull request that deletes the script is not on the allowlist, so the
+    // script itself answers `true` for it.
+    let dir = std::env::temp_dir().join(format!("tandem-deleted-script-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("Scripts")).unwrap();
+    let git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .args([
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(args)
+            .current_dir(&dir)
+            .output()
+            .expect("git runs");
+        assert!(out.status.success(), "git {args:?}");
+    };
+    git(&["init", "-q"]);
+    std::fs::write(dir.join("Scripts/changed-paths.sh"), "x").unwrap();
+    git(&["add", "-A"]);
+    git(&["commit", "-qm", "seed"]);
+    git(&["rm", "-q", "Scripts/changed-paths.sh"]);
+    git(&["commit", "-qm", "delete the script"]);
+    let out = std::process::Command::new("bash")
+        .arg(repo_root().join("Scripts/changed-paths.sh"))
+        .args(["Resources/", "LICENSE"])
+        .env("GITHUB_EVENT_NAME", "pull_request")
+        .current_dir(&dir)
+        .output()
+        .expect("the script runs");
+    assert_eq!(String::from_utf8(out.stdout).unwrap().trim(), "true");
+}

@@ -16,25 +16,27 @@ name: Rust
 #               installer suite off Windows and the retired-path scan on macOS.
 #   contention  the ten-run loop over the Windows-flaky store cases.
 # They have to report on every pull request to be worth requiring: a required
-# check that a path-filtered workflow never creates reads "Expected" forever and
-# blocks the merge of a PR that touches no `rust/**` file, and a matrix job
-# skipped by `if` reports under its unexpanded name, so `clippy (macos-latest)`
-# would still never appear. So the workflow has no `pull_request` path filter
-# (CUT-32): a small `changes` job decides, every job still runs and reports its
-# name, and the steps that call cargo are skipped when the pull request touches
-# only paths on a short allowlist (`Resources/`, `LICENSE`). It is an allowlist
-# of what may skip, not a list of what runs, because some gates read the whole
-# tracked tree (the retired-path scan, the label-vocabulary test, the notice
-# test): a path nobody listed runs the gates. A skipped step is a success, so the required
-# check passes with no cargo invocation. `push` keeps the same allowlist as
-# `paths-ignore`, where a skipped run costs nothing.
+# check that a path-filtered workflow never creates reads "Expected" forever
+# and blocks the merge of a PR that touches no `rust/**` file, and a matrix
+# job skipped by `if` reports under its unexpanded name, so `clippy (macos-
+# latest)` would still never appear. So the workflow has no `pull_request`
+# path filter (CUT-32): a small `changes` job decides, every job still runs
+# and reports its name, and the steps that call cargo are skipped when the
+# pull request touches only paths on a short allowlist (`Resources/`,
+# `LICENSE`). It is an allowlist of what may skip, not a list of what runs,
+# because some gates read the whole tracked tree (the retired-path scan, the
+# label-vocabulary test, the notice test): a path nobody listed runs the
+# gates. A skipped step is a success, so the required check passes with no
+# cargo invocation. `push` keeps the same allowlist as `paths-ignore`, where a
+# skipped run costs nothing.
 #
 # No third-party action: `actions/checkout` and `actions/cache` are GitHub's
 # own (the cache behind the local `rust-setup` action), `rust-toolchain.toml`
-# pins the version and the two components, rustup ships on every hosted runner, and nothing here reads a secret or prints an
-# environment. The cargo and target cache is saved only by a push to `main`;
-# pull-request runs restore it and never write, so a PR cannot poison the cache
-# a later `main` or tag run reads and does not fill the repository quota.
+# pins the version and the two components, rustup ships on every hosted
+# runner, and nothing here reads a secret or prints an environment. The cargo
+# and target cache is saved only by a push to `main`; pull-request runs
+# restore it and never write, so a PR cannot poison the cache a later `main`
+# or tag run reads and does not fill the repository quota.
 
 on:
   push:
@@ -93,7 +95,7 @@ jobs:
           key: fmt
 
       - name: "Gate: cargo fmt --check"
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.code != 'false'
         run: cargo fmt --all --check
 
   clippy:
@@ -117,7 +119,7 @@ jobs:
           key: clippy
 
       - name: "Gate: cargo clippy -D warnings"
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.code != 'false'
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Save the cache (main pushes only)
@@ -152,7 +154,7 @@ jobs:
           key: test
 
       - name: "Gate: cargo test"
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.code != 'false'
         run: cargo test
 
       - name: "Gate: the tree names no retired path"
@@ -161,7 +163,7 @@ jobs:
         # tracked tree, not the platform's build, so the macOS `test` leg runs
         # it once, with the installer suite below. The third-party notice check
         # rides `cargo test` (`rust/core/tests/notice.rs`) on every leg.
-        if: needs.changes.outputs.code == 'true' && runner.os == 'macOS'
+        if: needs.changes.outputs.code != 'false' && runner.os == 'macOS'
         working-directory: ${{ github.workspace }}
         run: bash Scripts/check-retired-paths.sh
 
@@ -173,7 +175,7 @@ jobs:
         # wired this gate. The suite builds a fixture release over file:// and
         # drives both through their documented test seams, touching neither
         # /Applications nor the network.
-        if: needs.changes.outputs.code == 'true' && runner.os != 'Windows'
+        if: needs.changes.outputs.code != 'false' && runner.os != 'Windows'
         working-directory: ${{ github.workspace }}
         run: bash Scripts/test_install.sh
 
@@ -224,7 +226,7 @@ jobs:
         # Each run asserts that exactly one test ran: `--exact` with a renamed
         # case exits 0 after `running 0 tests`, and a done-when that silently
         # stops testing is worse than a red one.
-        if: needs.changes.outputs.code == 'true' && runner.os == 'Windows'
+        if: needs.changes.outputs.code != 'false' && runner.os == 'Windows'
         run: |
           $cases = @(
             @{ Name = 'concurrent_writers_keep_every_row'; Args = @('-p', 'tandem-core', '--lib', '--', 'store::tests::writes::concurrent_writers_keep_every_row', '--exact') }

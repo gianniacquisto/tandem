@@ -6,18 +6,19 @@ name: Release
 # and installs the one binary; there is no Node toolchain, no Electron package
 # and no Homebrew tap in the path (CUT-16, ADR 0045).
 #
-# Pull-request runs build and verify the same three archives and never publish,
-# so a packaging change is a red check on the PR instead of a broken tag. They
-# do it unless the PR touches only the allowlist `Resources/` and `LICENSE`
-# (CUT-32; an allowlist of what may skip, since some gates read the whole
-# tracked tree). Every job still runs and reports its name, with its steps
-# skipped on such a PR, because a skipped matrix job reports under its
-# unexpanded name and a required check that never reports blocks the merge. Tags
-# and dispatches always run everything. The three builds are one matrix job:
-# a new target is one row. The publisher keeps the job name `release`: `main` requires a status check by that
-# name, and a required check that never reports blocks every merge. It waits for
-# the build matrix, and its step turns a skipped or failed build into a red
-# `release` (a skipped job reports success to the branch protection).
+# Pull-request runs build and verify the same three archives and never
+# publish, so a packaging change is a red check on the PR instead of a broken
+# tag. They do it unless the PR touches only the allowlist `Resources/` and
+# `LICENSE` (CUT-32; an allowlist of what may skip, since some gates read the
+# whole tracked tree). Every job still runs and reports its name, with its
+# steps skipped on such a PR, because a skipped matrix job reports under its
+# unexpanded name and a required check that never reports blocks the merge.
+# Tags and dispatches always run everything. The three builds are one matrix
+# job: a new target is one row. The publisher keeps the job name `release`:
+# `main` requires a status check by that name, and a required check that never
+# reports blocks every merge. It waits for the build matrix, and its step
+# turns a skipped or failed build into a red `release` (a skipped job reports
+# success to the branch protection).
 #
 # The version is the tag without its `v`, or `0.0.0` on a pull request or a
 # dispatch. It is stamped into the binary as `TANDEM_VERSION`, so the archive's
@@ -25,8 +26,9 @@ name: Release
 #
 # No third-party action: `actions/cache` is GitHub's own, behind the local
 # `rust-setup` action. This workflow has no `main` trigger, so each build uses
-# the combined cache step: a PR's later pushes hit its own PR-scoped entry, and
-# a tag run restores from `main` or its own scope. The tag run still rebuilds, since it stamps its own version.
+# the combined cache step: a PR's later pushes hit its own PR-scoped entry,
+# and a tag run restores from `main` or its own scope. The tag run still
+# rebuilds, since it stamps its own version.
 
 on:
   push:
@@ -96,7 +98,7 @@ jobs:
           save: "true"
 
       - name: Resolve the version
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.code != 'false'
         shell: bash
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
@@ -106,13 +108,13 @@ jobs:
           fi
 
       - name: Build the binary
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.code != 'false'
         shell: bash
         working-directory: rust
         run: TANDEM_VERSION="$version" cargo build --release -p tandem
 
       - name: Package the archive (tar.gz)
-        if: needs.changes.outputs.code == 'true' && matrix.ext == 'tar.gz'
+        if: needs.changes.outputs.code != 'false' && matrix.ext == 'tar.gz'
         run: |
           archive="tandem-$version-${{ matrix.target }}.tar.gz"
           staging="$RUNNER_TEMP/package"
@@ -123,7 +125,7 @@ jobs:
           tar -tzf "dist/$archive"
 
       - name: Package the archive (zip)
-        if: needs.changes.outputs.code == 'true' && matrix.ext == 'zip'
+        if: needs.changes.outputs.code != 'false' && matrix.ext == 'zip'
         shell: pwsh
         run: |
           $archive = "tandem-$env:version-${{ matrix.target }}.zip"
@@ -133,7 +135,7 @@ jobs:
           Get-ChildItem dist
 
       - name: "Smoke: the extracted tar.gz archive serves the board"
-        if: needs.changes.outputs.code == 'true' && matrix.ext == 'tar.gz'
+        if: needs.changes.outputs.code != 'false' && matrix.ext == 'tar.gz'
         run: |
           # Smoke the bytes the tag publishes, not the build tree: untar the
           # archive just written and run the binary a user would get. A wrong
@@ -146,12 +148,12 @@ jobs:
           bash Scripts/smoke-binary.sh "$smoke/tandem" "$version"
 
       - name: "Smoke: the extracted zip archive serves the board"
-        if: needs.changes.outputs.code == 'true' && matrix.ext == 'zip'
+        if: needs.changes.outputs.code != 'false' && matrix.ext == 'zip'
         shell: pwsh
         run: ./Scripts/smoke-binary.ps1 -Archive "dist\tandem-$($env:version)-${{ matrix.target }}.zip" -Version $env:version
 
       - name: Upload the archive
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.code != 'false'
         uses: actions/upload-artifact@v4
         with:
           name: tandem-${{ matrix.artifact }}
@@ -178,7 +180,7 @@ jobs:
           fi
 
       - name: Check out the source
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.code != 'false'
         uses: actions/checkout@v4
         with:
           # The release-body generator (Scripts/release-notes.sh) walks the tags
@@ -187,7 +189,7 @@ jobs:
           fetch-depth: 0
 
       - name: Resolve the version
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.code != 'false'
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
@@ -196,7 +198,7 @@ jobs:
           fi
 
       - name: Download the three archives
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.code != 'false'
         uses: actions/download-artifact@v4
         with:
           pattern: tandem-*
@@ -204,7 +206,7 @@ jobs:
           path: dist
 
       - name: "Verify: the three platform archives are present"
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.code != 'false'
         run: |
           test -f "dist/tandem-$version-darwin-arm64.tar.gz"
           test -f "dist/tandem-$version-linux-x86_64.tar.gz"
@@ -212,13 +214,13 @@ jobs:
           ls -l dist
 
       - name: Stage install.sh and SHA256SUMS
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.code != 'false'
         run: |
           Scripts/stage-release-assets.sh "$version" dist
           cat dist/SHA256SUMS
 
       - name: "Verify: the staged manifest checks out"
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.code != 'false'
         run: |
           cd dist
           if command -v sha256sum >/dev/null 2>&1; then

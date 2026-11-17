@@ -30,14 +30,14 @@ runs:
     - name: Warm the toolchain proxy
       # rustup reads `rust/rust-toolchain.toml` on first proxy use and installs
       # the pinned version with `rustfmt` and `clippy`.
-      if: inputs.enabled == 'true'
+      if: inputs.enabled != 'false'
       shell: bash
       working-directory: rust
       run: cargo --version
 
     - name: Resolve the toolchain pin
       id: toolchain
-      if: inputs.enabled == 'true'
+      if: inputs.enabled != 'false'
       shell: bash
       run: |
         echo "channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
@@ -45,7 +45,7 @@ runs:
 
     - name: Restore the cargo and target cache
       id: restore
-      if: inputs.enabled == 'true' && inputs.save != 'true'
+      if: inputs.enabled != 'false' && inputs.save != 'true'
       uses: actions/cache/restore@v4
       with:
         path: |
@@ -58,7 +58,7 @@ runs:
           ${{ runner.os }}-${{ inputs.key }}-${{ steps.toolchain.outputs.channel }}-
 
     - name: Cache cargo and target
-      if: inputs.enabled == 'true' && inputs.save == 'true'
+      if: inputs.enabled != 'false' && inputs.save == 'true'
       uses: actions/cache@v4
       with:
         path: |
