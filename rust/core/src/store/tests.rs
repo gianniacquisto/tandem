@@ -473,6 +473,7 @@ mod schema {
         assert_eq!(
             tables,
             vec![
+                "browser_sessions",
                 "comments",
                 "labels",
                 "projects",
@@ -1222,7 +1223,6 @@ mod schema {
 
         let connection = sandbox.connection();
         assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
-        assert_eq!(CURRENT_VERSION, 12, "the label rename is schema v12");
         assert!(
             !has_table(&connection, "lanes").unwrap(),
             "lanes is renamed"
@@ -2289,4 +2289,176 @@ fn a_rollback_journal_store_answers_a_revision_to_the_watch() {
     // a child that re-attached keeps reporting instead of going silent.
     probe(&restored, &Actor::Human, "three");
     assert!(watch.revision().expect("the watch reads") > revision);
+}
+
+mod browser_sessions {
+    use super::super::schema::{
+        BROWSER_SESSIONS_VERSION, CURRENT_VERSION, MIGRATIONS, has_table, migrate_with, version,
+    };
+    use super::*;
+
+    const DAY: i64 = 24 * 60 * 60;
+    const NOW: i64 = 1_800_000_000;
+
+    fn rows(sandbox: &Sandbox) -> Vec<(String, i64, i64)> {
+        let connection = sandbox.connection();
+        let mut statement = connection
+            .prepare(
+                "SELECT digest, created_at, last_used_at FROM browser_sessions ORDER BY digest",
+            )
+            .unwrap();
+        statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn the_browser_sessions_migration_adds_the_table_and_bumps_the_version() {
+        let sandbox = Sandbox::new("sessions-migration");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..12], &Actor::Human).expect("v12 applies");
+        assert!(!has_table(&connection, "browser_sessions").unwrap());
+        drop(connection);
+
+        probe(&sandbox.store(), &Actor::Human, "migrates");
+
+        let connection = sandbox.connection();
+        assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
+        assert_eq!(BROWSER_SESSIONS_VERSION, 13);
+        assert!(has_table(&connection, "browser_sessions").unwrap());
+        assert!(
+            !has_table(&connection, "sessions").unwrap(),
+            "the retired name stays retired"
+        );
+    }
+
+    #[test]
+    fn session_writes_do_not_move_the_revision_or_arm_the_backup() {
+        let sandbox = Sandbox::new("sessions-revision");
+        let store = sandbox.store();
+        probe(&store, &Actor::Human, "first");
+        probe(&store, &Actor::Human, "second");
+        let revision = store.revision().unwrap();
+        let backup_before = fs::read(sandbox.backup()).ok();
+        let backup_modified = fs::metadata(sandbox.backup())
+            .and_then(|m| m.modified())
+            .ok();
+
+        store.browser_session_open("aa", None, NOW).unwrap();
+        store.browser_session_open("bb", Some("aa"), NOW).unwrap();
+        store
+            .browser_session_check("bb", NOW + 2 * DAY, true)
+            .unwrap();
+        store.browser_sessions_sweep(NOW + 3 * DAY).unwrap();
+        store.browser_session_close("bb").unwrap();
+
+        assert_eq!(store.revision().unwrap(), revision, "no revision bump");
+        assert_eq!(
+            fs::read(sandbox.backup()).ok(),
+            backup_before,
+            "no backup roll"
+        );
+        assert_eq!(
+            fs::metadata(sandbox.backup())
+                .and_then(|m| m.modified())
+                .ok(),
+            backup_modified
+        );
+    }
+
+    #[test]
+    fn the_store_holds_a_digest_and_never_the_session_id() {
+        let sandbox = Sandbox::new("sessions-digest");
+        let store = sandbox.store();
+        store.browser_session_open("the-digest", None, NOW).unwrap();
+        let held = rows(&sandbox);
+        assert_eq!(held, vec![("the-digest".to_string(), NOW, NOW)]);
+        // The file and its backup carry the digest and nothing else a login had.
+        let bytes = fs::read(sandbox.database()).unwrap();
+        assert!(bytes.windows(10).any(|window| window == b"the-digest"));
+        assert!(
+            !has_column_named(&sandbox, "browser_sessions", "id"),
+            "no id column"
+        );
+    }
+
+    fn has_column_named(sandbox: &Sandbox, table: &str, column: &str) -> bool {
+        super::super::schema::has_column(&sandbox.connection(), table, column).unwrap()
+    }
+
+    #[test]
+    fn last_use_is_rewritten_at_most_once_a_day() {
+        let sandbox = Sandbox::new("sessions-touch");
+        let store = sandbox.store();
+        store.browser_session_open("aa", None, NOW).unwrap();
+
+        assert_eq!(
+            store
+                .browser_session_check("aa", NOW + DAY - 1, true)
+                .unwrap(),
+            SessionCheck::Valid,
+            "inside the day: no rewrite"
+        );
+        assert_eq!(rows(&sandbox)[0].2, NOW);
+        assert_eq!(
+            store.browser_session_check("aa", NOW + DAY, false).unwrap(),
+            SessionCheck::Valid,
+            "a check that does not touch never rewrites"
+        );
+        assert_eq!(rows(&sandbox)[0].2, NOW);
+        assert_eq!(
+            store.browser_session_check("aa", NOW + DAY, true).unwrap(),
+            SessionCheck::Refreshed
+        );
+        assert_eq!(rows(&sandbox)[0].2, NOW + DAY);
+        assert_eq!(
+            store
+                .browser_session_check("aa", NOW + DAY + 5, true)
+                .unwrap(),
+            SessionCheck::Valid
+        );
+        assert_eq!(rows(&sandbox)[0].2, NOW + DAY, "once a day");
+    }
+
+    #[test]
+    fn expired_sessions_are_swept() {
+        let sandbox = Sandbox::new("sessions-sweep");
+        let store = sandbox.store();
+        store.browser_session_open("old", None, NOW).unwrap();
+        store
+            .browser_session_open("fresh", None, NOW + 20 * DAY)
+            .unwrap();
+
+        assert_eq!(
+            store
+                .browser_session_check("old", NOW + 31 * DAY, true)
+                .unwrap(),
+            SessionCheck::Missing,
+            "idle past 30 days reads as no session"
+        );
+        assert_eq!(store.browser_sessions_sweep(NOW + 31 * DAY).unwrap(), 1);
+        let left: Vec<String> = rows(&sandbox).into_iter().map(|row| row.0).collect();
+        assert_eq!(left, vec!["fresh".to_string()]);
+
+        // A login sweeps too.
+        store
+            .browser_session_open("newer", None, NOW + 60 * DAY)
+            .unwrap();
+        let left: Vec<String> = rows(&sandbox).into_iter().map(|row| row.0).collect();
+        assert_eq!(left, vec!["newer".to_string()]);
+
+        // A sweep never migrates a home that has no table.
+        let bare = Sandbox::new("sessions-sweep-bare");
+        assert_eq!(bare.store().browser_sessions_sweep(NOW).unwrap(), 0);
+        assert!(!bare.database().exists(), "a sweep creates nothing");
+    }
 }

@@ -4,6 +4,8 @@ Every agent session spawned its own `tandem mcp` child over stdio, each opening 
 
 Decided 2026-11-15 (CUT-29, which absorbed CUT-20).
 
+> **Amended by [ADR 0049](0049-a-browser-signs-in-to-a-token-guarded-serve.md):** the browser-login half of the off-loopback bullet is superseded. A token-mode browser signs in with a session cookie; `/mcp` stays bearer only.
+
 ## Decision
 
 - **`serve` is the single door.** `tandem serve` answers `POST /mcp` (MCP streamable HTTP, JSON responses only, stateless: no `Mcp-Session-Id`, `GET` and `DELETE` answer `405`) and `GET /health` (the fixed body `ok`, no auth, no version, path, actor or store state). The handler passes the body to `mcp::handle_mcp` once, and a notification answers `202`. No JSON-RPC is parsed in `serve`: one dispatch (ADR 0009). The dispatch runs under `spawn_blocking`, because every session now shares one runtime.
