@@ -241,7 +241,10 @@ mod links {
         let named = bikeshed.stats(Some("secret")).expect("stats runs").value;
         assert!(named.projects.is_empty());
         let health = bikeshed.health().expect("health runs").value;
-        assert_eq!(health.counts.notes, 0, "health does not read through the link");
+        assert_eq!(
+            health.counts.notes, 0,
+            "health does not read through the link"
+        );
         assert!(outside.join("secret").join("secret.md").exists());
     }
 
