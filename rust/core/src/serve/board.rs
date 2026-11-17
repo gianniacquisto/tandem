@@ -459,6 +459,7 @@ pub(super) fn board_with_sheet(
         return html_response(board, status);
     }
     match (PageView {
+        assets: assets::urls(),
         body: askama::filters::Safe(board),
         stream: false,
     })
@@ -507,6 +508,7 @@ fn render_response(
         return html_response(board, status);
     }
     match (PageView {
+        assets: assets::urls(),
         body: askama::filters::Safe(board),
         stream: true,
     })
