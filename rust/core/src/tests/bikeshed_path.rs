@@ -223,6 +223,29 @@ mod links {
     }
 
     #[test]
+    fn a_linked_projects_root_is_skipped_by_stats_and_health() {
+        let vault = Vault::new("link-projects-root");
+        fs::create_dir_all(vault.dir()).expect("the vault exists");
+        let outside = vault.parent().join("outside-projects");
+        fs::create_dir_all(outside.join("secret")).expect("the outside project exists");
+        fs::write(outside.join("secret").join("secret.md"), "SECRET needle")
+            .expect("the secret is written");
+        symlink(&outside, vault.dir().join("projects")).expect("the projects link is made");
+        let bikeshed = vault.bikeshed();
+        let stats = bikeshed.stats(None).expect("stats runs").value;
+        assert!(
+            stats.projects.is_empty(),
+            "stats do not read through a linked projects root"
+        );
+        assert_eq!(stats.totals.curated_notes, 0);
+        let named = bikeshed.stats(Some("secret")).expect("stats runs").value;
+        assert!(named.projects.is_empty());
+        let health = bikeshed.health().expect("health runs").value;
+        assert_eq!(health.counts.notes, 0, "health does not read through the link");
+        assert!(outside.join("secret").join("secret.md").exists());
+    }
+
+    #[test]
     fn a_vault_whose_root_is_itself_a_link_still_works() {
         let vault = Vault::new("link-root");
         fs::create_dir_all(vault.dir()).expect("the real vault exists");
