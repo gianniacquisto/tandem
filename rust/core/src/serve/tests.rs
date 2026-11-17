@@ -3462,3 +3462,87 @@ async fn an_opted_in_non_loopback_bind_admits_any_host_without_a_token() {
         "the Origin check holds on an open bind"
     );
 }
+
+#[tokio::test]
+async fn every_route_and_refusal_carries_the_security_headers() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("security-headers");
+    let app = router(context(sandbox.store()));
+    let asserts = |label: &str, headers: &HeaderMap| {
+        assert_eq!(
+            headers[header::X_CONTENT_TYPE_OPTIONS],
+            "nosniff",
+            "{label}"
+        );
+        assert_eq!(headers[header::REFERRER_POLICY], "no-referrer", "{label}");
+        assert_eq!(
+            headers["cross-origin-opener-policy"], "same-origin",
+            "{label}"
+        );
+        assert_eq!(
+            headers["cross-origin-resource-policy"], "same-origin",
+            "{label}"
+        );
+        assert!(
+            headers.contains_key(header::CONTENT_SECURITY_POLICY),
+            "{label}: CSP"
+        );
+        assert!(
+            headers.contains_key(header::CACHE_CONTROL),
+            "{label}: cache policy"
+        );
+    };
+    let bare = |method: &str, uri: &str| {
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::HOST, "127.0.0.1:7700")
+            .body(Body::empty())
+            .expect("the request builds")
+    };
+    for uri in [
+        "/",
+        "/board",
+        "/health",
+        "/notes",
+        "/notes/view",
+        "/notes/edit",
+        "/tickets/none",
+        "/static/missing.css",
+        "/no/such/route",
+    ] {
+        let (_, headers, _) = send(&app, bare("GET", uri)).await;
+        asserts(uri, &headers);
+    }
+    for uri in [
+        "/mcp",
+        "/tickets",
+        "/tickets/x",
+        "/tickets/x/status",
+        "/tickets/x/comments",
+        "/tickets/x/label",
+        "/labels",
+        "/labels/x/rename",
+        "/notes/preview",
+        "/notes/save",
+        "/notes/create",
+        "/notes/create-folder",
+        "/notes/daily",
+        "/notes/new",
+        "/notes/move",
+        "/notes/rename",
+        "/notes/delete",
+        "/notes/restore",
+    ] {
+        // No form content type: the guard refuses, and the refusal is covered too.
+        let (status, headers, _) = send(&app, bare("POST", uri)).await;
+        asserts(uri, &headers);
+        assert!(status.is_client_error() || uri == "/mcp", "{uri}: {status}");
+    }
+    let (_, headers, _) = get(&app, "/").await;
+    assert_eq!(
+        headers[header::CACHE_CONTROL],
+        "no-store",
+        "pages are never cached"
+    );
+}

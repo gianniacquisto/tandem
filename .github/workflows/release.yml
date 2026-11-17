@@ -279,6 +279,7 @@ jobs:
             $response = Invoke-WebRequest -Uri "$address$path" -UseBasicParsing
             if ($response.StatusCode -ne 200) { throw "$path answered $($response.StatusCode)" }
             if (-not $response.Headers['Content-Security-Policy']) { throw "$path carries no Content-Security-Policy" }
+            if ($response.Headers['X-Content-Type-Options'] -ne 'nosniff') { throw "$path carries no nosniff" }
           }
           Stop-Process -Id $process.Id -Force
 

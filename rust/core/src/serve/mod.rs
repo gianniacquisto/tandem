@@ -73,8 +73,11 @@ fn backoff(wait: Duration) -> Duration {
     (wait * 2).min(WATCH_BACKOFF_MAX)
 }
 
-/// The one policy every HTML response carries: the board is its own scripts and
+/// The one policy every response carries: the board is its own scripts and
 /// styles, the change stream is same-origin, and nothing may frame it.
+/// `style-src` keeps `'unsafe-inline'` because `notes.html` indents the tree
+/// rows with a per-row `style="padding-left: Npx"`; the indent is data, so a
+/// class per depth is not a small change. Inline script stays refused.
 const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; \
      style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; \
      connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; \
@@ -240,8 +243,8 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/notes/restore", post(notes::note_restore))
 }
 
-/// The layers every route carries: the access guard, the body ceiling and the
-/// change channel the events stream reads. The request line is the outermost
+/// The layers every route carries: the access guard, the body ceiling, the
+/// change channel the events stream reads and the security headers. The request line is the outermost
 /// layer, so it sees every response the stack writes, the guard's refusals and
 /// the body ceiling's included.
 fn layered(
@@ -254,12 +257,48 @@ fn layered(
         .layer(Extension(access))
         .layer(DefaultBodyLimit::max(crate::rpc::MAX_FRAME))
         .layer(Extension(changes))
+        .layer(middleware::from_fn(security_headers))
         .layer(middleware::from_fn(request_log))
 }
 
 /// A request slower than this logs a `slow` warning after its request line:
 /// the cheapest signal that the store has outgrown the whole-board reads.
 const SLOW_REQUEST: Duration = Duration::from_millis(500);
+
+/// What every answer carries, whatever its type or status: the guard's
+/// refusals, the 404, assets and the stream included, so a route added later
+/// cannot forget them. The CSP and `Cache-Control` are set only when the
+/// response has none of its own (assets name their own cache policy).
+async fn security_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
+    headers.insert(
+        "cross-origin-opener-policy",
+        HeaderValue::from_static("same-origin"),
+    );
+    headers.insert(
+        "cross-origin-resource-policy",
+        HeaderValue::from_static("same-origin"),
+    );
+    if !headers.contains_key(header::CONTENT_SECURITY_POLICY) {
+        headers.insert(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(CONTENT_SECURITY_POLICY),
+        );
+    }
+    if !headers.contains_key(header::CACHE_CONTROL) {
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+    response
+}
 
 /// One request line per request, written when the response is built, so the
 /// status is the one the client got. Identifiers only: the route template (the
@@ -578,12 +617,7 @@ fn is_partial(headers: &HeaderMap) -> bool {
 }
 
 fn html_response(html: String, status: StatusCode) -> Response {
-    let mut response = (status, Html(html)).into_response();
-    response.headers_mut().insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(CONTENT_SECURITY_POLICY),
-    );
-    response
+    (status, Html(html)).into_response()
 }
 fn bad_request(message: &str) -> Response {
     tracing::warn!(error = ?message, "request refused");
