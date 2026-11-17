@@ -1,8 +1,7 @@
-//! The store's ported suite: the write discipline (ADR 0001, ADR 0007), the
+//! The store's suite: the write discipline (ADR 0001, ADR 0007), the
 //! SQLite seam (ADR 0031), the rolling backup (ADR 0018), the actor on every
 //! write, and the v5 refusal.
 //!
-//! Ported from `RecoveryTests`, `ConcurrencyTests`,
 //! The store's seam suite: the behaviours it asserts over the storage. This one is
 //! allowed to know the storage; everything above it talks to `Store` only.
 

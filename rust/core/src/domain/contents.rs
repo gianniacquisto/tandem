@@ -1,5 +1,5 @@
 //! The board in memory: the labels and the tickets, in stored order
-//! //!
+//!
 //! **Stored order is the order.** The ticket vector's position is authoritative
 //! (new tickets land on top by default); it is never recomputed from `created_at`.
 //! It is kept **grouped by label**: the default (unnamed) area first, then each

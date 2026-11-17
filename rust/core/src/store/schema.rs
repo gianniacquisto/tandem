@@ -1,7 +1,7 @@
 //! The store's schema and its migration seam.
 //!
 //! **Version 1 is a fresh schema, written once.** It mirrors today's v5 tables
-//! as they are *used*, not as they are named : the ticket
+//! as they are *used*, not as they are named: the ticket
 //! domain keeps its lane, its per-lane number and its dependency edge; the
 //! records domains keep their rows; every mutation row carries its `author`, a
 //! column that cannot be retrofitted onto a store that assumed one user.

@@ -1,4 +1,4 @@
-//! The vault's link-graph health : the wikilinks that
+//! The vault's link-graph health: the wikilinks that
 //! resolve to nothing, the notes nothing links to, and the totals. What `note
 //! links` reports and what the app's Health panel lists, from one call.
 //!

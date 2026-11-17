@@ -1,5 +1,6 @@
 //! The body of a `ticket set --description -` write, and the two sections the
-//! board reads out of a description //!
+//! board reads out of a description.
+//!
 //! The store's own rule is that an empty description is a legitimate value: the
 //! text is trimmed at its edges and an empty result means "no description". The
 //! stdin path is a different thing: an empty pipe, a failed heredoc and an unset
