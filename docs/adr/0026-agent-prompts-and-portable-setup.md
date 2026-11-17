@@ -93,3 +93,17 @@ This ADR records where the agent face lives, that it is portable, and that the p
 - The "Decided against" item on the `wayfinder` skill still holds, but its clause "`docs/agents/issue-tracker.md` says so" does not: the statement that the board has no labels, no blocking edges and no child tickets is carried by this ADR and the README, not by a retired doc.
 
 **The trade-off.** The refiner's brief shape now owns what `to-spec` sketched, and the builder's step 3 owns the loop `implement-spec` named; the vendored `tdd` skill is the shared vocabulary both draw on. Two upstream cross-references in `tdd/SKILL.md` point at skills this repo deliberately does not vendor — per the rule that vendored MIT text is not edited, they stand.
+
+## Amendment, 2026-11-17: `terse` leaves the repo
+
+**The change.** `terse/` is deleted: `README.md`, `TERSE.md`, `install.sh` and the OpenCode plugin, command and shell switch under `opencode/`. The style gets no new home: it is removed outright, not moved to another repo or the dotfiles. Ticket CUT-24, on the human's answer in refine ("i think we just remove it").
+
+**Why.** `terse` was a personal agent style, not a Tandem surface. The 2026-10-22 amendment admitted it on the boundary "a prompt's home is the project that owns its job", and with the fleet gone it had no home but the tree that ships the app, so every clone carried a toolkit nothing in the product reads.
+
+**What the text above now reads.**
+
+- The 2026-10-22 amendment's title and "live here" for `terse` no longer hold: `black` and `blue` were later deleted and `terse` is deleted now, so nothing from the fleet remains in this tree.
+- Its "trap" paragraph and "trade-off" paragraph describe a file that no longer exists. The boundary it called the only guard against the personal toolkit growing here is moot, as the toolkit is gone.
+- The 2026-10-23 consequence "`terse/` is untouched" was true of that pass only.
+
+**Consequences.** The host wiring (`plugins/terse`, `terse.sh`, `commands/terse.md` and the Claude and Codex links) was already absent on the maintainer's Mac. The leftover state file `~/.config/opencode/terse.json` is a host act, outside the repo.
