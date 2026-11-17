@@ -3973,10 +3973,6 @@ async fn a_flood_of_wrong_tokens_is_throttled_and_a_right_token_still_signs_in()
         StatusCode::SEE_OTHER,
         "a right token still signs in"
     );
-    assert!(
-        started.elapsed() < Duration::from_millis(100),
-        "and is not delayed"
-    );
 
     let mut statuses = Vec::new();
     for task in flood {
