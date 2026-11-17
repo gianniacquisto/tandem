@@ -352,13 +352,13 @@ fn an_empty_changes_output_still_runs_the_gates() {
         "the setup runs unless it is told `false`"
     );
 
-    // A missing script prints nothing, which the step writes as `code=`: that
-    // is not `false`, so the gates run.
+    // A missing script never prints `false` (it prints nothing, or on some
+    // hosts an error), so the step's output is not `false` and the gates run.
     let out = std::process::Command::new("bash")
         .arg(repo_root().join("Scripts/no-such-changed-paths.sh"))
         .output()
         .expect("bash runs");
-    assert!(String::from_utf8_lossy(&out.stdout).trim().is_empty());
+    assert_ne!(String::from_utf8_lossy(&out.stdout).trim(), "false");
 
     // A pull request that deletes the script is not on the allowlist, so the
     // script itself answers `true` for it.
