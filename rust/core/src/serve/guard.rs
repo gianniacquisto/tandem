@@ -47,6 +47,10 @@ impl std::fmt::Debug for TokenDigest {
 pub struct Access {
     port: u16,
     mode: Mode,
+    /// The one configured public `https` origin (CUT-37), normalized, when the
+    /// server sits behind a TLS proxy on a public name. `None` leaves every
+    /// check exactly as it is without the setting.
+    public_origin: Option<String>,
 }
 
 /// How the bind lets a request in.
@@ -68,6 +72,7 @@ impl Access {
         Self {
             port,
             mode: Mode::Loopback,
+            public_origin: None,
         }
     }
 
@@ -77,6 +82,7 @@ impl Access {
         Self {
             port,
             mode: Mode::Open,
+            public_origin: None,
         }
     }
 
@@ -87,6 +93,58 @@ impl Access {
         Self {
             port,
             mode: Mode::Token(TokenDigest(digest)),
+            public_origin: None,
+        }
+    }
+
+    /// Name the one public origin this server answers for behind a TLS proxy.
+    /// The value is normalized by [`normalize_public_origin`]; a refused value
+    /// is the reason it was refused, never the value. Only a non-loopback
+    /// bind takes it: the caller refuses the loopback case before this.
+    pub fn with_public_origin(mut self, origin: &str) -> Result<Self, &'static str> {
+        self.public_origin = Some(normalize_public_origin(origin)?);
+        Ok(self)
+    }
+
+    /// Whether `Origin` on this request is our own: the one rule both `/mcp`
+    /// and the form writes (and, later, the cookie write of CUT-34) route
+    /// through, so the loopback names and the origin parse live once.
+    ///
+    /// With no public origin configured it is today's rule, byte for byte:
+    /// `/mcp` wants a loopback `http://` authority, a form write wants the
+    /// `Origin` authority to equal the request's `Host`. With one configured it
+    /// is exact string equality of the whole header against the stored
+    /// normalized origin (plus the loopback names on `/mcp`); the request
+    /// header is never normalized and more than one `Origin` is a mismatch.
+    /// `Host` and forwarded headers are never read on the configured path, and
+    /// no absolute URL may be built from `Host`: a redirect is relative.
+    ///
+    /// The caller decides what [`OriginCheck::Absent`] means.
+    pub(super) fn origin_check(&self, headers: &HeaderMap, route: OriginRoute) -> OriginCheck {
+        let mut values = headers.get_all(header::ORIGIN).iter();
+        let Some(first) = values.next() else {
+            return OriginCheck::Absent;
+        };
+        let matched = match &self.public_origin {
+            Some(configured) => {
+                values.next().is_none()
+                    && first.to_str().ok().is_some_and(|origin| {
+                        origin == configured
+                            || (route == OriginRoute::Mcp && self.origin_allowed(origin))
+                    })
+            }
+            None => match (route, first.to_str()) {
+                (OriginRoute::Mcp, Ok(origin)) => self.origin_allowed(origin),
+                (OriginRoute::Mcp, Err(_)) => false,
+                // An unreadable `Origin` on a form write passes today.
+                (OriginRoute::Form, Err(_)) => return OriginCheck::Absent,
+                (OriginRoute::Form, Ok(origin)) => !cross_origin(origin, headers),
+            },
+        };
+        if matched {
+            OriginCheck::Matches
+        } else {
+            OriginCheck::Mismatch
         }
     }
 
@@ -126,6 +184,113 @@ impl Access {
         }
         (difference == 0) & presented.is_some()
     }
+}
+
+/// What an `Origin` header says about a request: none, ours, or not ours.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum OriginCheck {
+    Absent,
+    Matches,
+    Mismatch,
+}
+
+/// Which route's `Origin` rule applies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum OriginRoute {
+    Mcp,
+    Form,
+}
+
+/// The one strict normalizer for the configured public origin, run once at
+/// startup. Accepts `https://host[:port]` only; lowercases the host and drops
+/// `:443`, to match how a browser serializes an `Origin`. The error is the rule
+/// broken, never the value (it could carry userinfo pasted by mistake).
+pub fn normalize_public_origin(value: &str) -> Result<String, &'static str> {
+    if value.is_empty() {
+        return Err("is empty.");
+    }
+    if !value.is_ascii()
+        || value
+            .bytes()
+            .any(|byte| byte.is_ascii_control() || byte == b' ')
+    {
+        return Err(
+            "must be plain ASCII with no spaces (write an international name as punycode).",
+        );
+    }
+    if value.contains('\\') || value.contains('%') {
+        return Err("must not contain a backslash or a percent escape.");
+    }
+    let lowered = value.to_ascii_lowercase();
+    let Some(rest) = lowered.strip_prefix("https://") else {
+        return Err(if lowered.starts_with("http://") {
+            "must be https: a token over cleartext http is not a supported shape."
+        } else {
+            "must start with https://."
+        });
+    };
+    if rest.contains('@') {
+        return Err("must not carry userinfo.");
+    }
+    if rest.ends_with('/') && !rest[..rest.len() - 1].contains(['/', '?', '#']) {
+        return Err(
+            "must not end with a slash: write https://workspace.example, not https://workspace.example/.",
+        );
+    }
+    if rest.contains(['/', '?', '#']) {
+        return Err("must not carry a path, query or fragment.");
+    }
+    let (host, port) = if let Some(bracketed) = rest.strip_prefix('[') {
+        let Some((inside, after)) = bracketed.split_once(']') else {
+            return Err("has an unclosed IPv6 bracket.");
+        };
+        let Ok(address) = inside.parse::<std::net::Ipv6Addr>() else {
+            return Err("has a host that is not a valid IPv6 literal.");
+        };
+        let port = match after.strip_prefix(':') {
+            Some(port) => Some(port),
+            None if after.is_empty() => None,
+            None => return Err("has text after the IPv6 literal."),
+        };
+        (format!("[{address}]"), port)
+    } else {
+        let (host, port) = match rest.split_once(':') {
+            Some((host, port)) => (host, Some(port)),
+            None => (rest, None),
+        };
+        let valid = !host.is_empty()
+            && !host.starts_with('.')
+            && !host.ends_with('.')
+            && !host.contains("..")
+            && host
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'.');
+        if !valid {
+            return Err(
+                "has a host that is empty, ends in a dot or has a character a host cannot.",
+            );
+        }
+        (host.to_string(), port)
+    };
+    if LOOPBACK_NAMES.contains(&host.as_str()) {
+        return Err("names a loopback host: it is for a public name behind a proxy.");
+    }
+    let port = match port {
+        None => None,
+        Some(digits) => {
+            let well_formed = !digits.is_empty()
+                && !digits.starts_with('0')
+                && digits.bytes().all(|byte| byte.is_ascii_digit());
+            match digits.parse::<u16>() {
+                Ok(number) if well_formed => Some(number),
+                _ => return Err("has a port that is not 1 to 65535 without leading zeros."),
+            }
+        }
+    };
+    Ok(match port {
+        None | Some(443) => format!("https://{host}"),
+        Some(port) => format!("https://{host}:{port}"),
+    })
 }
 
 /// The guard as a layer: every request crosses it before a handler runs.
@@ -176,25 +341,18 @@ fn admit(access: &Access, route: &str, method: &Method, headers: &HeaderMap) -> 
     if route == MCP_ROUTE {
         json_policy(access, method, headers)
     } else {
-        form_policy(method, headers)
+        form_policy(access, method, headers)
     }
 }
 
 /// `/mcp`: a loopback or absent `Origin` and, for the one method it answers, a
 /// JSON body. Any other method falls through to the router's own `405`.
 fn json_policy(access: &Access, method: &Method, headers: &HeaderMap) -> Option<Response> {
-    if let Some(origin) = headers.get(header::ORIGIN) {
-        let allowed = origin
-            .to_str()
-            .ok()
-            .is_some_and(|origin| access.origin_allowed(origin));
-        if !allowed {
-            return Some(refuse(
-                StatusCode::FORBIDDEN,
-                "the request came from another origin",
-                "the request came from another origin",
-            ));
-        }
+    if access.origin_check(headers, OriginRoute::Mcp) == OriginCheck::Mismatch {
+        return Some(refuse_origin(
+            access,
+            "the /mcp origin rule refused the request",
+        ));
     }
     if *method == Method::POST && !media_type_is(headers, "application/json") {
         return Some(refuse(
@@ -207,7 +365,7 @@ fn json_policy(access: &Access, method: &Method, headers: &HeaderMap) -> Option<
 }
 
 /// Every other route: reads pass; a write is a same-origin form.
-fn form_policy(method: &Method, headers: &HeaderMap) -> Option<Response> {
+fn form_policy(access: &Access, method: &Method, headers: &HeaderMap) -> Option<Response> {
     if matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS) {
         return None;
     }
@@ -218,11 +376,10 @@ fn form_policy(method: &Method, headers: &HeaderMap) -> Option<Response> {
             "the content type is not form-encoded",
         ));
     }
-    if cross_origin(headers) {
-        return Some(refuse(
-            StatusCode::FORBIDDEN,
-            "the request came from another origin",
-            "the request came from another origin",
+    if access.origin_check(headers, OriginRoute::Form) == OriginCheck::Mismatch {
+        return Some(refuse_origin(
+            access,
+            "the form origin rule refused the request",
         ));
     }
     None
@@ -238,15 +395,10 @@ fn media_type_is(headers: &HeaderMap, wanted: &str) -> bool {
         .is_some_and(|media| media.trim().eq_ignore_ascii_case(wanted))
 }
 
-/// A form write's `Origin` must match the `Host` the request names, when one is
-/// sent. The Host itself was admitted above on a loopback bind.
-fn cross_origin(headers: &HeaderMap) -> bool {
-    let Some(origin) = headers
-        .get(header::ORIGIN)
-        .and_then(|value| value.to_str().ok())
-    else {
-        return false;
-    };
+/// Today's form rule, with no public origin configured: the `Origin` must
+/// match the `Host` the request names. The Host itself was admitted above on a
+/// loopback bind. Returns whether the origin is another one.
+fn cross_origin(origin: &str, headers: &HeaderMap) -> bool {
     if origin == "null" {
         return true;
     }
@@ -259,6 +411,21 @@ fn cross_origin(headers: &HeaderMap) -> bool {
         .and_then(|value| value.to_str().ok())
         .unwrap_or("");
     !authority.eq_ignore_ascii_case(host)
+}
+
+/// The origin refusal: one body, a reason naming which check refused, and
+/// whether a public origin is configured, never a value.
+fn refuse_origin(access: &Access, reason: &str) -> Response {
+    tracing::warn!(
+        reason,
+        public_origin_configured = access.public_origin.is_some(),
+        "request refused: the request came from another origin"
+    );
+    (
+        StatusCode::FORBIDDEN,
+        "the request came from another origin\n",
+    )
+        .into_response()
 }
 
 /// One refusal: the status the client gets and a reason that names no value.
