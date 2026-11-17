@@ -17,7 +17,7 @@ TANDEM_TOKEN=... tandem serve --host 0.0.0.0 --public-origin https://workspace.e
 ```
 
 - Right: `https://workspace.example`, `https://workspace.example:8443`.
-- Wrong: `https://workspace.example/` (a browser never sends a trailing slash, so every write would be refused), `http://workspace.example` (a token over cleartext is not supported), a path, query or userinfo.
+- Wrong: `https://workspace.example/` (a browser never sends a trailing slash, so every write would be refused), `http://workspace.example` (a token over cleartext is not supported), a path, query or userinfo, and a loopback host name such as `localhost` or `127.0.0.1` (refused as an origin value).
 
 A malformed value, or any value on a loopback `--host`, stops startup with exit 2. The server prints the origin it holds on its own line after the `listening on` line. A restart applies a changed value.
 
