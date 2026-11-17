@@ -220,4 +220,15 @@ mod tests {
         );
         assert!(html.contains("read me"), "{html}");
     }
+
+    #[test]
+    fn a_hostile_link_and_raw_markup_never_reach_the_page_as_live_markup() {
+        let html = document(&TicketMarkdown::blocks(Some(
+            "[x](javascript:alert(1)) <script>alert(2)</script> [d](data:text/html,hi)",
+        )));
+        assert!(!html.contains("<script"), "{html}");
+        assert!(!html.contains("<a "), "{html}");
+        assert!(!html.contains("href"), "{html}");
+        assert!(html.contains("&lt;script&gt;"), "{html}");
+    }
 }
