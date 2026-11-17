@@ -462,6 +462,7 @@ pub(super) fn board_with_sheet(
         assets: assets::urls(),
         body: askama::filters::Safe(board),
         stream: false,
+        sign_out: context.access.is_token(),
     })
     .render()
     {
@@ -511,6 +512,7 @@ fn render_response(
         assets: assets::urls(),
         body: askama::filters::Safe(board),
         stream: true,
+        sign_out: context.access.is_token(),
     })
     .render()
     {

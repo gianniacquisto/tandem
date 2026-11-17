@@ -632,7 +632,8 @@ async fn resolved_context(context: Context) -> Response {
 
 fn extra_router(extra: Router<Arc<SessionContext>>, store: Store) -> Router {
     let (changes, _) = broadcast::channel(64);
-    layered(extra, changes, Access::loopback(7700)).with_state(Arc::new(context(store)))
+    layered(extra, changes, Access::loopback(7700), store.clone())
+        .with_state(Arc::new(context(store)))
 }
 
 #[tokio::test]
@@ -3272,6 +3273,22 @@ async fn off_loopback_every_route_but_health_wants_the_token() {
             }
             let request = builder.body(Body::from("")).expect("the request builds");
             let (status, headers, body) = send(&app, request).await;
+            if method == "GET" && uri != "/events" {
+                // A page load with no credential goes to the login page.
+                assert_eq!(
+                    status,
+                    StatusCode::SEE_OTHER,
+                    "{method} {uri} with {authorization:?} is sent to sign in"
+                );
+                assert!(
+                    headers
+                        .get(header::LOCATION)
+                        .and_then(|value| value.to_str().ok())
+                        .is_some_and(|location| location.starts_with("/login")),
+                    "{headers:?}"
+                );
+                continue;
+            }
             assert_eq!(
                 status,
                 StatusCode::UNAUTHORIZED,
@@ -3410,4 +3427,681 @@ async fn an_opted_in_non_loopback_bind_admits_any_host_without_a_token() {
         StatusCode::FORBIDDEN,
         "the Origin check holds on an open bind"
     );
+}
+
+// MARK: - The browser sign-in (CUT-34, ADR 0049)
+
+const REMOTE_HOST: &str = "board.example";
+const REMOTE_ORIGIN: &str = "https://board.example";
+
+/// The `name=value` pair of the session cookie a response sets, if it sets one.
+fn session_cookie_pair(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .find(|value| value.starts_with(guard::SESSION_COOKIE))
+        .and_then(|value| value.split(';').next())
+        .map(str::to_string)
+}
+
+fn set_cookie_line(headers: &HeaderMap) -> String {
+    headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .find(|value| value.starts_with(guard::SESSION_COOKIE))
+        .unwrap_or("")
+        .to_string()
+}
+
+fn remote_get(uri: &str, cookie: Option<&str>) -> Request<Body> {
+    let mut builder = Request::builder()
+        .uri(uri)
+        .header(header::HOST, REMOTE_HOST);
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    builder.body(Body::empty()).expect("the request builds")
+}
+
+fn remote_form(uri: &str, body: &str, origin: Option<&str>, cookie: Option<&str>) -> Request<Body> {
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header(header::HOST, REMOTE_HOST)
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
+    if let Some(origin) = origin {
+        builder = builder.header(header::ORIGIN, origin);
+    }
+    if let Some(cookie) = cookie {
+        builder = builder.header(header::COOKIE, cookie);
+    }
+    builder
+        .body(Body::from(body.to_string()))
+        .expect("the request builds")
+}
+
+fn login_body(token: &str, next: &str) -> String {
+    serde_urlencoded::to_string([("username", "tandem"), ("password", token), ("next", next)])
+        .expect("the form encodes")
+}
+
+/// Sign in with the right token and return the session cookie's pair.
+async fn sign_in(app: &Router) -> String {
+    let (status, headers, _) = send(
+        app,
+        remote_form(
+            "/login",
+            &login_body(TOKEN, "/board"),
+            Some(REMOTE_ORIGIN),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    session_cookie_pair(&headers).expect("a right token sets the cookie")
+}
+
+#[tokio::test]
+async fn the_login_page_and_static_assets_open_without_the_token_and_nothing_else_does() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("login-open");
+    let app = remote_app(sandbox.store(), TOKEN);
+
+    let (status, _, body) = send(&app, remote_get("/login", None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("type=\"password\""), "{body}");
+    assert!(body.contains("autocomplete=\"current-password\""), "{body}");
+    assert!(body.contains("autofocus"), "{body}");
+    assert!(!body.contains("maxlength"), "no length cap on the field");
+    assert!(
+        body.contains("name=\"username\""),
+        "a field a manager can fill"
+    );
+
+    let css = Request::builder()
+        .uri("/static/app.css")
+        .header(header::HOST, REMOTE_HOST)
+        .body(Body::empty())
+        .expect("the request builds");
+    assert_eq!(send(&app, css).await.0, StatusCode::OK, "the page's CSS");
+
+    for uri in ["/board", "/notes", "/tickets/x", "/mcp"] {
+        let (status, _, _) = send(&app, remote_get(uri, None)).await;
+        assert!(
+            matches!(status, StatusCode::SEE_OTHER | StatusCode::UNAUTHORIZED),
+            "{uri} stays behind the token: {status}"
+        );
+    }
+    let (status, _, _) = send(&app, remote_form("/logout", "", Some(REMOTE_ORIGIN), None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "sign out needs a session");
+    let post_static = Request::builder()
+        .method("POST")
+        .uri("/static/app.css")
+        .header(header::HOST, REMOTE_HOST)
+        .body(Body::empty())
+        .expect("the request builds");
+    assert_ne!(send(&app, post_static).await.0, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_right_token_at_login_sets_the_session_cookie_with_its_attributes() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("login-cookie");
+    let app = remote_app(sandbox.store(), TOKEN);
+
+    // Trimmed: a phone paste carries a trailing space.
+    let padded = format!(" {TOKEN} ");
+    let (status, headers, _) = send(
+        &app,
+        remote_form(
+            "/login",
+            &login_body(&padded, "/notes"),
+            Some(REMOTE_ORIGIN),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(headers[header::LOCATION], "/notes");
+    assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+    let line = set_cookie_line(&headers);
+    assert!(line.starts_with("__Host-tandem_session="), "{line}");
+    for attribute in [
+        "HttpOnly",
+        "Secure",
+        "SameSite=Lax",
+        "Path=/",
+        "Max-Age=2592000",
+    ] {
+        assert!(line.contains(attribute), "{attribute} in {line}");
+    }
+    assert!(!line.contains("Domain"), "{line}");
+    let value = line
+        .split(';')
+        .next()
+        .and_then(|pair| pair.split_once('='))
+        .map(|(_, value)| value)
+        .expect("a value");
+    assert_eq!(value.len(), 64, "32 bytes in hex: {line}");
+}
+
+#[tokio::test]
+async fn a_wrong_token_at_login_answers_the_generic_page_and_sets_no_cookie() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("login-wrong");
+    let app = remote_app(sandbox.store(), TOKEN);
+
+    let (status, headers, body) = send(
+        &app,
+        remote_form(
+            "/login",
+            &login_body("not-the-token", "/notes"),
+            Some(REMOTE_ORIGIN),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(session_cookie_pair(&headers).is_none());
+    assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+    assert!(body.contains("role=\"alert\""), "{body}");
+    assert!(body.contains("aria-describedby=\"login-error\""), "{body}");
+    assert!(
+        body.contains("value=\"/notes\""),
+        "the return target is kept"
+    );
+    assert!(!body.contains("not-the-token"), "the attempt is not echoed");
+}
+
+#[tokio::test]
+async fn a_login_post_without_a_matching_origin_is_refused() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("login-origin");
+    let app = remote_app(sandbox.store(), TOKEN);
+    let body = login_body(TOKEN, "/");
+
+    for origin in [None, Some("https://evil.example"), Some("null")] {
+        let (status, headers, _) = send(&app, remote_form("/login", &body, origin, None)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "origin {origin:?}");
+        assert!(session_cookie_pair(&headers).is_none());
+    }
+}
+
+#[tokio::test]
+async fn the_session_cookie_opens_the_board_and_the_events_stream() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("cookie-opens");
+    let app = remote_app(sandbox.store(), TOKEN);
+    let cookie = sign_in(&app).await;
+
+    let (status, headers, body) = send(&app, remote_get("/board", Some(&cookie))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("Sign out"), "{body}");
+    assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+
+    let response = app
+        .clone()
+        .oneshot(remote_get("/events", Some(&cookie)))
+        .await
+        .expect("the router answers");
+    assert_eq!(response.status(), StatusCode::OK);
+    let mut stream = response.into_body();
+    let frame = stream.frame().await.expect("a frame").expect("readable");
+    let text = String::from_utf8_lossy(frame.data_ref().expect("data")).to_string();
+    assert!(text.contains("event: changed"), "{text}");
+}
+
+#[tokio::test]
+async fn the_session_cookie_never_opens_mcp() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("cookie-mcp");
+    let app = remote_app(sandbox.store(), TOKEN);
+    let cookie = sign_in(&app).await;
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/mcp")
+        .header(header::HOST, REMOTE_HOST)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::COOKIE, &cookie)
+        .body(Body::from(MCP_BODY))
+        .expect("the request builds");
+    assert_eq!(send(&app, request).await.0, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a_cookie_write_needs_a_present_and_matching_origin_and_a_bearer_write_does_not() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("cookie-origin");
+    let app = remote_app(sandbox.store(), TOKEN);
+    let cookie = sign_in(&app).await;
+    let write = "title=From+a+browser";
+
+    for origin in [None, Some("https://evil.example"), Some("null")] {
+        let (status, _, _) =
+            send(&app, remote_form("/tickets", write, origin, Some(&cookie))).await;
+        assert_eq!(
+            status,
+            StatusCode::FORBIDDEN,
+            "cookie write, origin {origin:?}"
+        );
+    }
+    let (status, _, _) = send(
+        &app,
+        remote_form("/tickets", write, Some(REMOTE_ORIGIN), Some(&cookie)),
+    )
+    .await;
+    assert_ne!(status, StatusCode::FORBIDDEN, "a matching Origin passes");
+    assert_ne!(status, StatusCode::UNAUTHORIZED);
+
+    // A bearer write keeps today's rule: an absent Origin passes.
+    let mut bearer = remote_form("/tickets", write, None, None);
+    bearer.headers_mut().insert(
+        header::AUTHORIZATION,
+        format!("Bearer {TOKEN}").parse().expect("a header value"),
+    );
+    let (status, _, _) = send(&app, bearer).await;
+    assert_ne!(status, StatusCode::FORBIDDEN);
+    assert_ne!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a_signed_out_page_load_redirects_to_login_and_a_background_request_gets_401() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("signed-out");
+    let app = remote_app(sandbox.store(), TOKEN);
+
+    let (status, headers, _) = send(&app, remote_get("/notes?path=a%20b.md", None)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(
+        headers[header::LOCATION],
+        "/login?next=%2Fnotes%3Fpath%3Da%2520b.md"
+    );
+
+    let (status, headers, _) = send(&app, remote_get("/", None)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(headers[header::LOCATION], "/login");
+
+    let (status, _, _) = send(&app, remote_get("/events", None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let mut htmx = remote_get("/board", None);
+    htmx.headers_mut()
+        .insert("hx-request", "true".parse().expect("value"));
+    assert_eq!(send(&app, htmx).await.0, StatusCode::UNAUTHORIZED);
+
+    let (status, _, _) = send(
+        &app,
+        remote_form(
+            "/tickets",
+            "title=x",
+            Some(REMOTE_ORIGIN),
+            Some("__Host-tandem_session=00"),
+        ),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "a bogus cookie is no cookie"
+    );
+}
+
+#[tokio::test]
+async fn the_return_target_is_a_same_origin_path_or_the_root() {
+    let hostile = [
+        "//evil.example",
+        "/\\evil.example",
+        "https://evil.example/",
+        "evil.example",
+        "",
+        "/ok\r\nSet-Cookie: x=1",
+        "/ok\u{7}",
+        "javascript:alert(1)",
+        "/login",
+        "/logout",
+    ];
+    for value in hostile {
+        assert_eq!(guard::return_target(value), "/", "{value:?}");
+    }
+    for value in [
+        "/",
+        "/board?label=a",
+        "/notes?path=x%2Fy.md",
+        "/tickets/abc",
+    ] {
+        assert_eq!(guard::return_target(value), value);
+    }
+
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("return-target");
+    let app = remote_app(sandbox.store(), TOKEN);
+    let (_, headers, _) = send(
+        &app,
+        remote_form(
+            "/login",
+            &login_body(TOKEN, "//evil.example"),
+            Some(REMOTE_ORIGIN),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(
+        headers[header::LOCATION],
+        "/",
+        "a hostile target lands on the root"
+    );
+}
+
+#[tokio::test]
+async fn sign_out_ends_the_session_on_the_server() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sign-out");
+    let app = remote_app(sandbox.store(), TOKEN);
+    let cookie = sign_in(&app).await;
+
+    let (status, headers, _) = send(
+        &app,
+        remote_form("/logout", "", Some(REMOTE_ORIGIN), Some(&cookie)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(headers[header::LOCATION], "/login?notice=signed-out");
+    let line = set_cookie_line(&headers);
+    assert!(line.contains("Max-Age=0"), "the cookie is cleared: {line}");
+
+    let (status, _, _) = send(&app, remote_get("/board", Some(&cookie))).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "the old cookie is refused");
+
+    let (status, _, body) = send(&app, remote_get("/login?notice=signed-out", None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("You are signed out."), "{body}");
+}
+
+#[tokio::test]
+async fn a_session_from_another_token_is_refused() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("other-token");
+    let app = remote_app(sandbox.store(), TOKEN);
+    let cookie = sign_in(&app).await;
+
+    let rotated = remote_app(sandbox.store(), "a-different-token-a-different-token");
+    let (status, _, _) = send(&rotated, remote_get("/board", Some(&cookie))).await;
+    assert_eq!(
+        status,
+        StatusCode::SEE_OTHER,
+        "a rotated token orphans every row"
+    );
+}
+
+#[tokio::test]
+async fn a_session_survives_a_new_router_over_the_same_home() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("restart");
+    let app = remote_app(sandbox.store(), TOKEN);
+    let cookie = sign_in(&app).await;
+    drop(app);
+
+    let restarted = remote_app(sandbox.store(), TOKEN);
+    let (status, _, _) = send(&restarted, remote_get("/board", Some(&cookie))).await;
+    assert_eq!(status, StatusCode::OK, "a restart leaves the tab signed in");
+}
+
+/// Rewrite every session's last use, the way time passing would.
+fn age_sessions(sandbox: &Sandbox, last_used_at: i64) {
+    let connection = rusqlite::Connection::open(sandbox.store().database()).expect("opens");
+    connection
+        .execute(
+            "UPDATE browser_sessions SET last_used_at = ?1",
+            [last_used_at],
+        )
+        .expect("ages");
+}
+
+#[tokio::test]
+async fn a_session_idle_past_thirty_days_is_refused() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("idle");
+    let app = remote_app(sandbox.store(), TOKEN);
+    let cookie = sign_in(&app).await;
+    let day = 24 * 60 * 60;
+
+    age_sessions(&sandbox, crate::store::unix_now() - 29 * day);
+    let (status, headers, _) = send(&app, remote_get("/board", Some(&cookie))).await;
+    assert_eq!(status, StatusCode::OK, "29 days idle is still in");
+    assert!(
+        set_cookie_line(&headers).contains("Max-Age=2592000"),
+        "the lifetime is refreshed with the touch"
+    );
+
+    age_sessions(&sandbox, crate::store::unix_now() - 31 * day);
+    let (status, _, _) = send(&app, remote_get("/board", Some(&cookie))).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "31 days idle is out");
+}
+
+#[tokio::test]
+async fn login_and_logout_do_not_exist_off_token_mode() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("login-modes");
+    let open = router(SessionContext {
+        access: Access::open(7700),
+        ..context(sandbox.store())
+    });
+    let loopback = router(context(sandbox.store()));
+    for app in [&open, &loopback] {
+        let host = if std::ptr::eq(app, &open) {
+            REMOTE_HOST
+        } else {
+            "127.0.0.1:7700"
+        };
+        let page = Request::builder()
+            .uri("/login")
+            .header(header::HOST, host)
+            .body(Body::empty())
+            .expect("the request builds");
+        assert_eq!(send(app, page).await.0, StatusCode::NOT_FOUND);
+        for uri in ["/login", "/logout"] {
+            let post = Request::builder()
+                .method("POST")
+                .uri(uri)
+                .header(header::HOST, host)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from(login_body(TOKEN, "/")))
+                .expect("the request builds");
+            assert_eq!(send(app, post).await.0, StatusCode::NOT_FOUND, "{uri}");
+        }
+        let board = Request::builder()
+            .uri("/board")
+            .header(header::HOST, host)
+            .body(Body::empty())
+            .expect("the request builds");
+        let (_, _, body) = send(app, board).await;
+        assert!(!body.contains("Sign out"), "no Sign out off token mode");
+    }
+}
+
+#[tokio::test]
+async fn the_shell_shows_sign_out_in_token_mode() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("shell-sign-out");
+    let app = remote_app(sandbox.store(), TOKEN);
+    let cookie = sign_in(&app).await;
+    for uri in ["/board", "/notes"] {
+        let (_, _, body) = send(&app, remote_get(uri, Some(&cookie))).await;
+        assert!(
+            body.contains("<form class=\"shell__signout\" method=\"post\" action=\"/logout\">"),
+            "{uri}: {body}"
+        );
+        assert!(body.contains("id=\"signed-out-banner\""), "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn a_flood_of_wrong_tokens_is_throttled_and_a_right_token_still_signs_in() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("throttle");
+    let app = remote_app(sandbox.store(), TOKEN);
+
+    let wrong = |n: usize| {
+        let app = app.clone();
+        async move {
+            send(
+                &app,
+                remote_form(
+                    "/login",
+                    &login_body(&format!("wrong-{n}"), "/"),
+                    Some(REMOTE_ORIGIN),
+                    None,
+                ),
+            )
+            .await
+            .0
+        }
+    };
+    let flood: Vec<_> = (0..12).map(|n| tokio::spawn(wrong(n))).collect();
+    // While the wrong ones wait, a right token is neither delayed nor refused.
+    tokio::task::yield_now().await;
+    let started = Instant::now();
+    let (status, _, _) = send(
+        &app,
+        remote_form("/login", &login_body(TOKEN, "/"), Some(REMOTE_ORIGIN), None),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::SEE_OTHER,
+        "a right token still signs in"
+    );
+    assert!(
+        started.elapsed() < Duration::from_millis(100),
+        "and is not delayed"
+    );
+
+    let mut statuses = Vec::new();
+    for task in flood {
+        statuses.push(task.await.expect("joins"));
+    }
+    let throttled = statuses
+        .iter()
+        .filter(|status| **status == StatusCode::TOO_MANY_REQUESTS)
+        .count();
+    let answered = statuses
+        .iter()
+        .filter(|status| **status == StatusCode::UNAUTHORIZED)
+        .count();
+    assert!(throttled >= 1, "the excess is turned away: {statuses:?}");
+    assert!(answered >= 1, "some wait and are answered: {statuses:?}");
+}
+
+#[tokio::test]
+async fn an_events_stream_closes_when_its_session_is_signed_out() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("stream-close");
+    let app = remote_app(sandbox.store(), TOKEN);
+    let cookie = sign_in(&app).await;
+
+    let response = app
+        .clone()
+        .oneshot(remote_get("/events", Some(&cookie)))
+        .await
+        .expect("the router answers");
+    let mut stream = response.into_body();
+    stream
+        .frame()
+        .await
+        .expect("the first frame")
+        .expect("readable");
+
+    send(
+        &app,
+        remote_form("/logout", "", Some(REMOTE_ORIGIN), Some(&cookie)),
+    )
+    .await;
+    let ended = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(frame) = stream.frame().await {
+            if frame.is_err() {
+                break;
+            }
+        }
+    })
+    .await;
+    assert!(ended.is_ok(), "the stream closes once its session is gone");
+}
+
+#[tokio::test]
+async fn login_logs_neither_the_token_nor_the_cookie() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("login-logs");
+    let app = remote_app(sandbox.store(), TOKEN);
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    send(
+        &app,
+        remote_form(
+            "/login",
+            &login_body("wrong-token-value", "/"),
+            Some(REMOTE_ORIGIN),
+            None,
+        ),
+    )
+    .await;
+    send(
+        &app,
+        remote_form("/login", &login_body(TOKEN, "/"), Some(REMOTE_ORIGIN), None),
+    )
+    .await;
+    let cookie = sign_in(&app).await;
+    send(&app, remote_get("/board", Some(&cookie))).await;
+    send(
+        &app,
+        remote_form("/login", &login_body(TOKEN, "/"), None, None),
+    )
+    .await;
+    send(
+        &app,
+        remote_form("/logout", "", Some(REMOTE_ORIGIN), Some(&cookie)),
+    )
+    .await;
+
+    let text = captured.text();
+    let value = cookie.split_once('=').map(|(_, value)| value).unwrap_or("");
+    assert!(!text.contains(TOKEN), "{text}");
+    assert!(!text.contains("wrong-token-value"), "{text}");
+    assert!(!value.is_empty() && !text.contains(value), "{text}");
+    assert!(!text.contains("tandem_session"), "{text}");
+}
+
+#[tokio::test]
+async fn a_store_without_the_sessions_table_reads_as_signed_out() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("no-table");
+    // A fresh home has no database at all; a v12 store has no table. Both read
+    // as signed out, never as an error page.
+    let app = remote_app(sandbox.store(), TOKEN);
+    let forged = format!("{}={}", guard::SESSION_COOKIE, "ab".repeat(32));
+    let (status, _, _) = send(&app, remote_get("/board", Some(&forged))).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    // A store migrated to v12 only: build it by hand.
+    let upgraded = Sandbox::new("no-table-v12");
+    let store = upgraded.store();
+    std::fs::create_dir_all(store.home().directory()).expect("home");
+    let connection = rusqlite::Connection::open(store.database()).expect("opens");
+    crate::store::schema::migrate_with(
+        &connection,
+        &crate::store::schema::MIGRATIONS[..12],
+        &Actor::Human,
+    )
+    .expect("v12 applies");
+    drop(connection);
+    let app = remote_app(store, TOKEN);
+    let (status, _, _) = send(&app, remote_get("/board", Some(&forged))).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "no table is no session");
+    // The first login migrates the store lazily and signs in.
+    let cookie = sign_in(&app).await;
+    let (status, _, _) = send(&app, remote_get("/board", Some(&cookie))).await;
+    assert_eq!(status, StatusCode::OK);
 }

@@ -50,6 +50,7 @@ mod assets;
 mod board;
 mod events;
 mod guard;
+mod login;
 mod markdown;
 mod mcp;
 mod notes;
@@ -201,7 +202,13 @@ pub fn router(context: SessionContext) -> Router {
 /// watcher on the same broadcast every connected stream listens to.
 pub fn router_with(context: SessionContext, changes: broadcast::Sender<i64>) -> Router {
     let access = context.access.clone();
-    layered(routes(), changes, access).with_state(Arc::new(context))
+    let store = context.store.clone();
+    if access.is_token()
+        && let Err(error) = store.browser_sessions_sweep(crate::store::unix_now())
+    {
+        tracing::warn!(error = ?error, "the expired browser sessions could not be swept");
+    }
+    layered(routes(), changes, access, store).with_state(Arc::new(context))
 }
 
 /// Every route the loopback face serves, before its layers and its state. One
@@ -213,6 +220,8 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/board", get(board::board_page))
         .route("/events", get(events::events))
         .route("/health", get(mcp::health))
+        .route("/login", get(login::login_page_get).post(login::login_post))
+        .route("/logout", post(login::logout_post))
         .route("/mcp", post(mcp::mcp_post))
         .route("/static/{*path}", get(assets::static_asset))
         .route("/tickets", post(board::add_ticket))
@@ -248,10 +257,13 @@ fn layered(
     router: Router<Arc<SessionContext>>,
     changes: broadcast::Sender<i64>,
     access: Access,
+    store: Store,
 ) -> Router<Arc<SessionContext>> {
     router
         .layer(middleware::from_fn(guard::access_guard))
         .layer(Extension(access))
+        .layer(Extension(store))
+        .layer(Extension(login::LoginThrottle::new()))
         .layer(DefaultBodyLimit::max(crate::rpc::MAX_FRAME))
         .layer(Extension(changes))
         .layer(middleware::from_fn(request_log))
@@ -546,6 +558,8 @@ struct PageView {
     /// sheet does not: the stream pauses until the sheet closes, so a store
     /// change cannot re-draw the form under the human's cursor.
     stream: bool,
+    /// Whether the header carries a Sign out control: token mode only.
+    sign_out: bool,
 }
 fn is_partial(headers: &HeaderMap) -> bool {
     headers.get("hx-request").is_some()

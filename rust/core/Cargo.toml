@@ -12,6 +12,7 @@ name = "tandem_core"
 [dependencies]
 askama.workspace = true
 axum.workspace = true
+getrandom.workspace = true
 comrak.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
