@@ -24,8 +24,8 @@ name: Rust
 # name, and the steps that call cargo are skipped when the pull request touches
 # only paths on a short allowlist (`Resources/`, `LICENSE`). It is an allowlist
 # of what may skip, not a list of what runs, because some gates read the whole
-# tracked tree (the retired-path scan, the lane test, the notice test): a path
-# nobody listed runs the gates. A skipped step is a success, so the required
+# tracked tree (the retired-path scan, the label-vocabulary test, the notice
+# test): a path nobody listed runs the gates. A skipped step is a success, so the required
 # check passes with no cargo invocation. `push` keeps the same allowlist as
 # `paths-ignore`, where a skipped run costs nothing.
 #

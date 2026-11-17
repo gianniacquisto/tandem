@@ -10,8 +10,8 @@
 # allowlist of what may skip the gates (a directory prefix ending in `/`, or an
 # exact file): the answer is `false` only when every changed file is on it, so a
 # new path runs the gates by default. Some gates read the whole tracked tree
-# (the retired-path scan, the lane test), so docs and examples are not on it. Any doubt (no parent, an
-# empty diff, a git failure) prints `true`: the filter may only skip work it can
+# (the retired-path scan, the label-vocabulary test), so docs and examples are
+# not on it. Any doubt (no parent, an empty diff, a git failure) prints `true`: the filter may only skip work it can
 # prove is irrelevant, never a gate it could not read.
 set -u
 
