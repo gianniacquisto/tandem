@@ -8,13 +8,13 @@ name: Release
 #
 # Pull-request runs build and verify the same three archives and never publish,
 # so a packaging change is a red check on the PR instead of a broken tag. They
-# do it only when the PR touches `rust/**`, `Scripts/**`, `Fixtures/**` or the
-# workflows and actions (CUT-32); otherwise every job still runs and reports its
-# name, with its steps skipped, because a skipped matrix job reports under its
+# do it unless the PR touches only the allowlist `Resources/` and `LICENSE`
+# (CUT-32; an allowlist of what may skip, since some gates read the whole
+# tracked tree). Every job still runs and reports its name, with its steps
+# skipped on such a PR, because a skipped matrix job reports under its
 # unexpanded name and a required check that never reports blocks the merge. Tags
 # and dispatches always run everything. The three builds are one matrix job:
-# a new target is one row. The
-# publisher keeps the job name `release`: `main` requires a status check by that
+# a new target is one row. The publisher keeps the job name `release`: `main` requires a status check by that
 # name, and a required check that never reports blocks every merge. It waits for
 # the build matrix, and its step turns a skipped or failed build into a red
 # `release` (a skipped job reports success to the branch protection).
@@ -25,9 +25,8 @@ name: Release
 #
 # No third-party action: `actions/cache` is GitHub's own, behind the local
 # `rust-setup` action. This workflow has no `main` trigger, so each build uses
-# the combined cache step: a PR's later
-# pushes hit its own PR-scoped entry, and a tag run restores from `main` or its
-# own scope. The tag run still rebuilds, since it stamps its own version.
+# the combined cache step: a PR's later pushes hit its own PR-scoped entry, and
+# a tag run restores from `main` or its own scope. The tag run still rebuilds, since it stamps its own version.
 
 on:
   push:
@@ -60,7 +59,7 @@ jobs:
 
       - name: Did the change touch what the build reads?
         id: filter
-        run: echo "code=$(bash Scripts/changed-paths.sh rust/ Scripts/ Fixtures/ .github/workflows/ .github/actions/)" >> "$GITHUB_OUTPUT"
+        run: echo "code=$(bash Scripts/changed-paths.sh Resources/ LICENSE)" >> "$GITHUB_OUTPUT"
 
   build:
     name: build (${{ matrix.target }})

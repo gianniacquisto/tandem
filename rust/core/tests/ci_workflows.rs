@@ -270,13 +270,7 @@ fn the_changed_paths_filter_runs_the_gates_for_code_and_skips_docs() {
     git(&["add", "-A"]);
     git(&["commit", "-qm", "seed"]);
     let script = repo_root().join("Scripts/changed-paths.sh");
-    let prefixes = [
-        "rust/",
-        "Scripts/",
-        "Fixtures/",
-        ".github/workflows/",
-        ".github/actions/",
-    ];
+    let prefixes = ["Resources/", "LICENSE"];
     let answer = |event: &str| {
         let out = std::process::Command::new("bash")
             .arg(&script)
@@ -295,13 +289,17 @@ fn the_changed_paths_filter_runs_the_gates_for_code_and_skips_docs() {
         git(&["add", "-A"]);
         git(&["commit", "-qm", path]);
     };
-    touch("docs/a.md");
-    assert_eq!(answer("pull_request"), "false", "a docs-only change skips");
-    touch("examples/skills/x.md");
+    touch("Resources/pic.jpg");
     assert_eq!(
         answer("pull_request"),
         "false",
-        "an examples-only change skips"
+        "an allowlisted change skips"
+    );
+    touch("LICENSE");
+    assert_eq!(
+        answer("pull_request"),
+        "false",
+        "an exact allowlisted file skips"
     );
     for path in [
         "rust/core/src/lib.rs",
@@ -309,6 +307,13 @@ fn the_changed_paths_filter_runs_the_gates_for_code_and_skips_docs() {
         "Fixtures/f.json",
         ".github/workflows/rust.yml",
         ".github/actions/rust-setup/action.yml",
+        "docs/a.md",
+        "examples/skills/x.md",
+        "README.md",
+        "GLOSSARY.md",
+        "NOTICE.txt",
+        "AGENTS.md",
+        "brand-new/dir/file",
     ] {
         touch(path);
         assert_eq!(answer("pull_request"), "true", "{path} runs the gates");
@@ -317,7 +322,7 @@ fn the_changed_paths_filter_runs_the_gates_for_code_and_skips_docs() {
     assert_eq!(
         answer("push"),
         "true",
-        "a push is already filtered by `on.push.paths`"
+        "a push is already filtered by `on.push.paths-ignore`"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

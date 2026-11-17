@@ -22,13 +22,16 @@ name: Rust
 # would still never appear. So the workflow has no `pull_request` path filter
 # (CUT-32): a small `changes` job decides, every job still runs and reports its
 # name, and the steps that call cargo are skipped when the pull request touches
-# only paths outside `rust/**`, `Scripts/**`, `Fixtures/**` and the workflows and
-# actions. A skipped step is a success, so the required check passes with no
-# cargo invocation. `push` keeps its filter, where a skipped run costs nothing.
+# only paths on a short allowlist (`Resources/`, `LICENSE`). It is an allowlist
+# of what may skip, not a list of what runs, because some gates read the whole
+# tracked tree (the retired-path scan, the lane test, the notice test): a path
+# nobody listed runs the gates. A skipped step is a success, so the required
+# check passes with no cargo invocation. `push` keeps the same allowlist as
+# `paths-ignore`, where a skipped run costs nothing.
 #
 # No third-party action: `actions/checkout` and `actions/cache` are GitHub's
-# own (the cache behind the local `rust-setup` action), `rust-toolchain.toml` pins the version and the two components, rustup
-# ships on every hosted runner, and nothing here reads a secret or prints an
+# own (the cache behind the local `rust-setup` action), `rust-toolchain.toml`
+# pins the version and the two components, rustup ships on every hosted runner, and nothing here reads a secret or prints an
 # environment. The cargo and target cache is saved only by a push to `main`;
 # pull-request runs restore it and never write, so a PR cannot poison the cache
 # a later `main` or tag run reads and does not fill the repository quota.
@@ -36,12 +39,9 @@ name: Rust
 on:
   push:
     branches: [main]
-    paths:
-      - "rust/**"
-      - "Scripts/**"
-      - "Fixtures/**"
-      - ".github/workflows/**"
-      - ".github/actions/**"
+    paths-ignore:
+      - "Resources/**"
+      - "LICENSE"
   pull_request:
   workflow_dispatch:
 
@@ -74,7 +74,7 @@ jobs:
 
       - name: Did the change touch what the gates read?
         id: filter
-        run: echo "code=$(bash Scripts/changed-paths.sh rust/ Scripts/ Fixtures/ .github/workflows/ .github/actions/)" >> "$GITHUB_OUTPUT"
+        run: echo "code=$(bash Scripts/changed-paths.sh Resources/ LICENSE)" >> "$GITHUB_OUTPUT"
 
   fmt:
     name: fmt
