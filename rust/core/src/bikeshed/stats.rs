@@ -15,7 +15,7 @@ use crate::domain::error::DomainResult;
 use crate::domain::operation::Operation;
 use crate::store::encode;
 
-use super::{Bikeshed, sort_key};
+use super::{Bikeshed, is_link, sort_key};
 
 /// One project's notes health.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -71,9 +71,17 @@ impl Bikeshed {
     }
 
     /// Every project folder: a visible directory directly under `projects/`,
-    /// alphabetical. A missing `projects/` folder is an empty list.
+    /// alphabetical. A missing `projects/` folder, or one that is a link, is an
+    /// empty list: a linked root is skipped, never followed (ADR 0008).
     pub(crate) fn project_folders(&self) -> Vec<(String, PathBuf)> {
-        let Ok(entries) = fs::read_dir(self.directory.join("projects")) else {
+        let root = self.directory.join("projects");
+        let Ok(root_metadata) = fs::symlink_metadata(&root) else {
+            return Vec::new();
+        };
+        if is_link(&root_metadata) {
+            return Vec::new();
+        }
+        let Ok(entries) = fs::read_dir(&root) else {
             return Vec::new();
         };
         let mut projects = Vec::new();
@@ -82,10 +90,10 @@ impl Bikeshed {
             if name.starts_with('.') {
                 continue;
             }
-            let Ok(metadata) = fs::metadata(entry.path()) else {
+            let Ok(metadata) = entry.metadata() else {
                 continue;
             };
-            if !metadata.is_dir() {
+            if !metadata.is_dir() || is_link(&metadata) {
                 continue;
             }
             projects.push((name, entry.path()));
@@ -129,9 +137,12 @@ pub(crate) fn files(under: &Path, recursive: bool, pruning_hidden: bool) -> Vec<
         if pruning_hidden && name.starts_with('.') {
             continue;
         }
-        let Ok(metadata) = fs::metadata(entry.path()) else {
+        let Ok(metadata) = entry.metadata() else {
             continue;
         };
+        if is_link(&metadata) {
+            continue;
+        }
         if metadata.is_dir() {
             if recursive {
                 found.extend(files(&entry.path(), true, pruning_hidden));

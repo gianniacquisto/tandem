@@ -92,12 +92,49 @@ impl BikeshedPath {
                 return None;
             }
         }
-        let mut url = standardize(root);
+        let root = standardize(root);
+        if passes_through_a_link(&root, &components) {
+            return None;
+        }
+        let mut url = root;
         for component in components {
             url.push(component);
         }
         Some(url)
     }
+}
+
+/// True when a component below `root` that exists is a link (ADR 0008). The
+/// walk starts under the root, so a root that is itself a link still works. A
+/// component that does not exist ends the walk: nothing below it can exist.
+fn passes_through_a_link(root: &Path, components: &[&str]) -> bool {
+    let mut cursor = root.to_path_buf();
+    for component in components {
+        cursor.push(component);
+        match fs::symlink_metadata(&cursor) {
+            Ok(metadata) if is_link(&metadata) => return true,
+            Ok(_) => {}
+            Err(_) => return false,
+        }
+    }
+    false
+}
+
+/// True for a symbolic link, and on Windows also a junction (a reparse point
+/// that `is_symlink` does not report). Callers pass `symlink_metadata`.
+pub(crate) fn is_link(metadata: &fs::Metadata) -> bool {
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return true;
+        }
+    }
+    false
 }
 
 /// A node in the bikeshed tree: a folder or a `.md` note.
@@ -297,9 +334,12 @@ impl Bikeshed {
             } else {
                 format!("{relative}/{name}")
             };
-            let Ok(metadata) = fs::metadata(entry.path()) else {
+            let Ok(metadata) = entry.metadata() else {
                 continue;
             };
+            if is_link(&metadata) {
+                continue;
+            }
             if metadata.is_dir() {
                 folders.push(BikeshedNode {
                     name: name.clone(),
@@ -613,10 +653,12 @@ impl Bikeshed {
             let source_metadata = fs::metadata(&source_url)
                 .map_err(|_| DomainError::UnknownNote(source.to_string()))?;
             let source_is_dir = source_metadata.is_dir();
-            let mut dest_url = self.directory.clone();
-            for component in &destination {
-                dest_url.push(component);
-            }
+            let dest_url = if destination.is_empty() {
+                self.directory.clone()
+            } else {
+                self.file_url(into)
+                    .ok_or_else(|| DomainError::InvalidName(into.to_string()))?
+            };
             match fs::metadata(&dest_url) {
                 Ok(metadata) if metadata.is_dir() => {}
                 _ => return Err(DomainError::UnknownNote(into.to_string())),
@@ -927,6 +969,9 @@ fn collect_recoveries(directory: &Path, relative: &str, found: &mut Vec<Recovery
         let Ok(metadata) = entry.metadata() else {
             continue;
         };
+        if is_link(&metadata) {
+            continue;
+        }
         if metadata.is_dir() {
             collect_recoveries(&path, &child, found);
             continue;
