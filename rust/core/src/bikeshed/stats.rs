@@ -15,7 +15,7 @@ use crate::domain::error::DomainResult;
 use crate::domain::operation::Operation;
 use crate::store::encode;
 
-use super::{Bikeshed, sort_key};
+use super::{Bikeshed, is_link, sort_key};
 
 /// One project's notes health.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -82,10 +82,10 @@ impl Bikeshed {
             if name.starts_with('.') {
                 continue;
             }
-            let Ok(metadata) = fs::metadata(entry.path()) else {
+            let Ok(metadata) = entry.metadata() else {
                 continue;
             };
-            if !metadata.is_dir() {
+            if !metadata.is_dir() || is_link(&metadata) {
                 continue;
             }
             projects.push((name, entry.path()));
@@ -129,9 +129,12 @@ pub(crate) fn files(under: &Path, recursive: bool, pruning_hidden: bool) -> Vec<
         if pruning_hidden && name.starts_with('.') {
             continue;
         }
-        let Ok(metadata) = fs::metadata(entry.path()) else {
+        let Ok(metadata) = entry.metadata() else {
             continue;
         };
+        if is_link(&metadata) {
+            continue;
+        }
         if metadata.is_dir() {
             if recursive {
                 found.extend(files(&entry.path(), true, pruning_hidden));
