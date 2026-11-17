@@ -351,7 +351,14 @@ fn an_empty_changes_output_still_runs_the_gates() {
             && action.contains("inputs.enabled != 'false'"),
         "the setup runs unless it is told `false`"
     );
+}
 
+/// The script half of the pin: a missing script never answers `false`, and a
+/// PR that deletes the script answers `true`. The script runs on the Linux
+/// `changes` job; the Windows leg has no bash contract to pin.
+#[cfg(not(windows))]
+#[test]
+fn a_missing_or_deleted_filter_script_never_answers_false() {
     // A missing script never prints `false` (it prints nothing, or on some
     // hosts an error), so the step's output is not `false` and the gates run.
     let out = std::process::Command::new("bash")
