@@ -2394,6 +2394,57 @@ async fn a_board_read_logs_one_request_line_by_route_and_status_and_never_the_qu
     assert_every_line_is_a_timestamped_event(&text);
 }
 
+#[test]
+fn a_request_over_the_threshold_warns_slow_and_one_under_it_does_not() {
+    let captured = Captured::default();
+    let _guard = captured.install();
+    let limit = Duration::from_millis(500);
+
+    log_request(
+        &Method::GET,
+        "/board",
+        200,
+        Duration::from_millis(100),
+        limit,
+    );
+    assert!(
+        !captured.text().contains("slow request"),
+        "under: {}",
+        captured.text()
+    );
+
+    log_request(
+        &Method::POST,
+        "/mcp",
+        200,
+        Duration::from_millis(900),
+        limit,
+    );
+    let text = captured.text();
+    assert!(text.contains("slow request"), "over: {text}");
+    assert!(text.contains(" WARN "), "slow is a warn: {text}");
+    assert!(
+        text.contains("route=\"/mcp\"") && text.contains("latency_ms=900"),
+        "{text}"
+    );
+
+    let before = captured.text().matches("slow request").count();
+    log_request(&Method::GET, "/events", 200, Duration::from_secs(60), limit);
+    log_request(&Method::GET, "/health", 200, Duration::from_secs(60), limit);
+    assert_eq!(captured.text().matches("slow request").count(), before);
+}
+
+#[tokio::test]
+async fn the_page_carries_the_release_version() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("page-version");
+    let app = router(context(sandbox.store()));
+    let (status, _, body) = get(&app, "/board").await;
+    assert_eq!(status, StatusCode::OK);
+    let want = format!("data-version=\"{}\"", env!("CARGO_PKG_VERSION"));
+    assert!(body.contains(&want), "the shell names the build: {body}");
+}
+
 #[tokio::test]
 async fn a_static_asset_logs_at_debug_under_its_route_template() {
     let _serial = ONE_AT_A_TIME.lock().await;
