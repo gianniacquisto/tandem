@@ -261,6 +261,10 @@ fn layered(
         .layer(middleware::from_fn(request_log))
 }
 
+/// A request slower than this logs a `slow` warning after its request line:
+/// the cheapest signal that the store has outgrown the whole-board reads.
+const SLOW_REQUEST: Duration = Duration::from_millis(500);
+
 /// What every answer carries, whatever its type or status: the guard's
 /// refusals, the 404, assets and the stream included, so a route added later
 /// cannot forget them. The CSP and `Cache-Control` are set only when the
@@ -310,9 +314,22 @@ async fn request_log(request: Request, next: Next) -> Response {
         .map(|matched| matched.as_str().to_string())
         .unwrap_or_else(|| request.uri().path().to_string());
     let response = next.run(request).await;
-    let status = response.status().as_u16();
-    let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-    let quiet = method == Method::GET && (route.starts_with("/static/") || route == "/events");
+    log_request(
+        &method,
+        &route,
+        response.status().as_u16(),
+        started.elapsed(),
+        SLOW_REQUEST,
+    );
+    response
+}
+
+/// The request line, and a `slow` warning when `latency` passes `slow`. The
+/// event stream is open-ended and `/health` is a probe, so neither is ever
+/// slow; `/mcp` is, since every agent session shares this server.
+fn log_request(method: &Method, route: &str, status: u16, latency: Duration, slow: Duration) {
+    let latency_ms = u64::try_from(latency.as_millis()).unwrap_or(u64::MAX);
+    let quiet = *method == Method::GET && (route.starts_with("/static/") || route == "/events");
     if status >= 500 {
         tracing::error!(method = %method, route = ?route, status, latency_ms, "request");
     } else if status >= 400 {
@@ -322,7 +339,9 @@ async fn request_log(request: Request, next: Next) -> Response {
     } else {
         tracing::info!(method = %method, route = ?route, status, latency_ms, "request");
     }
-    response
+    if latency > slow && route != "/events" && route != guard::HEALTH_ROUTE {
+        tracing::warn!(method = %method, route = ?route, latency_ms, "slow request");
+    }
 }
 
 /// The store watch: one read-only connection, a 40 ms stat and a 5 s fallback,
@@ -585,6 +604,13 @@ struct PageView {
     /// sheet does not: the stream pauses until the sheet closes, so a store
     /// change cannot re-draw the form under the human's cursor.
     stream: bool,
+}
+
+impl PageView {
+    /// The release that drew the page, on `<html data-version>`.
+    fn version(&self) -> &'static str {
+        env!("CARGO_PKG_VERSION")
+    }
 }
 fn is_partial(headers: &HeaderMap) -> bool {
     headers.get("hx-request").is_some()
