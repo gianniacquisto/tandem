@@ -1,5 +1,4 @@
 //! One field's change in a multi-field operation: leave it alone, or set it
-//! (`Edit.swift`).
 //!
 //! A plain `Option<T>` cannot carry both meanings: `None` would mean "clear this"
 //! and "do not touch this" at once. `.set(None)` on an optional field clears it;

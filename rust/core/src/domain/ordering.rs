@@ -1,4 +1,4 @@
-//! Pure ordering arithmetic for drag-and-drop (`Ordering.swift`): the view names
+//! Pure ordering arithmetic for drag-and-drop: the view names
 //! the row a ticket was dropped on, and this turns that into the index `move`
 //! wants.
 //!

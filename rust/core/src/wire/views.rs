@@ -1,6 +1,6 @@
-//! The agent verbs' answers, in the shapes the Swift CLI prints (PRT-9).
+//! The agent verbs' answers, in the shapes the CLI prints and the goldens pin.
 //!
-//! Ported from `Sources/TandemCore/Encoding.swift`: one struct per result, the
+//! One struct per result, the
 //! domain type projected into the wire's field names and its ISO-8601 stamps.
 //! The CLI shapes nothing of its own: it calls a constructor here and prints the
 //! serialization, so a verb's JSON is the same fact on both binaries.
@@ -121,7 +121,7 @@ pub struct TicketSummary {
     pub blocks: Vec<TicketBlockView>,
     pub completed_at: Option<String>,
     pub created_at: String,
-    /// Characters, not bytes: the Swift CLI counts what a reader counts.
+    /// Characters, not bytes: a reader counts characters.
     pub description_length: usize,
     pub done: bool,
     pub id: String,

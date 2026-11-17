@@ -1,6 +1,6 @@
 //! The rpc protocol: the frames `tandem rpc` speaks on its stream.
 //!
-//! The app's only door to the core (`docs/port.md`, Transport and the UI
+//! The app's only door to the core (the UI
 //! contract), so the shapes are the contract and live here, beside the CLI's
 //! views, rather than in the process that reads stdin. One message set, one
 //! owner: every face reads these types, and a later HTTPS adapter carries the

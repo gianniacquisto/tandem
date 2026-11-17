@@ -1,23 +1,23 @@
 //! The store's schema and its migration seam.
 //!
 //! **Version 1 is a fresh schema, written once.** It mirrors today's v5 tables
-//! as they are *used*, not as they are named (docs/port.md, Store): the ticket
+//! as they are *used*, not as they are named: the ticket
 //! domain keeps its lane, its per-lane number and its dependency edge; the
 //! records domains keep their rows; every mutation row carries its `author`, a
 //! column that cannot be retrofitted onto a store that assumed one user.
 //!
-//! `schema_migrations` is the seam, ported from `StoreSchema.swift`: one row
+//! `schema_migrations` is the seam: one row
 //! per applied migration, the version read **inside** the transaction that
 //! records it, so two connections opening a fresh home serialise and apply each
 //! migration once. A migration that fails rolls its own transaction back and
 //! fails the open; nothing half-applies.
 //!
-//! **A v5 file is refused, never read.** The port has no dual writer and no v5
-//! reader (docs/port.md, Migration): a file whose seam is newer than this build
-//! answers one error pointing at the one-off import's record (PRT-18, ADR 0031,
+//! **A v5 file is refused, never read.** The store has no dual writer and no v5
+//! reader: a file whose seam is newer than this build
+//! answers one error pointing at the one-off import's record (ADR 0031,
 //! the git history), and exits non-zero.
 //!
-//! All SQL in the port lives under this module.
+//! All SQL lives under this module.
 
 use rusqlite::{Connection, params};
 
@@ -101,11 +101,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
 
 /// Version 1: the tickets, the edge, the comments, the records, the lanes and
 /// the settings. `tickets.position` is the stored order (ADR 0006) and
-/// `tickets.number` the per-lane number; the ref (`PRT-4`) is derived from the
+/// `tickets.number` the per-lane number; the ref (the label's prefix and this number, e.g. `COR-15`) is derived from the
 /// lane's key and that number on read, never a second stored truth.
 ///
 /// A comment is a row: its sidecar (`comments/<id>.jsonl`) has no table,
-/// because the only reader of the old file is the one-off import (PRT-18) and
+/// because the only reader of the old file is the one-off import and
 /// a table beside the rows would be a second truth. `comments` keeps its
 /// `author` because a comment's author is the comment's, and
 /// `schema_migrations` keeps the actor that moved the schema.
@@ -211,7 +211,7 @@ pub(crate) const SKILLS_VERSION: i64 = 3;
 const VERSION_THREE: &str = "ALTER TABLE sessions ADD COLUMN skills TEXT;";
 
 /// The version that adds the store's revision: one row in `store_meta`, moved
-/// by every write that changes a row (PRT-11).
+/// by every write that changes a row.
 pub(crate) const REVISION_VERSION: i64 = 4;
 
 /// Version 4: the store's revision, the number every listing carries and every
@@ -233,11 +233,11 @@ CREATE TABLE IF NOT EXISTS store_meta (
 INSERT OR IGNORE INTO store_meta (key, value) VALUES ('revision', 1);
 ";
 
-/// The version that adds the session record's harness pointer (PRT-29).
+/// The version that adds the session record's harness pointer.
 pub(crate) const HARNESS_VERSION: i64 = 5;
 
 /// Version 5: the harness session a record ran in, and the transport that
-/// reported it (PRT-29).
+/// reported it.
 ///
 /// **Additive, and the pointer, never the identity.** `sessions.id` stays
 /// Tandem's own primary key; `harness_session_id` is the harness's id as a
@@ -715,13 +715,13 @@ pub(crate) fn version(connection: &Connection) -> Result<Option<i64>> {
         .map_err(|error| translate(error, connection))
 }
 
-/// Whether a file is the Swift store's or newer than this build reads.
+/// Whether a file is the retired v5 store's or newer than this build reads.
 ///
-/// **The seam's actor is what tells the two stores apart.** The Swift store's
+/// **The seam's actor is what tells the two stores apart.** The retired store's
 /// `schema_migrations` carries `version` and `appliedAt`; every version this
-/// port writes carries its `author` (PRT-4), so a seam without that column is
-/// the Swift store's, whatever its version says. The number alone cannot decide
-/// it any more: the port's versions have moved past the Swift store's v5, so a
+/// build writes carries its `author`, so a seam without that column is
+/// the retired store's, whatever its version says. The number alone cannot decide
+/// it any more: this build's versions have moved past the retired store's v5, so a
 /// v5 file would otherwise read as merely behind this build and be migrated.
 ///
 /// A Rust file whose seam is past [`CURRENT_VERSION`] is refused on the version,

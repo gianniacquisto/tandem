@@ -1,4 +1,4 @@
-//! The committed fixture vault, read by the port (`Fixtures/port/Home/bikeshed`).
+//! The committed fixture vault, read by the core (`Fixtures/port/Home/bikeshed`).
 //!
 //! The fixture home is content, not scratch: it is authored and committed, and
 //! no run writes into it. Every suite above builds its own temp vault; this one

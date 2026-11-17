@@ -1,4 +1,4 @@
-//! One view over the tickets (`Query.swift` and `Filter.swift`, ADR 0017).
+//! One view over the tickets (ADR 0017).
 //!
 //! The single definition of "which tickets are in view", shared by the CLI's flags
 //! and the app's filter row, so "the ready tickets" cannot mean one thing to a
@@ -266,7 +266,6 @@ fn parse_label(raw: &str) -> LabelAxis {
 }
 
 /// Which tickets are in view: `open` (the default), `done`, or `all`
-/// (`Filter.swift`).
 ///
 /// Sugar over [`TicketQuery`], not a second filter: the three shipped cases are
 /// spelled once, in terms of the query's axes.

@@ -1,4 +1,4 @@
-//! The board: the ticket aggregate over the store adapter (`Operations.swift`).
+//! The board: the ticket aggregate over the store adapter.
 //!
 //! These are the operations both faces use, and they define the shared semantics so
 //! the binary and the app cannot drift. The domain holds no SQL, no JSON and no argv:
@@ -112,7 +112,7 @@ impl Board {
 
     /// `list(query)` and the revision its rows are a snapshot of, read in one
     /// transaction: a listing cannot pair rows with a number a writer moved
-    /// between the two statements (PRT-11).
+    /// between the two statements.
     pub fn list_snapshot(&self, query: &TicketQuery) -> Result<(Vec<Ticket>, i64), DomainError> {
         let Some((rows, revision)) = self.store.board_snapshot()? else {
             return Ok((Vec::new(), 0));
@@ -937,8 +937,7 @@ impl Board {
     /// write the difference when it says something changed. A no-op body writes no
     /// row, so a store's bytes are untouched by a call that changed nothing.
     ///
-    /// **The read is inside the transaction**, the way the Swift store's `mutate`
-    /// is (`Store.swift:130-175`): the write lock is held before the rows are read,
+    /// **The read is inside the transaction**, and the write lock is held before the rows are read,
     /// so two writers over one home serialise their read-modify-write. A snapshot
     /// taken before the lock would hand the same label number to both writers and a
     /// stale diff would write an untouched row back over a concurrent edit.

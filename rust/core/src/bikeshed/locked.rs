@@ -2,8 +2,7 @@
 //! retry, same-directory temp files with `fsync` + rename, and the orphan
 //! sweep that clears a crash's leftovers under the lock.
 //!
-//! Ported from `LockedDirectory.swift` and its tests (`LockedDirectoryTests`),
-//! behaviour for behaviour: the lock is never a suggestion, a write lands whole
+//! The lock is held to one rule set: the lock is never a suggestion, a write lands whole
 //! or not at all, and a temp older than a minute is a crash's, not a writer's.
 //! This module is the mechanism only. It owns no schema and no domain
 //! vocabulary; the vault translates its failures into the bikeshed's words.
@@ -15,7 +14,7 @@
 //! [`crate::store`] and is shared by the store's rolling backup and by
 //! [`LockedDirectory::atomic_write`].
 //!
-//! One thing the Swift mechanism did not need and this one does: `flock` has no
+//! One thing this mechanism needs beyond `flock`: `flock` has no
 //! queue, so threads of one process that want the same lock race `try_lock`
 //! and the loser can lose every flip for the whole window. [`Queue`] gives this
 //! process's bikeshed writers a turn order, so a waiter is served when the

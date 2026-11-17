@@ -1,5 +1,4 @@
 //! A ticket's description or comment, parsed for reading (TAN-219,
-//! `TicketMarkdown.swift`).
 //!
 //! The sheet used to hand markdown back as the stored bytes: `## Why`, `**bold**`
 //! and backticks read literally. This seam turns those bytes into a small view

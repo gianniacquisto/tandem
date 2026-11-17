@@ -1,12 +1,11 @@
 //! Where a run keeps its state: the store, the bikeshed, the lock sidecar.
 //!
-//! The rule, carried from the Swift core (`TandemHome.swift`): a run reads and
+//! The rule: a run reads and
 //! writes exactly one home, and every path it derives comes from this value.
 //! Nothing under this module touches `~/.tandem` unless the resolution says so.
 //!
-//! The real home belongs to the shipped app. Until cutover the Rust binary is
-//! pointed at a fixture home (`docs/port.md`, How the work lands), which is why
-//! `--home` exists at all and why the CLI's tests run with a sandbox `HOME`.
+//! The real home is `~/.tandem`. `--home` points a run at another home (fixtures
+//! and tests), and the CLI's tests run with a sandbox `HOME`.
 
 use std::env;
 use std::fs;
@@ -132,8 +131,7 @@ fn expand_tilde(path: &Path, user_home: &Path) -> PathBuf {
 /// The home is printed by `doctor` and measured by the tests, so two spellings
 /// of one directory must not read as two homes. Symlinks stay unresolved: the
 /// rule describes a path, and resolving a link would make it depend on the
-/// machine it runs on (`TandemHome.resolvedPath` in the Swift core is the app
-/// bundle's test, not the home's).
+/// machine it runs on (this is the home's rule, not the app bundle's).
 fn normalize(path: PathBuf) -> PathBuf {
     let mut normalized = PathBuf::new();
     for component in path.components() {

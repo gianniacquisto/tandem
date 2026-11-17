@@ -487,7 +487,7 @@ impl Filters {
     }
 
     /// The add form files into the label filter's label, or the default area when
-    /// the filter is off (the React board's rule).
+    /// the filter is off (the board's rule).
     fn add_label(&self) -> Option<String> {
         match self.label_axis() {
             LabelAxis::Named(name) => Some(name),

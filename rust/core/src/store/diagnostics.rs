@@ -7,7 +7,6 @@
 //! error.
 
 use std::fs;
-use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 use rusqlite::{Connection, OpenFlags};
@@ -26,7 +25,7 @@ pub enum Health {
     },
     Unreadable,
     /// A database this build does not read: a v5 file, refused at the schema
-    /// seam (docs/port.md, Store). Named rather than called corrupt, because
+    /// seam. Named rather than called corrupt, because
     /// the repair is the one-off import, not a restore.
     Legacy {
         version: i64,
@@ -40,17 +39,6 @@ pub enum BackupHealth {
     Absent,
     /// A backup exists; it was written `age` ago.
     Present { age: Duration },
-}
-
-/// The comments domain's state for `doctor`: the rows the database holds.
-///
-/// The port has no import marker (ADR 0031's 2026-10-30 amendment): the
-/// `comments` table is the live log from the first row, and `imported` is true
-/// once a row exists, so the row stops saying "none yet".
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CommentsHealth {
-    pub rows: i64,
-    pub imported: bool,
 }
 
 impl Store {
@@ -100,24 +88,6 @@ impl Store {
             Err(error) => is_busy(&error),
         }
     }
-
-    /// The comments rows, and whether the table is the live log yet.
-    pub fn comments_health(&self) -> CommentsHealth {
-        let none = CommentsHealth {
-            rows: 0,
-            imported: false,
-        };
-        if !self.database().exists() {
-            return none;
-        }
-        match self.read(comment_count) {
-            Ok(Some(rows)) => CommentsHealth {
-                rows,
-                imported: rows > 0,
-            },
-            _ => none,
-        }
-    }
 }
 
 fn counts(connection: &Connection) -> super::Result<(i64, i64)> {
@@ -132,32 +102,4 @@ fn counts(connection: &Connection) -> super::Result<(i64, i64)> {
         )
         .map_err(|error| translate(error, connection))?;
     Ok((total - done, done))
-}
-
-fn comment_count(connection: &Connection) -> super::Result<i64> {
-    connection
-        .query_row("SELECT COUNT(*) FROM comments", [], |row| row.get(0))
-        .map_err(|error| translate(error, connection))
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CommentsState {
-    Absent,
-    Readable,
-    Unreadable,
-}
-
-/// The comments directory's state: absent is the normal early state, so only a
-/// present-but-unusable path counts.
-pub fn comments_state(path: &Path) -> CommentsState {
-    if !path.exists() {
-        return CommentsState::Absent;
-    }
-    if !path.is_dir() {
-        return CommentsState::Unreadable;
-    }
-    match fs::read_dir(path) {
-        Ok(_) => CommentsState::Readable,
-        Err(_) => CommentsState::Unreadable,
-    }
 }

@@ -12,7 +12,7 @@ use std::path::Path;
 
 use serde::Serialize;
 
-/// A path in the wire's spelling: `/`-separated on every platform (PRT-7).
+/// A path in the wire's spelling: `/`-separated on every platform.
 ///
 /// The host's separator is a fact about the machine, not about the contract: a
 /// Windows `\` in a path on stdout is a shape the app and the skills would have

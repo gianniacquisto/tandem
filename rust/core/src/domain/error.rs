@@ -1,6 +1,6 @@
 //! The domain's failures, in the words a caller acts on.
 //!
-//! Ported from `Errors.swift`: every case names the value that failed and the
+//! Every case names the value that failed and the
 //! next step, because the CLI prints the message verbatim on stderr and the app
 //! shows it in an alert. A store failure is wrapped here too ([`DomainError::Io`],
 //! [`DomainError::Locked`]), so the domain's surface is one error type.
@@ -102,8 +102,6 @@ pub enum DomainError {
     /// `read` / `delete` / `rename` / `move` / `backlinks` was called with a path
     /// not present in the bikeshed.
     UnknownNote(String),
-    /// `asset` was given a file that is not one of the servable image types.
-    NotAnAsset(String),
     /// A create, rename or move target that already exists. An error, never an
     /// overwrite.
     NoteAlreadyExists(String),
@@ -114,7 +112,7 @@ pub enum DomainError {
 }
 
 impl DomainError {
-    /// The message a caller reads: the same words the Swift core used, so the
+    /// The message a caller reads: the words both faces print, so the
     /// two faces say one thing about one failure.
     pub fn message(&self) -> String {
         match self {
@@ -222,10 +220,6 @@ impl DomainError {
             Self::BikeshedIo(detail) => format!("Bikeshed error: {detail}. Try again."),
             Self::UnknownNote(path) => format!(
                 "No note at \"{path}\" in the bikeshed. List the bikeshed to see what is there."
-            ),
-            Self::NotAnAsset(path) => format!(
-                "No image at \"{path}\" in the bikeshed. Only PNG, JPG, JPEG, GIF, WebP, AVIF, \
-                 SVG, BMP and ICO files are served."
             ),
             Self::NoteAlreadyExists(path) => {
                 format!("A file already exists at \"{path}\". Choose a different name.")

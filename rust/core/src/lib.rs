@@ -1,17 +1,16 @@
 //! Tandem's core: the domain, the store adapter and the wire.
 //!
-//! The port is laid out at its seam, not at the Swift module's folder shape
-//! (`docs/port.md`, Where the old code goes):
+//! The crate is laid out at its seams, one module per layer:
 //!
-//! - [`store`]: the home, and from PRT-4 the SQLite adapter behind it. All SQL
+//! - [`store`]: the home, and the SQLite adapter behind it. All SQL
 //!   lives there; nothing outside it writes a row.
 //! - [`wire`]: the JSON the agent face prints and the app reads.
 //! - [`domain`]: the aggregates, pure over the adapter: the board's tickets,
-//!   labels, comments, order and the dependency edge (PRT-5). Every failure the
+//!   labels, comments, order and the dependency edge. Every failure the
 //!   domain raises is [`domain::error::DomainError`],
 //!   one shape for the CLI to print.
 //!
-//! - [`bikeshed`]: the notes vault (PRT-7), a plain folder of markdown files
+//! - [`bikeshed`]: the notes vault, a plain folder of markdown files
 //!   rather than rows: the tree, the note operations, the wikilink scanner, the
 //!   derived readers (search, backlinks, health, front page, stats) and the
 //!   capture layer. It carries its own locked-write mechanics and no SQL.

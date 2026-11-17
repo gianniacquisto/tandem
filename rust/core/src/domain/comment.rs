@@ -1,13 +1,12 @@
-//! Comments on a ticket (`Comments.swift`, `CommentRead.swift`,
-//! `CommentWrite.swift`; ADR 0017's 2026-10-20 amendment, re-backed on the
+//! Comments on a ticket (ADR 0017's 2026-10-20 amendment, re-backed on the
 //! database by ADR 0031).
 //!
 //! **The log is append-only.** There is no edit and no delete, and a deleted
 //! ticket's log stays. `at` is whole seconds since the Unix epoch, the same fact
 //! the store writes as ISO-8601 UTC.
 //!
-//! The legacy `comments/<ticket-id>.jsonl` logs have no reader in the port: the
-//! one-off import (PRT-18) seeds the rows once, and the table is the log's truth.
+//! The legacy `comments/<ticket-id>.jsonl` logs have no reader: the
+//! one-off import (ADR 0031) seeds the rows once, and the table is the log's truth.
 
 /// One comment on a ticket.
 #[derive(Debug, Clone, PartialEq, Eq)]

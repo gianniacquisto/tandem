@@ -2,16 +2,15 @@
 //! lives there.
 //!
 //! One home everywhere, `~/.tandem` on macOS, Linux and Windows, with
-//! `TANDEM_HOME` the only override and `--home` the run's own (docs/port.md,
-//! Store). This module owns the home and the adapter; no SQL leaves it, and no
+//! `TANDEM_HOME` the only override and `--home` the run's own. This module owns the home and the adapter; no SQL leaves it, and no
 //! table shape reaches the wire.
 //!
 //! The store is one file, `<home>/tandem.db`, and the adapter is four rules:
 //!
 //! - **Schema v1, written once** (the `schema` module). The tables mirror today's v5
 //!   tables as they are used. `schema_migrations` is the seam; a v5 file is
-//!   refused with one error pointing at the one-off import's record (PRT-18,
-//!   ADR 0031, the git history), because the port has no v5 reader and no dual
+//!   refused with one error pointing at the one-off import's record (ADR 0031,
+//!   the git history), because the store has no v5 reader and no dual
 //!   writer.
 //! - **An actor on every write** ([`Actor`], [`Write`]). Every mutation row
 //!   carries an `author` column, and no listing infers authorship from a
@@ -22,7 +21,7 @@
 //! - **A revision per write** (the `schema` module). `store_meta.revision`
 //!   moves inside the write's transaction, so a listing and the event that
 //!   follows it name the same number, and a receipt cannot carry a number a
-//!   concurrent writer moved (PRT-11).
+//!   concurrent writer moved.
 //! - **No sidecar lock.** The store takes no `flock` and writes no lock file:
 //!   a `BEGIN IMMEDIATE` transaction is the writer and the ~2 s busy window is
 //!   the contention bound across processes (ADR 0031), so a `tandem.lock`
@@ -55,7 +54,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
 
-pub use diagnostics::{BackupHealth, CommentsHealth, CommentsState, Health, comments_state};
+pub use diagnostics::{BackupHealth, Health};
 pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
 pub use schema::CURRENT_VERSION;
 pub use write::{NewComment, NewDependency, NewLabel, NewProject, NewTicket, Write};
@@ -71,7 +70,7 @@ pub const ACTOR_ENVIRONMENT: &str = "TANDEM_AGENT";
 /// The value comes from the place the harness already sets: `TANDEM_AGENT` is
 /// the pass's name when an agent runs a verb, and unset (or blank) means the
 /// human. One truth, so every verb takes the same variable and no verb grows an
-/// `--actor` flag (PRT-4, Decided against).
+/// `--actor` flag (decided against).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Actor {
     /// The human, written as `human`.
@@ -114,8 +113,8 @@ impl fmt::Display for Actor {
 }
 
 // Timestamps on the wire and in the store: ISO-8601 UTC, whole seconds. The
-// Swift store writes `2026-10-30T12:27:28Z` and reads it back
-// (`Timestamp.swift`), and the port keeps the same text because the schema
+// The retired store wrote `2026-10-30T12:27:28Z` and read it back, and this
+// store keeps the same text because the schema
 // mirrors the tables as they are used. No date library: the store needs an
 // encoder for "now" and a decoder for the rows it reads, and both are the
 // civil-date arithmetic below.
@@ -150,7 +149,7 @@ pub(crate) fn encode(seconds: i64) -> String {
 /// A row the store cannot read is an error at its reader, never a silent zero.
 ///
 /// The read side is the domain's: the record aggregates decode a row's stamps
-/// and derive the span between them (PRT-6), so a row the store cannot read
+/// and derive the span between them, so a row the store cannot read
 /// fails at its reader rather than at a later render.
 pub(crate) fn decode(text: &str) -> Option<i64> {
     let bytes = text.as_bytes();
@@ -330,7 +329,7 @@ fn enter_gate<'a>(gate: &'a Gate, home: &Path, timeout: Duration) -> Result<Gate
 
 /// What a store failure is, in the store's words. Every engine failure that is
 /// not contention becomes [`StoreError::Io`] with the engine's detail, exactly
-/// as the Swift store translates `SQLiteError` (ADR 0007).
+/// as the retired store translated `SQLiteError` (ADR 0007).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoreError {
     /// The gate or the write transaction was held past the window. The home
@@ -384,7 +383,7 @@ pub struct Store {
     /// of the watch is that a held connection is reused, not reopened a tick.
     /// Every platform reads it: the restore's unix case replaces the store
     /// under the held watch, and its cross-platform case attaches to the
-    /// rollback-journal file without renaming over a held one (PRT-26).
+    /// rollback-journal file without renaming over a held one.
     #[cfg(test)]
     watch_opens: Arc<std::sync::atomic::AtomicU64>,
     /// How many times a held watch has read the revision. Test-facing: the
@@ -464,9 +463,8 @@ impl Store {
     /// a read creates no directory and no file.
     ///
     /// Internal: the connection it hands back speaks SQL, and all SQL lives in
-    /// this module. The typed readers PRT-5 and PRT-6 build on it are the
-    /// public surface, so no caller outside the adapter can write a query
-    /// (docs/port.md, Store).
+    /// this module. The typed readers the domain builds on are the
+    /// public surface, so no caller outside the adapter can write a query.
     pub(crate) fn read<T>(&self, body: impl FnOnce(&Connection) -> Result<T>) -> Result<Option<T>> {
         let database = self.database();
         if !database.exists() {
@@ -474,7 +472,7 @@ impl Store {
         }
         let connection = open_read_only(&database)?;
         // A v5 file is refused on the way in, before any statement reads a
-        // table the port does not have.
+        // table this build does not read.
         schema::refuse_legacy(&connection)?;
         body(&connection).map(Some)
     }
@@ -659,7 +657,7 @@ impl Store {
     }
 
     /// The store's revision: the number every listing carries and every change
-    /// event repeats (PRT-11).
+    /// event repeats.
     ///
     /// A home with no database yet reads 0, and a file written before the
     /// revision existed reads 0 too: a read migrates nothing (ADR 0031). The
@@ -989,7 +987,7 @@ fn open_read_only(path: &Path) -> Result<Connection> {
 /// `PRAGMA journal_mode=WAL` is not a read: it takes the write lock and the
 /// busy handler does not cover it, so re-asserting it on every open loses a
 /// write the moment another connection holds the lock (the concurrency suite
-/// caught that in the Swift store). Read the mode, switch only when it is not
+/// caught that in the retired store). Read the mode, switch only when it is not
 /// `wal`, and wait out the one contended case (two connections creating the
 /// same home) inside the store's own window.
 fn switch_to_wal(connection: &Connection) -> Result<()> {
@@ -1021,7 +1019,7 @@ fn journal_mode(connection: &Connection) -> Result<Option<String>> {
         .map_err(|error| translate(error, connection))
 }
 
-/// One transaction: the atomic write the port keeps from ADR 0031. `IMMEDIATE`
+/// One transaction: the atomic write that ADR 0031 keeps. `IMMEDIATE`
 /// takes the write lock up front, so a read-modify-write cannot interleave
 /// with another writer. A throw rolls everything back; nothing half-applies.
 pub(crate) fn transaction<T>(

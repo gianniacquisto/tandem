@@ -1,5 +1,5 @@
 //! Labels, their keys, and the ref a label key plus a number renders
-//! (`Labels.swift`, ticket 6598E091).
+//! (ticket 6598E091).
 //!
 //! A label is its name, its **key** (the `TAN` of `TAN-42`) and the last number it
 //! issued. The key is uppercase alphanumerics, unique across labels

@@ -1,5 +1,5 @@
-//! The domain's aggregates, ported from `Sources/TandemCore/`: the board's
-//! tickets, labels, comments, order and dependency edge (PRT-5). The bikeshed is
+//! The domain's aggregates: the board's
+//! tickets, labels, comments, order and dependency edge. The bikeshed is
 //! the vault over files, so it lives beside the domain in [`crate::bikeshed`].
 //!
 //! The domain is pure over the store adapter: no argv, no JSON, no file I/O. It
@@ -18,7 +18,7 @@
 //! - **the label** is a grouping with its own issued-number counter, and a
 //!   ticket's ref is derived from the label's key and that number on every read.
 //!
-//! The dependency edge is the one relation the Swift tests were written to pin
+//! The dependency edge is the one relation the tests were written to pin
 //! (ADR 0035): it is stored once, keyed by both tickets' UUIDs, and read from both
 //! ends, so a label move or a key move changes what a ticket is *called* and never
 //! what it waits on.

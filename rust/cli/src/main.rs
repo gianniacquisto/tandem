@@ -1,9 +1,9 @@
 //! The tandem binary: the agent face and the board's HTTP server.
 //!
-//! One binary (`docs/port.md`, Target shape): the verbs agents call, the MCP
+//! One binary: the verbs agents call, the MCP
 //! endpoint and the board the human reads are the same executable, so they
 //! cannot drift. This rung carries the whole grammar the skills speak
-//! (PRT-9): `ticket`, `label`, `note`, `doctor`'s pinned report and `serve`'s
+//! `ticket`, `label`, `note`, `doctor`'s pinned report and `serve`'s
 //! one HTTP door (ADR 0047). Set `TANDEM_SERVER` and the verbs run against a
 //! remote `serve` instead of the local store.
 //!
@@ -42,7 +42,7 @@ use tracing_subscriber::EnvFilter;
 /// The root: `--home` on every verb, and the group the run names.
 ///
 /// `--help` is the CLI's own flag, not clap's: the texts in [`usage`] are the
-/// Swift binary's, and a generator's layout would be a second grammar to keep.
+/// golden-pinned text, and a generator's layout would be a second grammar to keep.
 #[derive(Parser)]
 #[command(
     name = "tandem",
@@ -56,7 +56,7 @@ struct Cli {
     #[arg(long, global = true, value_name = "PATH")]
     home: Option<PathBuf>,
 
-    /// Print the usage text for this verb (the Swift binary's own).
+    /// Print the usage text for this verb.
     #[arg(short = 'h', long = "help", global = true, action = clap::ArgAction::SetTrue)]
     help: bool,
 
@@ -1245,7 +1245,7 @@ fn environment() -> Environment {
 
 // MARK: - The wire's parity gate
 
-/// The machine half of parity item 3 (`docs/port.md`): every method the wire
+/// The machine half of the wire contract: every method the wire
 /// speaks names a CLI verb, and the grammar answers it. A mutation message
 /// without a verb is a UI-only write, which the contract forbids. A read may name
 /// no verb: it writes nothing, and `usage.report` is the one such method.

@@ -1,11 +1,11 @@
 //! The one text comparison, shared by everything that matches a human's word
-//! against stored text (`TextMatch.swift`, ADR 0008's "one rule, one place").
+//! against stored text (ADR 0008's "one rule, one place").
 //!
 //! The query and, later, the quick-open palette match the same way: a case- and
 //! diacritic-insensitive substring, so "app" finds the same things everywhere.
 //!
 //! No Unicode library: the fold covers the Latin letters a title actually carries,
-//! which is the rule the Swift `String.CompareOptions` call gave with a platform
+//! which is the rule a platform case-insensitive compare gives with its own
 //! table behind it. A letter outside the table still matches case-insensitively;
 //! only its accents are not folded, and that is a narrowing, never a crash.
 

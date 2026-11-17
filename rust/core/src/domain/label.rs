@@ -1,5 +1,4 @@
-//! The two labels the ticket faces draw (`TicketLabelTests.swift`,
-//! `AssigneeLabel.swift`): the status word and the assignee label. One rule each,
+//! The two labels the ticket faces draw: the status word and the assignee label. One rule each,
 //! so the list and the board cannot label the same ticket differently.
 
 use super::query::HUMAN;

@@ -1,7 +1,5 @@
-//! Tandem's notes surface (`Bikeshed.swift`): a plain folder of markdown notes
+//! Tandem's notes surface: a plain folder of markdown notes
 //! shared by the app and agents on the same machine, the sibling of the store.
-//!
-//! Ported from `Sources/TandemCore/Bikeshed*.swift` and `LockedDirectory.swift`:
 //!
 //! - **Identity and naming** — a note is any file ending `.md`, case-insensitively.
 //!   Hidden files are ignored everywhere; non-`.md` files are attachments. The
@@ -159,16 +157,6 @@ pub struct NoteContent {
     /// SHA-256 of the on-disk bytes, lowercase hex.
     pub hash: String,
     pub modified_at: SystemTime,
-}
-
-/// A servable image: the relative path as asked, the confined absolute file the
-/// app streams, its media type and its byte size.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Asset {
-    pub path: String,
-    pub file: PathBuf,
-    pub media_type: String,
-    pub size: u64,
 }
 
 /// What `write` put on disk: the path and the hash of the written bytes.
@@ -499,34 +487,6 @@ impl Bikeshed {
     }
 
     // MARK: - asset
-
-    /// `asset(path)`: a vault image's confined absolute file, media type and
-    /// byte size. Lock-free, and the same path-hygiene rule as every other
-    /// note operation: the renderer never names a host path, and an escape is
-    /// `InvalidName` before the file is touched.
-    pub fn asset(&self, path: &str) -> DomainResult<Operation<Asset>> {
-        let Some(url) = self.file_url(path) else {
-            return Err(DomainError::InvalidName(path.to_string()));
-        };
-        let Some(media_type) = image_media_type(path) else {
-            return Err(DomainError::NotAnAsset(path.to_string()));
-        };
-        let Ok(metadata) = fs::metadata(&url) else {
-            return Err(DomainError::UnknownNote(path.to_string()));
-        };
-        if metadata.is_dir() {
-            return Err(DomainError::UnknownNote(path.to_string()));
-        }
-        Ok(Operation {
-            value: Asset {
-                path: path.to_string(),
-                file: url,
-                media_type: media_type.to_string(),
-                size: metadata.len(),
-            },
-            note: None,
-        })
-    }
 
     // MARK: - create
 
@@ -1083,28 +1043,9 @@ fn is_note_name(name: &str) -> bool {
     name.to_lowercase().ends_with(".md")
 }
 
-/// The one image table: the servable extensions and the media type each is
-/// served as. The core decides both, so the protocol handler maps nothing and
-/// the CLI's `rpc` answer carries the same type (case-insensitively: the vault
-/// is case-sensitive, an extension is not).
-fn image_media_type(path: &str) -> Option<&'static str> {
-    let (_, extension) = path.rsplit_once('.')?;
-    match extension.to_ascii_lowercase().as_str() {
-        "png" => Some("image/png"),
-        "jpg" | "jpeg" => Some("image/jpeg"),
-        "gif" => Some("image/gif"),
-        "webp" => Some("image/webp"),
-        "avif" => Some("image/avif"),
-        "svg" => Some("image/svg+xml"),
-        "bmp" => Some("image/bmp"),
-        "ico" => Some("image/x-icon"),
-        _ => None,
-    }
-}
-
 fn strip_md(name: &str) -> &str {
     // Split at the last dot and compare the extension, so a non-ASCII stem is
-    // never sliced mid-character (Swift drops three characters, not bytes).
+    // never sliced mid-character: the split is at the dot, not at a byte count.
     match name.rsplit_once('.') {
         Some((stem, extension)) if extension.eq_ignore_ascii_case("md") => stem,
         _ => name,

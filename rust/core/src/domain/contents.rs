@@ -1,5 +1,4 @@
 //! The board in memory: the labels and the tickets, in stored order
-//! (`StoreContents` in `Labels.swift`).
 //!
 //! **Stored order is the order.** The ticket vector's position is authoritative
 //! (new tickets land on top by default); it is never recomputed from `created_at`.
@@ -501,7 +500,7 @@ impl Contents {
 }
 
 /// The id a row's text names, or the failure that says which row could not be
-/// read. The Swift reader threw on the same text (`StoreSchema.readContents`).
+/// read.
 fn row_id(text: &str, column: &str) -> Result<Uuid, DomainError> {
     Uuid::parse_str(text)
         .map_err(|_| DomainError::Unreadable(format!("{column} carries an invalid id \"{text}\"")))

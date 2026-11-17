@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Tandem's agent face: the verbs the skills speak and, later, rpc."
+description = "Tandem's agent face: the verbs the skills speak."
 
 [[bin]]
 name = "tandem"
@@ -27,5 +27,3 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 # The remote CLI's one POST per verb (ADR 0047).
 ureq.workspace = true
-# A capture's generated session folder, when the host exports no id (PRT-9).
-uuid.workspace = true
