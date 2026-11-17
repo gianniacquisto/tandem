@@ -403,3 +403,64 @@ fn a_missing_or_deleted_filter_script_never_answers_false() {
         .expect("the script runs");
     assert_eq!(String::from_utf8(out.stdout).unwrap().trim(), "true");
 }
+
+/// CUT-33: a moved tag must not run new code in a job that holds a token, so
+/// every `uses:` names a 40-hex commit SHA, with the version in a comment.
+#[test]
+fn every_action_is_pinned_to_a_commit_sha() {
+    let setup = repo_root().join(".github/actions/rust-setup/action.yml");
+    let files = [
+        workflows().join("rust.yml"),
+        workflows().join("release.yml"),
+        setup,
+    ];
+    for path in files {
+        let file = path.file_name().unwrap().to_string_lossy().into_owned();
+        let text = std::fs::read_to_string(&path).expect("workflow reads");
+        for line in text.lines() {
+            let Some(rest) = line.trim_start().strip_prefix("uses:") else {
+                continue;
+            };
+            // A local composite action lives in this tree, so the commit
+            // under test is its pin.
+            if rest.trim().starts_with("./") {
+                continue;
+            }
+            let pin = rest.trim().split('@').nth(1).unwrap_or("");
+            let sha = pin.split_whitespace().next().unwrap_or("");
+            assert!(
+                sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit()),
+                "{file}: `{}` is not pinned to a commit SHA",
+                line.trim()
+            );
+        }
+    }
+}
+
+/// CUT-33: the publish step never deletes a release, so `latest/download` is
+/// never a 404 mid-run; and the audit job exists.
+#[test]
+fn the_publish_step_never_deletes_a_release_and_the_audit_runs() {
+    let release = std::fs::read_to_string(workflows().join("release.yml")).expect("release.yml");
+    assert!(
+        !release.contains("gh release delete"),
+        "release.yml deletes a release"
+    );
+    assert!(
+        release.contains("gh release upload"),
+        "re-cut uploads with --clobber"
+    );
+    assert!(
+        release.contains("--clobber"),
+        "re-cut uploads with --clobber"
+    );
+    assert!(
+        release.contains("attest-build-provenance"),
+        "archives are attested"
+    );
+    let rust = std::fs::read_to_string(workflows().join("rust.yml")).expect("rust.yml");
+    assert!(
+        rust.contains("cargo-deny-action"),
+        "rust.yml runs cargo deny"
+    );
+}

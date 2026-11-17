@@ -1,6 +1,14 @@
 //! The change stream.
 
+use super::guard::{self, Session};
 use super::*;
+
+/// How often a stream of a signed-in browser re-reads its session, so a sign
+/// out or an expiry closes it without waiting for the next change.
+#[cfg(not(test))]
+const SESSION_RECHECK: Duration = Duration::from_secs(5);
+#[cfg(test)]
+const SESSION_RECHECK: Duration = Duration::from_millis(40);
 
 /// Logs the stream's close. It lives in the stream's closure, so it drops with
 /// the response when the client leaves.
@@ -12,8 +20,22 @@ impl Drop for StreamClosed {
     }
 }
 
+/// One step of the stream: a frame to send, nothing, or the end.
+enum Step {
+    Send(SseEvent),
+    Skip,
+    End,
+}
+
+/// What wakes the stream.
+enum Wake {
+    Revision(Option<i64>),
+    Recheck,
+}
+
 pub(super) async fn events(
     context: Context,
+    session: Option<Extension<Session>>,
     Extension(changes): Extension<broadcast::Sender<i64>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<SseEvent, Infallible>>> {
     // The stream opens on the revision the board was drawn from, so a client
@@ -31,22 +53,56 @@ pub(super) async fn events(
             .data(current.to_string()),
     ));
     let lagged = context.clone();
-    let updates = BroadcastStream::new(subscription).filter_map(move |item| {
-        let _ = &closed;
-        match item {
-            Ok(revision) => Some(Ok(SseEvent::default()
-                .event("changed")
-                .data(revision.to_string()))),
-            // A slow reader lagged past the channel: the honest answer is the
-            // store's current revision, which makes it re-fetch the board.
-            Err(_) => {
-                tracing::debug!("events stream lagged");
-                let revision = lagged.revision();
-                Some(Ok(SseEvent::default()
-                    .event("changed")
-                    .data(revision.to_string())))
-            }
-        }
+    // A stream a session opened ends with that session: it re-reads the
+    // session before every frame and on a timer, and delivers nothing more
+    // once the session is gone. A bearer stream has no session to lose.
+    let digest = session.map(|Extension(session)| session.digest);
+    let store = context.store.clone();
+    let revisions = BroadcastStream::new(subscription).map(|item| match item {
+        Ok(revision) => Wake::Revision(Some(revision)),
+        // A slow reader lagged past the channel: the honest answer is the
+        // store's current revision, which makes it re-fetch the board.
+        Err(_) => Wake::Revision(None),
     });
+    let ticks = tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(SESSION_RECHECK))
+        .map(|_| Wake::Recheck);
+    let updates = revisions
+        .merge(ticks)
+        .then(move |wake| {
+            let digest = digest.clone();
+            let store = store.clone();
+            let lagged = lagged.clone();
+            async move {
+                if let Some(digest) = &digest
+                    && !guard::session_live(&store, digest).await
+                {
+                    return Step::End;
+                }
+                match wake {
+                    Wake::Recheck => Step::Skip,
+                    Wake::Revision(Some(revision)) => Step::Send(
+                        SseEvent::default()
+                            .event("changed")
+                            .data(revision.to_string()),
+                    ),
+                    Wake::Revision(None) => {
+                        tracing::debug!("events stream lagged");
+                        Step::Send(
+                            SseEvent::default()
+                                .event("changed")
+                                .data(lagged.revision().to_string()),
+                        )
+                    }
+                }
+            }
+        })
+        .take_while(|step| !matches!(step, Step::End))
+        .filter_map(move |step| {
+            let _ = &closed;
+            match step {
+                Step::Send(event) => Some(Ok(event)),
+                Step::Skip | Step::End => None,
+            }
+        });
     Sse::new(initial.chain(updates)).keep_alive(KeepAlive::default())
 }

@@ -47,6 +47,16 @@ grep 'tandem-0.33.0-darwin-arm64.tar.gz$' SHA256SUMS | shasum -a 256 -c
 
 The manifest covers every platform's archive and `install.sh`, so the `grep` narrows it to the file this machine downloaded before `shasum` checks it.
 
+## Verify the build's provenance
+
+`SHA256SUMS` proves the download is whole; it does not say who built it. Each tag's three archives also carry a signed build-provenance attestation, made by the Release workflow with GitHub's `actions/attest-build-provenance`. With the GitHub CLI:
+
+```sh
+gh attestation verify tandem-0.33.0-darwin-arm64.tar.gz --repo gianniacquisto/tandem
+```
+
+A success names the workflow run and the commit that built the archive; a failure means the file did not come from this repository's release workflow. `install.sh` itself is not signed and does not run this check.
+
 ## Why the cask went
 
 The cask existed because the shipped artifact was a macOS app bundle. Once the UI is served by the binary itself, the bundle, the tap repository and the `TAP_TOKEN` secret only add a second distribution path to keep correct. One archive per platform, one manifest and one script is the whole surface, and the binary is the same executable the CI gates test.

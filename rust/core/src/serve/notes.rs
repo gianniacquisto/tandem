@@ -419,6 +419,7 @@ fn notes_response(
         assets: assets::urls(),
         body: askama::filters::Safe(body),
         stream: true,
+        sign_out: context.access.is_token(),
     })
     .render()
     {

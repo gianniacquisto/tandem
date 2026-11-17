@@ -33,6 +33,8 @@ sha2 = "0.11"
 # Ticket ids are UUIDs, and the
 # store keys its rows by that text. `v4` is the generator a new ticket
 # needs; parsing and rendering are the same crate's.
+# The browser session id: 32 bytes straight from the operating system's generator.
+getrandom = "0.4"
 uuid = { version = "1.29", features = ["v4"] }
 # `access(2)` is the writability probe `setup`'s `unwritable` warning makes, and
 # `getxattr` is `doctor`'s quarantine test. Both are libc calls the
@@ -55,7 +57,7 @@ tokio = { version = "1", features = [
 askama = "0.16"
 # The SSE route forwards a `tokio::sync::broadcast` channel as a stream; the
 # wrapper is the one adapter between the two, no server logic of its own.
-tokio-stream = { version = "0.1", features = ["sync"] }
+tokio-stream = { version = "0.1", features = ["sync", "time"] }
 # The board's forms are `application/x-www-form-urlencoded`; the dismiss link
 # is built with the same encoder the extractor reads.
 serde_urlencoded = "0.7"

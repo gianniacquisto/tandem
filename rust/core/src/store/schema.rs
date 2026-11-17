@@ -25,7 +25,7 @@ use super::{Actor, Result, StoreError, now, translate};
 
 /// The version this build writes and reads. Always the last version applied, so
 /// the constant is the migration count.
-pub const CURRENT_VERSION: i64 = 12;
+pub const CURRENT_VERSION: i64 = 13;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -96,6 +96,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: LABELS_VERSION,
         name: "lanes become labels",
         apply: version_twelve,
+    },
+    Migration {
+        version: BROWSER_SESSIONS_VERSION,
+        name: "the browser sessions",
+        apply: version_thirteen,
     },
 ];
 
@@ -578,6 +583,15 @@ CREATE INDEX IF NOT EXISTS tickets_label_position ON tickets (label, position);
 
 fn version_twelve(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(VERSION_TWELVE)
+}
+
+/// The version that adds the browser sessions (CUT-34, ADR 0049).
+pub(crate) const BROWSER_SESSIONS_VERSION: i64 = 13;
+
+/// Version 13: one table, `browser_sessions`, holding only a keyed digest and
+/// two timestamps. Not `sessions`: that name was a retired table, dropped at v11.
+fn version_thirteen(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(super::browser_sessions::VERSION_THIRTEEN)
 }
 
 fn version_seven(connection: &Connection) -> rusqlite::Result<()> {

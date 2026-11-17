@@ -30,13 +30,14 @@ name: Rust
 # cargo invocation. `push` keeps the same allowlist as `paths-ignore`, where a
 # skipped run costs nothing.
 #
-# No third-party action: `actions/checkout` and `actions/cache` are GitHub's
-# own (the cache behind the local `rust-setup` action), `rust-toolchain.toml`
-# pins the version and the two components, rustup ships on every hosted
-# runner, and nothing here reads a secret or prints an environment. The cargo
-# and target cache is saved only by a push to `main`; pull-request runs
-# restore it and never write, so a PR cannot poison the cache a later `main`
-# or tag run reads and does not fill the repository quota.
+# Every action is pinned to a full commit SHA (Dependabot keeps them current).
+# `actions/checkout` and `actions/cache` are GitHub's own (the cache behind the
+# local `rust-setup` action), `deny` is the one third-party action,
+# `rust-toolchain.toml` pins the version and the two components, rustup ships
+# on every hosted runner, and nothing here reads a secret or prints an
+# environment. The cargo and target cache is saved only by a push to `main`;
+# pull-request runs restore it and never write, so a PR cannot poison the cache
+# a later `main` or tag run reads and does not fill the repository quota.
 
 on:
   push:
@@ -45,6 +46,10 @@ on:
       - "Resources/**"
       - "LICENSE"
   pull_request:
+  # The advisory audit alone runs weekly, so a new advisory is found without a
+  # push; every other job skips on this event.
+  schedule:
+    - cron: "17 5 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -61,6 +66,7 @@ defaults:
 jobs:
   changes:
     name: changes
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     defaults:
@@ -70,13 +76,30 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
     steps:
       - name: Check out the merge commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 2
+          persist-credentials: false
 
       - name: Did the change touch what the gates read?
         id: filter
         run: echo "code=$(bash Scripts/changed-paths.sh Resources/ LICENSE)" >> "$GITHUB_OUTPUT"
+
+  deny:
+    name: deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: "Gate: cargo deny check (advisories, licences, bans, sources)"
+        uses: EmbarkStudios/cargo-deny-action@70f81531115945ba6eb6b941ec9d39d063438eb9 # v2
+        with:
+          manifest-path: rust/Cargo.toml
+          command: check advisories licenses bans sources
 
   fmt:
     name: fmt
@@ -85,7 +108,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out the source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up the Rust toolchain and cache
         id: setup
@@ -109,7 +134,9 @@ jobs:
         os: [macos-latest, ubuntu-latest, windows-latest]
     steps:
       - name: Check out the source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up the Rust toolchain and cache
         id: setup
@@ -124,7 +151,7 @@ jobs:
 
       - name: Save the cache (main pushes only)
         if: github.event_name == 'push' && steps.setup.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry/index
@@ -144,7 +171,9 @@ jobs:
         os: [macos-latest, ubuntu-latest, windows-latest]
     steps:
       - name: Check out the source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up the Rust toolchain and cache
         id: setup
@@ -181,7 +210,7 @@ jobs:
 
       - name: Save the cache (main pushes only)
         if: github.event_name == 'push' && steps.setup.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry/index
@@ -197,7 +226,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Check out the source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up the Rust toolchain and cache
         id: setup
@@ -249,7 +280,7 @@ jobs:
 
       - name: Save the cache (main pushes only)
         if: github.event_name == 'push' && steps.setup.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry/index

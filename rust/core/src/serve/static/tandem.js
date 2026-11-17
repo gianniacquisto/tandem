@@ -20,6 +20,32 @@
     return null;
   }
 
+  // A 401 on a background request means the session ended. Say so in place:
+  // no redirect and no reload, so an unsaved note edit or a half-typed comment
+  // stays on screen. The link opens the login page in a new tab, carrying the
+  // path this tab is on. `window.tandemSignedOut` is also what sse.js calls.
+  function signedOut() {
+    var banner = document.getElementById('signed-out-banner');
+    if (!banner) return;
+    var link = document.getElementById('signed-out-link');
+    if (link) {
+      link.setAttribute('href', '/login?next=' + encodeURIComponent(window.location.pathname + window.location.search));
+    }
+    banner.hidden = false;
+  }
+
+  function signedIn() {
+    var banner = document.getElementById('signed-out-banner');
+    if (banner) banner.hidden = true;
+  }
+
+  window.tandemSignedOut = signedOut;
+
+  document.addEventListener('htmx:responseError', function (event) {
+    var xhr = event.detail && event.detail.xhr;
+    if (xhr && xhr.status === 401) signedOut();
+  });
+
   function focusCard(id) {
     var card = document.querySelector('.ticket-card[data-ticket="' + id + '"]');
     if (card) card.focus();
@@ -73,10 +99,16 @@
       body: body.toString()
     })
       .then(function (response) {
+        if (response.status === 401) {
+          signedOut();
+          return null;
+        }
         if (!response.ok) throw new Error('the move answered ' + response.status);
+        signedIn();
         return response.text();
       })
       .then(function (html) {
+        if (html === null) return;
         var current = document.getElementById('board-root');
         if (!current) return;
         current.outerHTML = html;
@@ -231,8 +263,16 @@
       },
       body: new URLSearchParams(new FormData(form)).toString()
     })
-      .then(function (response) { return response.text(); })
+      .then(function (response) {
+        if (response.status === 401) {
+          signedOut();
+          return null;
+        }
+        signedIn();
+        return response.text();
+      })
       .then(function (html) {
+        if (html === null) return false;
         if (html.indexOf('class="conflict"') !== -1 || html.indexOf('class="banner"') !== -1) {
           var root = document.getElementById('notes-root');
           // Through htmx, so the new nodes are processed and the editor is
