@@ -19,13 +19,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
-use crate::bikeshed::{
-    Backlink, BikeshedNode, MovedNote, NodeKind, NoteContent, Recovery, WriteRecord,
-};
+use crate::bikeshed::{Backlink, BikeshedNode, MovedNote, NodeKind, NoteContent, WriteRecord};
 
-use crate::domain::{
-    Comment, InlineStyle, LabelDeletion, MarkdownBlock, MarkdownInline, Ticket, TicketBlock,
-};
+use crate::domain::{Comment, LabelDeletion, Ticket, TicketBlock};
 use crate::store::encode;
 
 /// One end of a dependency edge: the other ticket's id, ref, title and status.
@@ -405,143 +401,5 @@ impl BacklinkView {
             path: backlink.path.clone(),
             line: backlink.line.clone(),
         }
-    }
-}
-
-/// One orphaned temp a killed save left: the file, its size and its stamp.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RecoveryView {
-    pub file: String,
-    pub bytes: u64,
-    pub modified_at: String,
-}
-
-impl RecoveryView {
-    pub fn new(recovery: &Recovery) -> Self {
-        Self {
-            file: recovery.file.clone(),
-            bytes: recovery.bytes,
-            modified_at: stamp(recovery.modified_at),
-        }
-    }
-}
-
-/// One styled span of a ticket's markdown: the text, the markers it wears, and
-/// the destination a link pointed at. `styles` is a list because the domain
-/// keeps a set (`**bold with `code`**` is one run carrying both).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MarkdownInlineView {
-    pub text: String,
-    pub styles: Vec<String>,
-    pub link: Option<String>,
-}
-
-impl MarkdownInlineView {
-    pub fn new(run: &MarkdownInline) -> Self {
-        Self {
-            text: run.text.clone(),
-            styles: run
-                .styles
-                .iter()
-                .map(|style| {
-                    match style {
-                        InlineStyle::Bold => "bold",
-                        InlineStyle::Italic => "italic",
-                        InlineStyle::Strikethrough => "strikethrough",
-                        InlineStyle::Code => "code",
-                    }
-                    .to_string()
-                })
-                .collect(),
-            link: run.link.clone(),
-        }
-    }
-}
-
-/// One block of a ticket's markdown, ready to draw (`TicketMarkdown`, TAN-219).
-///
-/// The tag is `kind`, so a face switches on one field and never on the shape of
-/// the object. The parsing is the core's: the sheet sends the text it holds and
-/// draws what comes back, so the app and the CLI read one dialect.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "kind", rename_all = "camelCase")]
-pub enum MarkdownBlockView {
-    Heading {
-        level: usize,
-        runs: Vec<MarkdownInlineView>,
-    },
-    Paragraph {
-        runs: Vec<MarkdownInlineView>,
-    },
-    List {
-        ordered: bool,
-        start: i64,
-        items: Vec<Vec<MarkdownBlockView>>,
-    },
-    Code {
-        language: Option<String>,
-        text: String,
-    },
-    Quote {
-        blocks: Vec<MarkdownBlockView>,
-    },
-    Table {
-        header: Vec<String>,
-        rows: Vec<Vec<String>>,
-    },
-    Rule,
-    Task {
-        checked: bool,
-        blocks: Vec<MarkdownBlockView>,
-    },
-}
-
-impl MarkdownBlockView {
-    pub fn new(block: &MarkdownBlock) -> Self {
-        match block {
-            MarkdownBlock::Heading { level, runs } => Self::Heading {
-                level: *level,
-                runs: runs.iter().map(MarkdownInlineView::new).collect(),
-            },
-            MarkdownBlock::Paragraph { runs } => Self::Paragraph {
-                runs: runs.iter().map(MarkdownInlineView::new).collect(),
-            },
-            MarkdownBlock::List {
-                ordered,
-                start,
-                items,
-            } => Self::List {
-                ordered: *ordered,
-                start: *start,
-                items: items
-                    .iter()
-                    .map(|item| item.iter().map(Self::new).collect())
-                    .collect(),
-            },
-            MarkdownBlock::Code { language, text } => Self::Code {
-                language: language.clone(),
-                text: text.clone(),
-            },
-            // The wire has no alert kind: a callout reads as a quote there.
-            MarkdownBlock::Quote(blocks) | MarkdownBlock::Alert { blocks, .. } => Self::Quote {
-                blocks: blocks.iter().map(Self::new).collect(),
-            },
-            MarkdownBlock::Table { header, rows } => Self::Table {
-                header: header.clone(),
-                rows: rows.clone(),
-            },
-            MarkdownBlock::Rule => Self::Rule,
-            MarkdownBlock::Task { checked, blocks } => Self::Task {
-                checked: *checked,
-                blocks: blocks.iter().map(Self::new).collect(),
-            },
-        }
-    }
-
-    /// Every block of a document, in order.
-    pub fn blocks(blocks: &[MarkdownBlock]) -> Vec<Self> {
-        blocks.iter().map(Self::new).collect()
     }
 }

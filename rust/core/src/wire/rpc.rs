@@ -1,24 +1,19 @@
-//! The rpc protocol: the frames `tandem rpc` speaks on its stream.
+//! The method set behind the MCP door: the typed calls `tandem serve`'s
+//! `POST /mcp` dispatches (ADR 0047).
 //!
-//! The app's only door to the core (the UI
-//! contract), so the shapes are the contract and live here, beside the CLI's
-//! views, rather than in the process that reads stdin. One message set, one
-//! owner: every face reads these types, and a later HTTPS adapter carries the
-//! same frames over another transport.
+//! A tool call deserialises its arguments straight into a [`Method`]
+//! ([`Method::from_call`]) and [`crate::rpc::execute`] answers it with a
+//! [`Reply`] or a [`WireError`]: no frame is built, serialised or re-read on
+//! the way. The shapes live here, beside the CLI's views, so every face reads
+//! one set of types.
 //!
-//! Three rules the types encode:
+//! Two rules the types encode:
 //!
-//! - **A frame is one JSON object on one line.** A request carries `id`,
-//!   `method` and `params`; a response echoes `id` and carries `result` or
-//!   `error`; a change event carries `event` and the store's new `revision`.
 //! - **Every reply that carries a revision is a snapshot at that number.** There
-//!   is no paging: the human's board is cheap to send whole, and a revision
-//!   makes the copy correct. A read reply reads its rows and its number in one
-//!   read transaction; a write receipt reads the number inside the write's own
+//!   is no paging: a read reply reads its rows and its number in one read
+//!   transaction; a write receipt reads the number inside the write's own
 //!   transaction. **The reply's revision is authoritative**: the payload is the
-//!   store at exactly that number. An event is a hint to re-read, never a state
-//!   to patch in: it can name an intermediate revision (a migration is a commit
-//!   of its own) and it can be superseded before the client reads.
+//!   store at exactly that number.
 //! - **A method is a domain verb, never a row.** The names are the CLI's
 //!   grammar (`ticket.add` is `ticket add`), and [`METHODS`] is the table the
 //!   parity test walks: every write names a CLI verb, so no UI-only write can
@@ -29,24 +24,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::bikeshed::health::BikeshedHealth;
 use crate::wire::views::{
-    BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
-    NotePathView, NoteWriteView, RecoveryView, TicketDetail, TicketSummary,
+    BacklinkView, CommentView, NoteContentView, NoteMoveView, NoteNodeView, NotePathView,
+    NoteWriteView, TicketDetail, TicketSummary,
 };
 
-// MARK: - Requests
-
-/// One call: its correlation id and the method with its parameters.
-///
-/// The method is flattened into the frame, so the wire reads
-/// `{"id": 1, "method": "ticket.add", "params": {"title": "First"}}`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Request {
-    /// Echoed on the response. The client chooses it; the server never reuses
-    /// one.
-    pub id: u64,
-    #[serde(flatten)]
-    pub method: Method,
-}
+// MARK: - Methods
 
 /// Every method the wire speaks, generated together with [`METHODS`] so the
 /// table and the enum cannot drift.
@@ -72,6 +54,22 @@ macro_rules! methods {
         pub const METHODS: &[(&str, &str)] = &[ $( ($tag, $verb), )* ];
 
         impl Method {
+            /// The method a tool call names, with its arguments read straight
+            /// into the params type: no frame is serialised on the way.
+            pub fn from_call(tag: &str, params: serde_json::Value) -> Result<Self, WireError> {
+                if !METHODS.iter().any(|(known, _)| *known == tag) {
+                    return Err(WireError::method(format!(
+                        "the wire does not answer the method `{tag}`"
+                    )));
+                }
+                serde_json::from_value(serde_json::json!({"method": tag, "params": params}))
+                    .map_err(|error| {
+                        WireError::parse(format!(
+                            "the frame's params for `{tag}` are not readable: {error}"
+                        ))
+                    })
+            }
+
             /// The wire's spelling of this method.
             pub fn tag(&self) -> &'static str {
                 match self {
@@ -116,26 +114,14 @@ methods! {
     NoteRead: "note.read", NotePathParams, "";
     NoteHealth: "note.health", EmptyParams, "note links";
     NoteBacklinks: "note.backlinks", NotePathParams, "";
-    NoteRecoveries: "note.recoveries", EmptyParams, "";
     NoteWrite: "note.write", NoteWriteParams, "note write";
     NoteMove: "note.move", NoteMoveParams, "note move";
     NoteCreate: "note.create", NotePathParams, "note create";
     NoteCreateFolder: "note.createFolder", NotePathParams, "note create-folder";
     DoctorReport: "doctor.report", EmptyParams, "doctor";
-    // The ticket sheet's read: a body in, the blocks it draws out. The parsing
-    // is the core's (`TicketMarkdown`), so the app and the CLI cannot read one
-    // dialect two ways, and the message writes nothing: an empty verb.
-    MarkdownBlocks: "markdown.blocks", MarkdownBlocksParams, "";
 }
 
-/// `markdown.blocks`: the text to parse. Absent is no body, which draws nothing.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct MarkdownBlocksParams {
-    pub text: Option<String>,
-}
-
-/// A method that takes nothing. The frame still carries `"params": {}`, so a
+/// A method that takes nothing. The call still carries `{}` arguments, so a
 /// client always sends the same three keys.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EmptyParams {}
@@ -147,7 +133,7 @@ pub struct NotePathParams {
     pub path: Option<String>,
 }
 
-/// `note.write`: the path and its whole text. Both optional so the frame's
+/// `note.write`: the path and its whole text. Both optional so the call's
 /// empty-params round-trip still parses; a missing path is refused by the
 /// domain, never silently written.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -620,30 +606,6 @@ impl EmptyParams {
 
 // MARK: - Responses
 
-/// One answer: the request's id and exactly one of a result or an error.
-///
-/// A frame the server could not read as a request has no id to echo, so `id`
-/// is null there; every other answer carries the client's.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Response {
-    pub id: Option<u64>,
-    #[serde(flatten)]
-    pub outcome: Outcome,
-}
-
-/// A response's two halves. Serialized as `{"result": ...}` or
-/// `{"error": ...}`.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-// A response is built, serialized and dropped inside one frame's handling; the
-// size difference between a whole ticket and an error is a few hundred stack
-// bytes, not a box worth allocating per frame.
-#[allow(clippy::large_enum_variant)]
-pub enum Outcome {
-    Result(Reply),
-    Error(WireError),
-}
-
 /// What a method answers. Untagged: the client knows which method it called,
 /// so the payload needs no second tag on the wire.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -666,15 +628,6 @@ pub enum Reply {
     NoteMove(NoteMoveReply),
     NoteHealth(NoteHealthReply),
     NoteBacklinks(NoteBacklinksReply),
-    NoteRecoveries(NoteRecoveriesReply),
-    Markdown(MarkdownReply),
-}
-
-/// `markdown.blocks`: the document's blocks, top level first.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MarkdownReply {
-    pub blocks: Vec<MarkdownBlockView>,
 }
 
 /// `note.tree`: the folder and note rows, folders first as the core walks them.
@@ -718,13 +671,6 @@ pub struct NoteHealthReply {
 pub struct NoteBacklinksReply {
     pub path: String,
     pub backlinks: Vec<BacklinkView>,
-}
-
-/// `note.recoveries`: the orphaned temps a killed save left, if any.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NoteRecoveriesReply {
-    pub recoveries: Vec<RecoveryView>,
 }
 
 /// `ticket.list`: the full snapshot and the revision it is a snapshot of.
@@ -827,7 +773,7 @@ pub struct DoctorReply {
 
 /// What went wrong, in the words the client shows and the code it branches on.
 ///
-/// `parse` is a frame that is not a request; `method` is a method this build
+/// `parse` is arguments that do not read as the method's params; `method` is a method this build
 /// does not answer; `domain` is a refusal the domain made (an unknown id, an
 /// empty body); `store` is the store failing (a lock held past the window).
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -863,26 +809,5 @@ impl WireError {
             code: "store".to_string(),
             message: message.into(),
         }
-    }
-}
-
-// MARK: - Events
-
-/// The store moved, and a revision it reached.
-///
-/// Pushed when any writer commits: this stream's own write, the CLI in a
-/// terminal, another process under the lock. The event is a hint, not a state:
-/// it can name an intermediate revision (a migration commits on its own) and it
-/// can be superseded before the client reads. The client re-lists, and the
-/// listing's `revision` is authoritative (`TicketListReply`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "event", rename_all = "camelCase")]
-pub enum Event {
-    Changed { revision: i64 },
-}
-
-impl Event {
-    pub fn changed(revision: i64) -> Self {
-        Self::Changed { revision }
     }
 }

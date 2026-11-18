@@ -1,18 +1,17 @@
 //! The agent face as an MCP server, carried by `tandem serve`'s `POST /mcp`
 //! (ADR 0047, which retired the stdio `tandem mcp` child).
 //!
-//! The same door as [`crate::rpc`], one transport over: the streamable HTTP
-//! transport, JSON responses only and stateless (no `Mcp-Session-Id`, no SSE).
+//! The streamable HTTP transport over [`crate::rpc::execute`]: JSON responses
+//! only and stateless (no `Mcp-Session-Id`, no SSE).
 //! [`handle_mcp`] is the whole protocol minus the transport: one frame in, one
 //! frame out, or silence for a notification (which `serve` answers `202`).
 //! [`crate::rpc::MAX_FRAME`] bounds a frame. The five-method surface
 //! (`initialize`, `notifications/initialized`, `tools/list`, `tools/call`,
-//! `ping`) is hand-rolled on `serde_json`, the way `rpc` hand-rolls its frames:
-//! five methods are smaller than a dependency.
+//! `ping`) is hand-rolled on `serde_json`: five methods are smaller than a
+//! dependency.
 //!
-//! Dispatch shares the `rpc` door by construction: a `tools/call` builds the
-//! `(id, method, params)` frame and feeds
-//! [`crate::rpc::handle_in`](crate::rpc::handle_in), then renders the answer
+//! Dispatch is one typed call: a `tools/call` reads its arguments into a
+//! [`Method`] and hands it to [`crate::rpc::execute`], then renders the reply
 //! as the tool result. One frame in, one frame out; batches are refused.
 //!
 //! The protocol version is negotiated, not assumed. The pinned host (opencode
@@ -36,7 +35,7 @@ use std::time::Instant;
 use serde_json::{Value, json};
 
 use crate::env::Environment;
-use crate::rpc::handle_in;
+use crate::rpc::execute;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     CommentAddParams, EmptyParams, LabelAddParams, LabelDeleteParams, LabelMoveParams,
@@ -134,7 +133,7 @@ pub fn handle_mcp(
     frame: &str,
     store: &Store,
     actor: &Actor,
-    environment: &Environment,
+    _environment: &Environment,
 ) -> Option<String> {
     let value: Value = match serde_json::from_str(frame) {
         Ok(value) => value,
@@ -197,7 +196,7 @@ pub fn handle_mcp(
                 request.get("params"),
                 store,
                 actor,
-                environment,
+                _environment,
             ))
         }
         "" => {
@@ -298,8 +297,8 @@ fn health_block(store: &Store) -> Value {
     block
 }
 
-/// One `tools/call`: the named tool becomes the `(id, method, params)` frame
-/// the `rpc` door answers, and the answer becomes the tool result. A domain
+/// One `tools/call`: the named tool's arguments become a typed [`Method`], the
+/// `rpc` dispatch answers it, and the reply becomes the tool result. A domain
 /// refusal is a result with `isError`, in the domain's words; only a call the
 /// door cannot route is a JSON-RPC error.
 ///
@@ -309,7 +308,7 @@ fn call_frame(
     params: Option<&Value>,
     store: &Store,
     actor: &Actor,
-    environment: &Environment,
+    _environment: &Environment,
 ) -> String {
     let name = params
         .and_then(|params| params.get("name"))
@@ -331,34 +330,31 @@ fn call_frame(
             format!("Invalid arguments for tool: {name}"),
         );
     }
-    let frame = json!({"id": 1, "method": tool.method_tag, "params": arguments}).to_string();
     let started = Instant::now();
-    let answer: Value = serde_json::from_str(&handle_in(&frame, store, actor, environment))
-        .unwrap_or_else(|_| json!({"id": 1, "error": {"code": "parse", "message": "the answer is not readable"}}));
+    let outcome = Method::from_call(tool.method_tag, arguments)
+        .and_then(|method| execute(method, store, actor));
     let latency_ms = started.elapsed().as_millis() as u64;
-    if let Some(error) = answer.get("error") {
-        // The domain's error kind only, never its message: a message may quote
-        // ticket text.
-        let kind = error
-            .get("code")
-            .and_then(Value::as_str)
-            .unwrap_or("unknown");
-        tracing::info!(tool = tool.name, outcome = "error", kind = ?kind, latency_ms, "tools/call");
-        let message = error
-            .get("message")
-            .and_then(Value::as_str)
-            .unwrap_or("the call failed");
-        return result_frame(
-            id,
-            json!({"content": [{"type": "text", "text": message}], "isError": true}),
-        );
+    match outcome {
+        Ok(reply) => {
+            tracing::info!(tool = tool.name, outcome = "ok", latency_ms, "tools/call");
+            // Through a `Value` so the keys come out in the order the door has
+            // always answered them.
+            let result = serde_json::to_value(&reply).unwrap_or(Value::Null);
+            result_frame(
+                id,
+                json!({"content": [{"type": "text", "text": result.to_string()}]}),
+            )
+        }
+        Err(error) => {
+            // The domain's error kind only, never its message: a message may
+            // quote ticket text.
+            tracing::info!(tool = tool.name, outcome = "error", kind = ?error.code, latency_ms, "tools/call");
+            result_frame(
+                id,
+                json!({"content": [{"type": "text", "text": error.message}], "isError": true}),
+            )
+        }
     }
-    tracing::info!(tool = tool.name, outcome = "ok", latency_ms, "tools/call");
-    let result = answer.get("result").cloned().unwrap_or(Value::Null);
-    result_frame(
-        id,
-        json!({"content": [{"type": "text", "text": result.to_string()}]}),
-    )
 }
 
 /// A success frame.

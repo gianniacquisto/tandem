@@ -1,11 +1,12 @@
-//! The wire's protocol, without a process: one frame in, one frame out.
+//! The dispatch behind the MCP door, without a process: one typed method in,
+//! one reply or error out.
 //!
-//! These are the claims the pipe test cannot isolate:
+//! These are the claims the MCP suite cannot isolate:
 //!
-//! - every method in the wire's table round-trips through its tag, so the
-//!   TypeScript client and the Rust server speak one spelling;
-//! - a frame that is not a request answers an error and never a panic, because
-//!   stdin is untrusted input (the brief's `security` lens);
+//! - every method in the table reads from its tag, so the tool registry and the
+//!   dispatch speak one spelling;
+//! - arguments that do not read as the method's params, and a method the build
+//!   does not answer, are errors and never a panic;
 //! - the revision is the store's, it moves once per write that changes a row,
 //!   and a listing is a snapshot plus that number.
 
@@ -14,30 +15,39 @@ mod support;
 use serde_json::{Value, json};
 use support::Sandbox;
 use tandem_core::domain::DomainError;
+use tandem_core::rpc::execute;
 use tandem_core::store::Actor;
-use tandem_core::wire::rpc::{METHODS, Request};
+use tandem_core::wire::rpc::{METHODS, Method};
 
-fn frame(id: u64, method: &str, params: Value) -> String {
-    json!({"id": id, "method": method, "params": params}).to_string()
+/// One call: the tag and its arguments. The id is the test's own label, echoed
+/// back by [`handle`] so a case can read which call an answer belongs to.
+type Call = (u64, String, Value);
+
+fn frame(id: u64, method: &str, params: Value) -> Call {
+    (id, method.to_string(), params)
 }
 
-fn handle(store: &tandem_core::store::Store, frame: &str) -> Value {
-    handle_as(store, frame, &Actor::Human)
+fn handle(store: &tandem_core::store::Store, call: &Call) -> Value {
+    handle_as(store, call, &Actor::Human)
 }
 
-fn handle_as(store: &tandem_core::store::Store, frame: &str, actor: &Actor) -> Value {
-    let answer = tandem_core::rpc::handle(frame, store, actor);
-    serde_json::from_str(&answer)
-        .unwrap_or_else(|error| panic!("the answer is one JSON frame ({error}): {answer}"))
+/// Answer a call through the typed dispatch, as `{id, result}` or
+/// `{id, error: {code, message}}`.
+fn handle_as(store: &tandem_core::store::Store, call: &Call, actor: &Actor) -> Value {
+    let (id, tag, params) = call;
+    match Method::from_call(tag, params.clone()).and_then(|method| execute(method, store, actor)) {
+        Ok(reply) => json!({"id": id, "result": reply}),
+        Err(error) => json!({"id": id, "error": {"code": error.code, "message": error.message}}),
+    }
 }
 
 #[test]
 fn every_method_round_trips_through_its_wire_tag() {
     for (tag, verb) in METHODS {
-        let request: Request = serde_json::from_str(&frame(0, tag, json!({})))
-            .unwrap_or_else(|error| panic!("{tag} accepts an empty params object: {error}"));
-        assert_eq!(request.method.tag(), *tag, "{tag} round-trips");
-        assert_eq!(request.method.cli_verb(), *verb, "{tag} names its verb");
+        let method = Method::from_call(tag, json!({}))
+            .unwrap_or_else(|error| panic!("{tag} accepts an empty params object: {error:?}"));
+        assert_eq!(method.tag(), *tag, "{tag} round-trips");
+        assert_eq!(method.cli_verb(), *verb, "{tag} names its verb");
     }
 }
 
@@ -70,13 +80,7 @@ fn the_read_methods_without_a_cli_verb_are_named_here() {
         .collect();
     assert_eq!(
         reads,
-        vec![
-            "note.tree",
-            "note.read",
-            "note.backlinks",
-            "note.recoveries",
-            "markdown.blocks",
-        ],
+        vec!["note.tree", "note.read", "note.backlinks",],
         "a read with no CLI verb joins this list deliberately"
     );
 }
@@ -100,49 +104,6 @@ fn the_workflow_settings_and_add_from_note_methods_are_gone() {
         Vec::<&str>::new(),
         "workflow.*, settings.* and ticket.addFromNote left the wire"
     );
-}
-
-/// The ticket sheet draws a body as markdown (`TicketMarkdown`, TAN-219). The
-/// parsing stays the core's: the app sends the text it holds, and gets blocks
-/// back, so the sheet and the CLI cannot read one dialect two ways.
-#[test]
-fn a_markdown_read_answers_the_blocks_the_sheet_draws() {
-    let sandbox = Sandbox::new("rpc-markdown");
-    let store = sandbox.store();
-
-    let answer = handle(
-        &store,
-        &frame(
-            1,
-            "markdown.blocks",
-            json!({"text": "## Why\n\nA **bold** line.\n\n- one\n- two"}),
-        ),
-    );
-    assert_eq!(answer["id"], 1);
-    let blocks = answer["result"]["blocks"]
-        .as_array()
-        .expect("blocks is an array");
-    assert_eq!(
-        blocks[0],
-        json!({
-            "kind": "heading",
-            "level": 2,
-            "runs": [{"text": "Why", "styles": [], "link": null}],
-        })
-    );
-    assert_eq!(blocks[1]["kind"], "paragraph");
-    assert_eq!(
-        blocks[1]["runs"][1],
-        json!({"text": "bold", "styles": ["bold"], "link": null})
-    );
-    assert_eq!(blocks[2]["kind"], "list");
-    assert_eq!(blocks[2]["ordered"], false);
-    assert_eq!(blocks[2]["start"], 1);
-    assert_eq!(blocks[2]["items"][0][0]["runs"][0]["text"], "one");
-
-    // A body with nothing in it draws nothing: the sheet opens for writing.
-    let empty = handle(&store, &frame(2, "markdown.blocks", json!({"text": "   "})));
-    assert_eq!(empty["result"]["blocks"], json!([]));
 }
 
 #[test]
@@ -280,34 +241,19 @@ fn a_no_op_write_does_not_move_the_revision() {
 }
 
 #[test]
-fn a_frame_that_is_not_json_answers_a_parse_error() {
+fn arguments_that_do_not_read_and_an_unknown_method_are_errors() {
     let sandbox = Sandbox::new("rpc-parse");
     let store = sandbox.store();
 
-    let refused = handle(&store, "{ not json");
-    assert!(refused["id"].is_null());
-    assert_eq!(refused["error"]["code"], "parse");
+    let unreadable = handle(&store, &frame(1, "ticket.add", json!({"title": 7})));
+    assert_eq!(unreadable["error"]["code"], "parse");
     assert!(
-        !refused["error"]["message"]
+        unreadable["error"]["message"]
             .as_str()
             .unwrap_or("")
-            .is_empty()
+            .contains("ticket.add"),
+        "the error names the method whose params it could not read: {unreadable}"
     );
-
-    // The frame is not a request at all: no id, and the error still names the
-    // method slot so a client can tell the two parse failures apart.
-    let empty = handle(&store, "{}");
-    assert!(empty["id"].is_null());
-    assert_eq!(empty["error"]["code"], "parse");
-
-    let listed = handle(&store, &frame(3, "ticket.list", json!({})));
-    assert!(listed["result"].is_object(), "the core is still answering");
-}
-
-#[test]
-fn an_unknown_method_names_itself_and_echoes_the_id() {
-    let sandbox = Sandbox::new("rpc-method");
-    let store = sandbox.store();
 
     let refused = handle(&store, &frame(4, "ticket.bogus", json!({})));
     assert_eq!(refused["id"], 4);
@@ -319,6 +265,9 @@ fn an_unknown_method_names_itself_and_echoes_the_id() {
             .contains("ticket.bogus"),
         "the error names the method it could not answer: {refused}"
     );
+
+    let listed = handle(&store, &frame(3, "ticket.list", json!({})));
+    assert!(listed["result"].is_object(), "the core is still answering");
 }
 
 #[test]
@@ -542,23 +491,6 @@ fn the_note_tree_never_draws_a_hidden_entry() {
         !asked["result"]["nodes"].to_string().contains("capture.md"),
         "a hidden field is not a parameter any more: {asked}"
     );
-}
-
-#[test]
-fn the_note_recoveries_name_a_killed_writes_temp() {
-    let sandbox = Sandbox::new("rpc-note-recovery");
-    let store = sandbox.store();
-    let bikeshed = sandbox.root().join("home").join("bikeshed");
-    std::fs::create_dir_all(&bikeshed).expect("the vault is creatable");
-    let temp = bikeshed.join(".note-0000-0000-0000-000000000001.tmp");
-    std::fs::write(&temp, "partial bytes").expect("the temp is written");
-
-    let answer = handle(&store, &frame(1, "note.recoveries", json!({})));
-    assert_eq!(
-        answer["result"]["recoveries"][0]["file"],
-        ".note-0000-0000-0000-000000000001.tmp"
-    );
-    assert_eq!(answer["result"]["recoveries"][0]["bytes"], 13);
 }
 
 #[test]
