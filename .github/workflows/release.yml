@@ -56,7 +56,7 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
     steps:
       - name: Check out the merge commit
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
 
@@ -89,7 +89,7 @@ jobs:
             artifact: windows
     steps:
       - name: Check out the source
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -157,7 +157,7 @@ jobs:
 
       - name: Upload the archive
         if: needs.changes.outputs.code != 'false'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tandem-${{ matrix.artifact }}
           path: dist
@@ -186,7 +186,7 @@ jobs:
 
       - name: Check out the source
         if: needs.changes.outputs.code != 'false'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The release-body generator (Scripts/release-notes.sh) walks the tags
           # and the merge history between them; the default shallow, no-tags
@@ -205,7 +205,7 @@ jobs:
 
       - name: Download the three archives
         if: needs.changes.outputs.code != 'false'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: tandem-*
           merge-multiple: true
