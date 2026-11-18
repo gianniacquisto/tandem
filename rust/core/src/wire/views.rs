@@ -145,11 +145,7 @@ impl TicketSummary {
             blocks: ticket.blocks.iter().map(TicketBlockView::new).collect(),
             completed_at: ticket.completed_at.map(encode),
             created_at: encode(ticket.created_at),
-            description_length: ticket
-                .description
-                .as_deref()
-                .map(|body| body.chars().count())
-                .unwrap_or(0),
+            description_length: ticket.description_chars(),
             done: ticket.done(),
             id: ticket.id.to_string(),
             label: ticket.label.clone(),

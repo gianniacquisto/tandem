@@ -513,6 +513,7 @@ fn ticket_from_row(row: &TicketRow) -> Result<Ticket, DomainError> {
         status: Status::stored(&row.status),
         archived: row.archived,
         description: row.description.clone(),
+        description_length: row.description_length,
         assignee: row.assignee.clone(),
         origin: row.origin.clone(),
         label: row.label.clone(),
@@ -553,5 +554,6 @@ fn ticket_to_row(ticket: &Ticket, position: i64) -> TicketRow {
         position,
         created_at: encode(ticket.created_at),
         completed_at: ticket.completed_at.map(encode),
+        description_length: None,
     }
 }
