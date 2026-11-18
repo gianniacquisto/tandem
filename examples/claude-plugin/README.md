@@ -26,7 +26,16 @@ The Tandem connector, packaged as a Claude Code plugin. It gives Claude the Tand
 
 The plugin follows Tandem's releases, not `main`: the marketplace pins it to the latest release tag, so the skills and agents you get are the ones that shipped with the binary you installed.
 
-- **Turn on auto-update once.** Claude Code leaves it off for marketplaces outside Anthropic's own: run `/plugin`, open **Marketplaces**, select `tandem`, choose **Enable auto-update**. Without it, run `/plugin marketplace update tandem` after an upgrade.
+- **Update by hand after a release.** Refresh the marketplace, then reinstall the plugin:
+
+  ```
+  /plugin marketplace update tandem
+  /plugin uninstall tandem@tandem
+  /plugin install tandem@tandem
+  ```
+
+  The refresh alone is not enough: it moves Claude Code's copy of the marketplace to the new pin but leaves the installed plugin where it was (seen at v2.5.0). The reinstall fetches the plugin from the pinned tag. The new version loads in your next session.
+- **Or turn on auto-update.** Claude Code leaves it off for marketplaces outside Anthropic's own: run `/plugin`, open **Marketplaces**, select `tandem`, choose **Enable auto-update**. It runs once per session, within about ten minutes of your first message. Whether it moves an installed plugin to a new pin has not been observed yet; if the plugin stays behind, reinstall as above.
 - **The binary is yours to upgrade.** The plugin never touches it. At session start the plugin tells Claude when a newer release is out, with the reinstall command, and when the running `tandem serve` is a different version from the installed binary (restart it).
 - The release check asks GitHub at most once a day and caches the answer in `~/.cache/tandem/latest-release`. Set `TANDEM_NO_UPDATE_CHECK=1` to turn it off.
 
