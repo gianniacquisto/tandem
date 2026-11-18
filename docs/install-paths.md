@@ -22,27 +22,63 @@ The script asks GitHub for the newest tag, downloads this machine's archive, and
 
 It installs `tandem` into `~/.local/bin` and links `tandem-cli` to it, so both names reach the same binary. The destination moves with `TANDEM_INSTALL_DIR` or `--bin-dir <dir>`.
 
+## Install, upgrade, reinstall, uninstall
+
+The script has three modes. Each one only ever touches `tandem` and the `tandem-cli` link in the install directory, never `~/.tandem`.
+
+| you want | run | what happens |
+| --- | --- | --- |
+| first install | the one-liner above | installs the newest release; exits `0` |
+| upgrade, or repair a broken binary | the one-liner with `--reinstall` | replaces `tandem` with the newest release |
+| a specific version, including a downgrade | `--reinstall --version <x.y.z>` | replaces `tandem` with that tag |
+| remove | `--uninstall` | removes `tandem` and the `tandem-cli` link |
+
+**Running the installer again is not an upgrade.** If `tandem` is already in the install directory and `--reinstall` is not named, the script prints `already exists; leaving it alone`, downloads nothing, and exits `0`. That exit code is a success, so a script or a second paste of the one-liner looks like it worked while changing nothing. Name `--reinstall` to replace the binary.
+
+Flags reach the script through `sh -s --` when you pipe it from `curl`:
+
 ```sh
-sh install.sh --version 0.33.0          # a specific tag
+# upgrade to the newest release
+curl -fsSL https://github.com/gianniacquisto/tandem/releases/latest/download/install.sh | sh -s -- --reinstall
+
+# pin a version (also how you roll back)
+curl -fsSL https://github.com/gianniacquisto/tandem/releases/latest/download/install.sh | sh -s -- --reinstall --version 2.4.0
+
+# remove the binary and the link
+curl -fsSL https://github.com/gianniacquisto/tandem/releases/latest/download/install.sh | sh -s -- --uninstall
+```
+
+With the script saved to disk the same flags go straight on it:
+
+```sh
+sh install.sh --version 2.4.0           # a specific tag (first install)
 sh install.sh --bin-dir "$HOME/bin"     # another destination
 sh install.sh --reinstall               # replace an existing tandem
 sh install.sh --uninstall               # remove the binary and the link
 ```
 
-`--uninstall` never touches `~/.tandem`: the store and the notes are the user's data, not the binary's. An existing `tandem` is left alone unless `--reinstall` is named.
+Things to know around an upgrade:
+
+- `--bin-dir` (or `TANDEM_INSTALL_DIR`) must match on every run. The script looks only in that directory, so installing into a second directory leaves the first copy in place, and whichever comes first on PATH wins. `which -a tandem` lists every copy; `tandem --version` names the one you are running.
+- A running `tandem serve` keeps the old binary until you stop it and start it again. Restart it after an upgrade, or the board and your agents keep talking to the old build ([upgrading the store](store.md#upgrading)).
+- The newer binary migrates the store on its first write, and an older binary then refuses the store. A rollback with `--version` after that needs the backup, not just the old binary: see [the backup](store.md#the-backup).
+- `--uninstall` refuses to remove a `tandem` that does not identify itself as this project's binary, and says so.
+- Exit codes: `0` installed, removed, or left alone; `1` a refusal (checksum, platform, write failure, no latest release found); `2` a bad argument; a failed download, such as a version with no release, exits with curl's own nonzero code.
+
+`--uninstall` never touches `~/.tandem`: the store and the notes are the user's data, not the binary's. Delete the folder by hand only if you mean to lose them.
 
 On macOS the script strips `com.apple.quarantine` from the installed binary; an archive unpacked by hand needs `xattr -dr com.apple.quarantine <path>` once.
 
 ## Windows
 
-Download `tandem-<version>-windows-x86_64.zip`, extract `tandem.exe`, and put it on PATH. There is no PowerShell installer yet; the archive's digest is the same `SHA256SUMS` line, checked with `Get-FileHash -Algorithm SHA256`.
+`install.sh` does not run on Windows. Download `tandem-<version>-windows-x86_64.zip`, extract `tandem.exe`, and put it on PATH. To upgrade, stop `tandem serve` first (Windows will not overwrite a running executable), then replace `tandem.exe`. There is no PowerShell installer yet; the archive's digest is the same `SHA256SUMS` line, checked with `Get-FileHash -Algorithm SHA256`.
 
 ## Verify by hand
 
 ```sh
-curl -fsSLO https://github.com/gianniacquisto/tandem/releases/download/v0.33.0/tandem-0.33.0-darwin-arm64.tar.gz
-curl -fsSLO https://github.com/gianniacquisto/tandem/releases/download/v0.33.0/SHA256SUMS
-grep 'tandem-0.33.0-darwin-arm64.tar.gz$' SHA256SUMS | shasum -a 256 -c
+curl -fsSLO https://github.com/gianniacquisto/tandem/releases/download/v2.4.0/tandem-2.4.0-darwin-arm64.tar.gz
+curl -fsSLO https://github.com/gianniacquisto/tandem/releases/download/v2.4.0/SHA256SUMS
+grep 'tandem-2.4.0-darwin-arm64.tar.gz$' SHA256SUMS | shasum -a 256 -c
 ```
 
 The manifest covers every platform's archive and `install.sh`, so the `grep` narrows it to the file this machine downloaded before `shasum` checks it.
@@ -52,7 +88,7 @@ The manifest covers every platform's archive and `install.sh`, so the `grep` nar
 `SHA256SUMS` proves the download is whole; it does not say who built it. Each tag's three archives also carry a signed build-provenance attestation, made by the Release workflow with GitHub's `actions/attest-build-provenance`. With the GitHub CLI:
 
 ```sh
-gh attestation verify tandem-0.33.0-darwin-arm64.tar.gz --repo gianniacquisto/tandem
+gh attestation verify tandem-2.4.0-darwin-arm64.tar.gz --repo gianniacquisto/tandem
 ```
 
 A success names the workflow run and the commit that built the archive; a failure means the file did not come from this repository's release workflow. `install.sh` itself is not signed and does not run this check.

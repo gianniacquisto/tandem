@@ -65,7 +65,7 @@ A newer `tandem` may carry a newer schema. Reads never change the store. The fir
 
 After that, an older binary refuses the store: it does not read a schema newer than its own. So upgrade every copy on the machine, not just one, and restart `tandem serve`: a server started before the upgrade is still the old binary, and it is the one process the board and every agent session talk to.
 
-- If the board or your agent reports that the store is a schema this build does not read, an old `tandem` is still on PATH or an old `tandem serve` is still running. Run the installer again and restart the server.
+- If the board or your agent reports that the store is a schema this build does not read, an old `tandem` is still on PATH or an old `tandem serve` is still running. Replace the binary with the installer's `--reinstall` mode (running it without `--reinstall` leaves an existing install alone, see [installing](install-paths.md#install-upgrade-reinstall-uninstall)) and restart the server.
 - `tandem doctor` shows the schema version the store carries.
 - Running a build from a source checkout against your real home migrates it like any other newer binary. Point a development build at a throwaway home with `--home` unless you mean to upgrade.
 

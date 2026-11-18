@@ -2,7 +2,7 @@
 //! run through the Rust binary and compared, message for message, to the goldens
 //! the Swift binary captured before the cutover.
 //!
-//! `docs/port.md` (Parity, item 1). The Swift capture script retired with the
+//! the Swift-era parity check. The Swift capture script retired with the
 //! Swift tree, so the goldens are frozen: `Fixtures/goldens/<group>/<case>.json`
 //! is the contract, and a new shape is a deliberate manifest line plus a file
 //! written to the same shape. The comparison is on the result, not on a
@@ -275,7 +275,7 @@ fn replace_answer_day(text: &str, name: &str) -> String {
 }
 
 /// The store row's schema version is the one number the two stores do not
-/// share: the port's schema is its own (docs/port.md, Store), so a `v5` and a
+/// share: the port's schema is its own, so a `v5` and a
 /// `v3` are the same verdict. The rule names the number and compares everything
 /// around it; it fires only after the store row's `tandem.db` and its `v`,
 /// never on another `v<n>`.
