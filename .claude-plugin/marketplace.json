@@ -1,0 +1,24 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "tandem",
+  "description": "Tandem: a board and notes store you share with your AI coding agents.",
+  "owner": {
+    "name": "Gianni Acquisto",
+    "url": "https://github.com/gianniacquisto"
+  },
+  "plugins": [
+    {
+      "name": "tandem",
+      "source": {
+        "source": "git-subdir",
+        "url": "gianniacquisto/tandem",
+        "path": "examples",
+        "ref": "main"
+      },
+      "description": "Connects Claude to your local Tandem board: tickets, labels, projects and notes over MCP, plus the example skills and agents.",
+      "category": "productivity",
+      "homepage": "https://github.com/gianniacquisto/tandem",
+      "license": "MIT"
+    }
+  ]
+}

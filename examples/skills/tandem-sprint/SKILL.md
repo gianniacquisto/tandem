@@ -100,4 +100,4 @@ A drain that runs out of usage dies mid-ticket like any interrupted sprint: the 
 
 ## Release
 
-**A sprint cuts no release.** A release cuts only on the human's explicit words naming the version, and the sprint never prompts for one. When asked, follow `docs/releasing.md`: tag the landed `main` head, push the tag, watch the Release workflow publish, and generate the notes with `Scripts/release-notes.sh vX.Y.Z`.
+**A sprint cuts no release.** A release cuts only on the human's explicit words naming the version, and the sprint never prompts for one. When asked, follow `docs/releasing.md`: tag the landed `main` head, push the tag, watch the Release workflow publish, and generate the notes with `Scripts/release-notes.sh vX.Y.Z`. Once the tag is on origin, run `Scripts/pin-plugin.sh X.Y.Z` and land the one-line change to `.claude-plugin/marketplace.json` on `main` through a PR, so the Claude Code plugin moves to the release.

@@ -83,6 +83,7 @@ The status comes from each record's own header and from the "Prior records" list
 | 0048 | [Hosted Tandem is one `tandem serve` per workspace](0048-hosted-tandem-is-one-serve-per-workspace.md) | In force | The hosted product is the published binary, one serve and one home per workspace, behind a closed control plane that holds no content. Records the boundary; the siblings own their parts. |
 | 0049 | [A browser signs in to a token-guarded serve](0049-a-browser-signs-in-to-a-token-guarded-serve.md) | In force | A session cookie held by the instance, a keyed digest in `browser_sessions` (schema v13). Supersedes the browser-login half of 0047. |
 | 0050 | [The home leaves and arrives as one archive](0050-the-home-leaves-and-arrives-as-one-archive.md) | In force | `tandem export` and `tandem import`: one streamed `.tar.gz` of the store and the notes, no secrets, restored only into an empty home; one export permission check and a record line. Amends 0047's list of verbs with no remote form; 0018's "no restore verb" stands for the rolling `.bak`. |
+| 0051 | [A Claude Code plugin is the connector](0051-a-claude-code-plugin-is-the-connector.md) | In force | The repository is a Claude Code marketplace; the `tandem` plugin is `examples/` pinned to the latest release tag: it registers the MCP endpoint, ships the example skills and agents, and checks at session start that serve is up and current. No Tandem-owned installer (0045), serve still started by hand (0047). |
 
 ## Adding a record
 

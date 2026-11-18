@@ -1,0 +1,20 @@
+{
+  "name": "tandem",
+  "description": "Connects Claude to your local Tandem board: tickets, labels, projects and notes over MCP, plus the example skills and agents.",
+  "author": {
+    "name": "Gianni Acquisto",
+    "url": "https://github.com/gianniacquisto"
+  },
+  "homepage": "https://github.com/gianniacquisto/tandem",
+  "repository": "https://github.com/gianniacquisto/tandem",
+  "license": "MIT",
+  "keywords": [
+    "tickets",
+    "board",
+    "notes",
+    "memory",
+    "mcp"
+  ],
+  "mcpServers": "./claude-plugin/mcp.json",
+  "hooks": "./claude-plugin/hooks.json"
+}
