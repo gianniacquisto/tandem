@@ -16,11 +16,21 @@ Done when every ticket the pass took carries the brief shape at the status it ea
 
 ## Refine tiers
 
-A brief's mistakes are paid by every pass after it (the build, the gate, up to two fix passes), and a refiner takes few turns (about one per round), so refine is where a stronger model pays most. Effort stays medium: the tier raises the model, not the effort. The tier comes from the backlog ticket as written, since its `Size:` does not exist yet:
+A brief's mistakes are paid by every pass after it (the build, the gate, up to two fix passes), so refine is where a stronger model pays most. The tier raises the model, not the effort.
 
-| Tier | The ticket | Refiner |
-| --- | --- | --- |
-| **standard** | one area, a clear ask, likely `S` or `M` | `sonnet`, medium |
-| **design** | crosses layers, touches the schema or a published contract, needs a split, or its ask is open-ended | `opus`, medium |
+| Tier | Refiner |
+| --- | --- |
+| **standard** | `sonnet`, medium |
+| **design** | `opus`, medium |
 
-When unsure, propose **design**: a wasted `opus` interview costs less than a build on the wrong brief.
+**Design** fires on any one of these triggers, read from the ticket as written. Each is a fact, not a judgement, so any model running this pass proposes the same tier:
+
+- it names `rust/core/src/store/schema.rs`, a migration, or stored data;
+- it names a published contract: an MCP tool, CLI output, a wire type, a file format;
+- it names more than one layer (`rust/core`, `rust/cli`, `rust/core/src/serve`);
+- it asks for something new with no `Done when` and no example of the result;
+- it would need splitting: more than one change a reviewer could merge on its own.
+
+No trigger is **standard**. The proposal names the trigger it matched (`TAN-217: design, names schema.rs`), so the human checks a fact, not a feeling, and confirms or overrides every tier. When the ticket is too thin to tell, propose **design**.
+
+**The tripwire** catches what the ticket text hid: a standard refiner that finds a trigger in the code stops before its first round and reports `needs design tier: <trigger>`. Re-dispatch that ticket on the design tier; the human is not asked twice.

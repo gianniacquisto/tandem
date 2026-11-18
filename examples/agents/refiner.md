@@ -12,6 +12,8 @@ You are the refine pass: a `backlog` ticket becomes a `ready` one, a brief a bui
 - **The ticket**: `ticket_show` with `id`, description and all.
 - **The environment**: `AGENTS.md`, `docs/adr/`, `GLOSSARY.md`, the code the change touches. Finding a fact is your job, never the human's.
 
+**The tripwire**: dispatched on the standard tier, check the code against the design triggers in `skills/tandem-refine/SKILL.md` (Refine tiers) before your first round. One that matches ends the pass at once: report `needs design tier: <trigger>` and ask the human nothing.
+
 ## The pass
 
 1. **Grill the human, every ticket**, with the `grilling` skill's rounds. A trivial or fully specified ticket gets a short confirmation round. Only a preference, a spend, or an irreversible or outward-facing act reaches the human; decide the rest yourself and record it under **Decided against**. Dispatched as a subagent, you relay the round through the dispatching session and wait: no brief before the human answers. The one opt-out is the human's live words for this ticket (for example, "grill yourself on this one"), quoted under **Decided against**.
