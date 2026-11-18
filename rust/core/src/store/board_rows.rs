@@ -54,6 +54,9 @@ pub(crate) struct TicketRow {
     pub position: i64,
     pub created_at: String,
     pub completed_at: Option<String>,
+    /// The body's length in characters, set only by a listing read that leaves
+    /// `description` unread. `None` on every row a write reads or builds.
+    pub description_length: Option<usize>,
 }
 
 /// One dependency edge, both ends a ticket's UUID. Its row order is the order the
@@ -92,6 +95,22 @@ impl Store {
     /// a listing's rows and its number cannot be split by a concurrent writer.
     pub(crate) fn board_snapshot(&self) -> Result<Option<(BoardRows, i64)>> {
         self.read_snapshot(read_board)
+    }
+
+    /// The rows a listing needs and the revision they are a snapshot of, in one
+    /// read transaction: the tickets the scope selects (their bodies unread
+    /// unless `scope.with_description`), the far end of every edge they hold, and
+    /// the small label, project and edge tables. See [`read_listing`].
+    pub(crate) fn listing_snapshot(&self, scope: &ListScope) -> Result<Option<(BoardRows, i64)>> {
+        self.read_snapshot(|connection| read_listing(connection, scope))
+    }
+
+    /// The rows one ticket's detail needs and the revision they are a snapshot
+    /// of: the ticket whole, the far end of its edges, and the small tables. A key
+    /// that names nothing reads the whole board, so the domain raises the failure
+    /// it always raised. See [`read_one`].
+    pub(crate) fn one_snapshot(&self, key: &TicketKey) -> Result<Option<(BoardRows, i64)>> {
+        self.read_snapshot(|connection| read_one(connection, key))
     }
 
     /// One ticket's comments in append order, or `None` when there is no
@@ -216,40 +235,243 @@ fn projects(connection: &rusqlite::Connection) -> Result<Vec<ProjectRow>> {
 }
 
 fn tickets(connection: &rusqlite::Connection) -> Result<Vec<TicketRow>> {
+    Ok(select_tickets(connection, "", &[], Body::Whole)?
+        .into_iter()
+        .map(|(_, row)| row)
+        .collect())
+}
+
+/// How much of a ticket's body a read takes.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Body {
+    /// The text itself.
+    Whole,
+    /// Its length in characters, not the text: `length()` on TEXT counts
+    /// characters, as the domain's `chars().count()` does.
+    Length,
+    /// Neither: the row is wanted for its title and status alone.
+    Skipped,
+}
+
+/// Ticket rows with their `rowid`, in stored order, for the `WHERE` tail given.
+/// The one place the ticket columns are named, so the whole-board read and the
+/// narrowed ones cannot disagree on a column.
+fn select_tickets(
+    connection: &rusqlite::Connection,
+    tail: &str,
+    values: &[&dyn rusqlite::ToSql],
+    body: Body,
+) -> Result<Vec<(i64, TicketRow)>> {
     // The column is `lane` until the file migrates to v12 (see `label_table`).
     let column = if label_table(connection)? == "labels" {
         "label"
     } else {
         "lane"
     };
+    let (text, length) = match body {
+        Body::Whole => ("description", "NULL"),
+        Body::Length => ("NULL", "length(description)"),
+        Body::Skipped => ("NULL", "NULL"),
+    };
     let mut statement = connection
         .prepare(&format!(
-            "SELECT id, title, description, status, archived, {column}, number, origin,
-                    assignee, link, position, created_at, completed_at
-             FROM tickets ORDER BY position, rowid"
+            "SELECT id, title, {text}, status, archived, {column}, number, origin,
+                    assignee, link, position, created_at, completed_at, {length}, rowid
+             FROM tickets {tail} ORDER BY position, rowid"
         ))
         .map_err(|error| translate(error, connection))?;
     let rows = statement
-        .query_map([], |row| {
-            Ok(TicketRow {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                description: row.get(2)?,
-                status: row.get(3)?,
-                archived: row.get::<_, i64>(4)? != 0,
-                label: row.get(5)?,
-                number: row.get(6)?,
-                origin: row.get(7)?,
-                assignee: row.get(8)?,
-                link: row.get(9)?,
-                position: row.get(10)?,
-                created_at: row.get(11)?,
-                completed_at: row.get(12)?,
-            })
+        .query_map(values, |row| {
+            Ok((
+                row.get::<_, i64>(14)?,
+                TicketRow {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    description: row.get(2)?,
+                    status: row.get(3)?,
+                    archived: row.get::<_, i64>(4)? != 0,
+                    label: row.get(5)?,
+                    number: row.get(6)?,
+                    origin: row.get(7)?,
+                    assignee: row.get(8)?,
+                    link: row.get(9)?,
+                    position: row.get(10)?,
+                    created_at: row.get(11)?,
+                    completed_at: row.get(12)?,
+                    description_length: match body {
+                        Body::Length => Some(
+                            row.get::<_, Option<i64>>(13)?
+                                .map_or(0, |length| length.max(0) as usize),
+                        ),
+                        _ => None,
+                    },
+                },
+            ))
         })
         .map_err(|error| translate(error, connection))?;
     rows.collect::<std::result::Result<Vec<_>, _>>()
         .map_err(|error| translate(error, connection))
+}
+
+/// What a listing asks of the store: the axes SQL expresses exactly. The rest of
+/// the query (text, status, done, blocked) the domain applies to the rows read, so
+/// its semantics have one home.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ListScope {
+    /// `Some(false)` the live rows, `Some(true)` the archive, `None` both.
+    pub archived: Option<bool>,
+    /// `Some(None)` the default area, `Some(Some(name))` one label.
+    pub label: Option<Option<String>>,
+    /// `Some(None)` unassigned, `Some(Some(name))` one assignee.
+    pub assignee: Option<Option<String>>,
+    /// Read the bodies: only a text filter needs them.
+    pub with_description: bool,
+}
+
+/// The ticket a detail read names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TicketKey {
+    /// A UUID in its stored (hyphenated, lowercase) form.
+    Id(String),
+    /// A label key (upper case) and a number.
+    Ref { key: String, number: i64 },
+}
+
+/// A listing's rows. Only the tickets the scope selects are read, bodies unread
+/// (their length instead) unless the scope wants them, plus the far end of every
+/// edge those tickets hold (title and status, no body) so the blocked flag and
+/// the block lists are true. Archived rows are not read unless the scope asks for
+/// the archive, or an edge reaches one.
+///
+/// A row the narrowed read cannot make true alone (a labelled row with no number,
+/// or a label the label table does not carry: the shapes `Contents::from_rows`
+/// repairs by looking at the whole board) sends the read back to the whole board.
+fn read_listing(connection: &rusqlite::Connection, scope: &ListScope) -> Result<BoardRows> {
+    let column = if label_table(connection)? == "labels" {
+        "label"
+    } else {
+        "lane"
+    };
+    let mut clauses: Vec<String> = Vec::new();
+    let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+    if let Some(archived) = scope.archived {
+        clauses.push(format!("archived = ?{}", values.len() + 1));
+        values.push(Box::new(i64::from(archived)));
+    }
+    match &scope.label {
+        None => {}
+        Some(None) => clauses.push(format!("{column} IS NULL")),
+        Some(Some(name)) => {
+            clauses.push(format!("{column} = ?{}", values.len() + 1));
+            values.push(Box::new(name.clone()));
+        }
+    }
+    match &scope.assignee {
+        None => {}
+        Some(None) => clauses.push("assignee IS NULL".to_string()),
+        Some(Some(name)) => {
+            clauses.push(format!("assignee = ?{}", values.len() + 1));
+            values.push(Box::new(name.clone()));
+        }
+    }
+    let tail = if clauses.is_empty() {
+        String::new()
+    } else {
+        format!("WHERE {}", clauses.join(" AND "))
+    };
+    let refs: Vec<&dyn rusqlite::ToSql> = values.iter().map(|value| value.as_ref()).collect();
+    let body = if scope.with_description {
+        Body::Whole
+    } else {
+        Body::Length
+    };
+    let matched = select_tickets(connection, &tail, &refs, body)?;
+    narrowed(connection, matched)
+}
+
+/// One ticket's rows (see [`TicketKey`]); the whole board when the key names
+/// nothing, or names more than one row.
+fn read_one(connection: &rusqlite::Connection, key: &TicketKey) -> Result<BoardRows> {
+    let column = if label_table(connection)? == "labels" {
+        "label"
+    } else {
+        "lane"
+    };
+    let found = match key {
+        TicketKey::Id(id) => select_tickets(
+            connection,
+            "WHERE id = ?1",
+            &[id as &dyn rusqlite::ToSql],
+            Body::Whole,
+        )?,
+        TicketKey::Ref { key, number } => {
+            let table = label_table(connection)?;
+            select_tickets(
+                connection,
+                &format!(
+                    "WHERE number = ?2 AND {column} IN
+                        (SELECT name FROM {table} WHERE upper(key) = upper(?1))"
+                ),
+                &[key as &dyn rusqlite::ToSql, number as &dyn rusqlite::ToSql],
+                Body::Whole,
+            )?
+        }
+    };
+    if found.len() != 1 {
+        return read_board(connection);
+    }
+    narrowed(connection, found)
+}
+
+/// The rows a read of `matched` needs: the matched tickets, the far end of each
+/// edge they hold, and the small tables; or the whole board, when a matched or
+/// far-end row is one the whole board would repair.
+fn narrowed(
+    connection: &rusqlite::Connection,
+    matched: Vec<(i64, TicketRow)>,
+) -> Result<BoardRows> {
+    let labels = labels(connection)?;
+    let all_edges = edges(connection)?;
+    let held: std::collections::HashSet<&str> =
+        matched.iter().map(|(_, row)| row.id.as_str()).collect();
+    let touching: Vec<EdgeRow> = all_edges
+        .iter()
+        .filter(|edge| {
+            held.contains(edge.ticket_id.as_str()) || held.contains(edge.depends_on_id.as_str())
+        })
+        .cloned()
+        .collect();
+    let mut far: Vec<String> = Vec::new();
+    for edge in &touching {
+        for end in [&edge.ticket_id, &edge.depends_on_id] {
+            if !held.contains(end.as_str()) && !far.contains(end) {
+                far.push(end.clone());
+            }
+        }
+    }
+    let mut rows = matched;
+    for id in &far {
+        rows.extend(select_tickets(
+            connection,
+            "WHERE id = ?1",
+            &[id as &dyn rusqlite::ToSql],
+            Body::Skipped,
+        )?);
+    }
+    let needs_whole_board = rows.iter().any(|(_, row)| match &row.label {
+        None => false,
+        Some(name) => row.number.is_none() || !labels.iter().any(|label| &label.name == name),
+    });
+    if needs_whole_board {
+        return read_board(connection);
+    }
+    rows.sort_by_key(|(rowid, row)| (row.position, *rowid));
+    Ok(BoardRows {
+        labels,
+        tickets: rows.into_iter().map(|(_, row)| row).collect(),
+        edges: touching,
+        projects: projects(connection)?,
+    })
 }
 
 fn edges(connection: &rusqlite::Connection) -> Result<Vec<EdgeRow>> {

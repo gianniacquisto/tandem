@@ -152,6 +152,9 @@ pub struct Ticket {
     pub archived: bool,
     /// The body: markdown, trimmed at write time; an empty result means `None`.
     pub description: Option<String>,
+    /// The body's length in characters when a listing read left `description`
+    /// unread; `None` when the body is here and its length derives from it.
+    pub description_length: Option<usize>,
     /// The human (`human`), an agent's name, or nobody.
     pub assignee: Option<String>,
     /// Who filed the ticket. Written once, at add, and never changed (ADR 0020).
@@ -184,6 +187,7 @@ impl Ticket {
             status: Status::Backlog,
             archived: false,
             description: None,
+            description_length: None,
             assignee: None,
             origin: "human".to_string(),
             label: None,
@@ -201,6 +205,16 @@ impl Ticket {
     /// `status`. A ticket is done when it sits in Done.
     pub fn done(&self) -> bool {
         self.status.is_done()
+    }
+
+    /// The body's length in characters: what a list row reports in place of the
+    /// body, from the body when it is here and from the listing read when not.
+    pub fn description_chars(&self) -> usize {
+        self.description_length.unwrap_or_else(|| {
+            self.description
+                .as_deref()
+                .map_or(0, |body| body.chars().count())
+        })
     }
 
     /// Whether this ticket is waiting: any edge whose blocker is not done. Derived,

@@ -5,6 +5,8 @@
 //! human and another to an agent. It is a pure predicate: it never reorders (the
 //! stored order is the order) and it never writes.
 
+use crate::store::board_rows::ListScope;
+
 use super::error::DomainError;
 use super::text::TextMatch;
 use super::ticket::{Status, Ticket};
@@ -82,6 +84,31 @@ impl TicketQuery {
             assignee: AssigneeAxis::Named(HUMAN.to_string()),
             archived: Archived::Excluded,
             ..Self::default()
+        }
+    }
+
+    /// The axes the store can select on exactly, so a listing reads only the rows
+    /// that can match. Everything else (text, status, done, blocked) stays in
+    /// [`matches`](Self::matches), the one home of those semantics, applied to the
+    /// rows read.
+    pub(crate) fn scope(&self) -> ListScope {
+        ListScope {
+            archived: match self.archived {
+                Archived::Excluded => Some(false),
+                Archived::Only => Some(true),
+                Archived::Included => None,
+            },
+            label: match &self.label {
+                LabelAxis::Any => None,
+                LabelAxis::Unnamed => Some(None),
+                LabelAxis::Named(name) => Some(Some(name.clone())),
+            },
+            assignee: match &self.assignee {
+                AssigneeAxis::Any => None,
+                AssigneeAxis::Unassigned => Some(None),
+                AssigneeAxis::Named(name) => Some(Some(name.clone())),
+            },
+            with_description: self.normalized_text().is_some(),
         }
     }
 

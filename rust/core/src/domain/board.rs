@@ -18,6 +18,7 @@ use std::collections::{HashMap, HashSet};
 
 use uuid::Uuid;
 
+use crate::store::board_rows::TicketKey;
 use crate::store::{Actor, NewComment, Store};
 use crate::store::{decode, encode, unix_now};
 
@@ -28,7 +29,7 @@ use super::edit::Edit;
 use super::error::DomainError;
 use super::query::{Filter, HUMAN, TicketQuery};
 use super::ticket::{Status, Ticket};
-use super::ticket_label::{Label, LabelDeletion};
+use super::ticket_label::{Label, LabelDeletion, TicketRef};
 
 /// The fields a new ticket may be given, over the title it must have.
 #[derive(Debug, Clone)]
@@ -114,7 +115,7 @@ impl Board {
     /// transaction: a listing cannot pair rows with a number a writer moved
     /// between the two statements.
     pub fn list_snapshot(&self, query: &TicketQuery) -> Result<(Vec<Ticket>, i64), DomainError> {
-        let Some((rows, revision)) = self.store.board_snapshot()? else {
+        let Some((rows, revision)) = self.store.listing_snapshot(&query.scope())? else {
             return Ok((Vec::new(), 0));
         };
         let contents = Contents::from_rows(&rows)?;
@@ -148,7 +149,15 @@ impl Board {
     /// [`ticket`](Self::ticket) and the revision its row is a snapshot of, read
     /// in one transaction.
     pub fn ticket_snapshot(&self, handle: &str) -> Result<(Ticket, i64), DomainError> {
-        let Some((rows, revision)) = self.store.board_snapshot()? else {
+        let key = match uuid::Uuid::parse_str(handle) {
+            Ok(id) => Some(TicketKey::Id(id.to_string())),
+            Err(_) => TicketRef::parse(handle).map(|(key, number)| TicketKey::Ref { key, number }),
+        };
+        let snapshot = match key {
+            Some(key) => self.store.one_snapshot(&key)?,
+            None => self.store.board_snapshot()?,
+        };
+        let Some((rows, revision)) = snapshot else {
             return Err(DomainError::UnknownId {
                 id: handle.to_string(),
                 open: Vec::new(),
