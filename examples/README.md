@@ -12,6 +12,8 @@ Each tier works without the next.
 | 2. Workflow | `skills/tandem-refine`, `skills/tandem-build`, `skills/tandem-sprint`, `agents/builder.md`, `agents/refiner.md` | Refine, build and run a batch of tickets. |
 | 3. Review | `agents/reviewer.md`, `skills/review-lenses/`, `agents/{architect,security,ux}.md` | A merge gate read through named lenses. |
 
+Claude Code users can skip tier 1's setup: this folder is also a Claude Code plugin (`.claude-plugin/plugin.json`, `claude-plugin/`) that installs the connection and every skill and agent here in one step, pinned to the latest release (see `claude-plugin/README.md`).
+
 Also here: `skills/tandem-team` (a roster template: replace it with your own), `skills/tandem-tidy`, `skills/tandem-interview`, `skills/retro`, and general skills (`grilling`, `tdd`, `writing-for-agents`).
 
 ## Set up

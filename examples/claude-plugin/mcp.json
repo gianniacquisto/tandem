@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "tandem": {
+      "type": "http",
+      "url": "${TANDEM_URL:-http://127.0.0.1:7700}/mcp",
+      "headers": {
+        "X-Tandem-Agent": "${TANDEM_AGENT:-claude}"
+      }
+    }
+  }
+}

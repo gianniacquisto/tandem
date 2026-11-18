@@ -38,7 +38,16 @@ Your data lives in `~/.tandem`.
 
 `tandem serve` is also the MCP server: agents reach it at `POST http://127.0.0.1:7700/mcp`. Start it by hand and leave it running; an agent session has no Tandem tools while it is down. Register the endpoint with your agent host once.
 
-Claude Code (`~/.claude.json`, or a project's `.mcp.json`):
+**Claude Code, as a plugin.** This repository is a plugin marketplace. With `tandem serve` running:
+
+```
+/plugin marketplace add gianniacquisto/tandem
+/plugin install tandem@tandem
+```
+
+The plugin registers the endpoint below, adds the example skills and agents, follows Tandem's releases, and warns at session start when the server is down or out of date. Details: [examples/claude-plugin](examples/claude-plugin/README.md).
+
+**By hand.** Claude Code (`~/.claude.json`, or a project's `.mcp.json`):
 
 ```json
 {"mcpServers": {"tandem": {"type": "http", "url": "http://127.0.0.1:7700/mcp", "headers": {"X-Tandem-Agent": "claude"}}}}
