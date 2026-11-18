@@ -22,7 +22,11 @@ fn every_adr_has_an_index_row_and_a_status_line() {
     let mut problems = Vec::new();
     let mut seen = 0;
     for entry in fs::read_dir(&dir).expect("docs/adr lists") {
-        let name = entry.expect("entry").file_name().to_string_lossy().into_owned();
+        let name = entry
+            .expect("entry")
+            .file_name()
+            .to_string_lossy()
+            .into_owned();
         let numbered = name.len() > 5
             && name.ends_with(".md")
             && name.chars().take(4).all(|c| c.is_ascii_digit());
@@ -30,7 +34,10 @@ fn every_adr_has_an_index_row_and_a_status_line() {
             continue;
         }
         seen += 1;
-        if !index.lines().any(|l| l.starts_with("| ") && l.contains(&format!("]({name})"))) {
+        if !index
+            .lines()
+            .any(|l| l.starts_with("| ") && l.contains(&format!("]({name})")))
+        {
             problems.push(format!("{name}: no row in docs/adr/README.md"));
         }
         let text = fs::read_to_string(dir.join(&name)).expect("the record reads");
@@ -39,5 +46,9 @@ fn every_adr_has_an_index_row_and_a_status_line() {
         }
     }
     assert!(seen > 0, "no records found");
-    assert!(problems.is_empty(), "ADR index out of step:\n{}", problems.join("\n"));
+    assert!(
+        problems.is_empty(),
+        "ADR index out of step:\n{}",
+        problems.join("\n")
+    );
 }
