@@ -28,3 +28,7 @@ Decided 2026-11-18 (MCP-9).
 - A token-guarded or remote serve needs the hand-written registration: the plugin sends no `Authorization` header.
 - A source build of `tandem serve` reports the workspace version, not a release stamp, so the version check flags it as differing from an installed release.
 - Claude.ai's web connectors directory is out of scope: it needs a public HTTPS server with OAuth, which [ADR 0048](0048-hosted-tandem-is-one-serve-per-workspace.md)'s hosted Tandem may later provide.
+
+## Amendment, 2026-11-18: a refresh does not update the plugin
+
+At the v2.5.0 pin, `/plugin marketplace update tandem` moved the marketplace clone to the new `ref` but left the installed plugin on its old commit; `/plugin uninstall tandem@tandem` then `/plugin install tandem@tandem` fetched the tag (DOC-6). The consequence above that a user "runs `/plugin marketplace update tandem`" now reads: refreshes the marketplace and reinstalls the plugin. Whether auto-update moves an installed plugin to a new pin is not yet observed. The plugin README and the startup check's upgrade line say the same.

@@ -65,6 +65,6 @@ older=$(awk -v a="$installed" -v b="$latest" 'BEGIN {
   for (i = 1; i <= 3; i++) { if (x[i] + 0 < y[i] + 0) { print 1; exit } if (x[i] + 0 > y[i] + 0) { print 0; exit } }
   print 0 }')
 if [ "$older" = "1" ]; then
-  echo "Tandem: release $latest is out and $installed is installed. To upgrade: $install_cmd, then restart \`tandem serve\` and run /plugin marketplace update tandem so the plugin matches."
+  echo "Tandem: release $latest is out and $installed is installed. To upgrade: $install_cmd, then restart \`tandem serve\`, and bring the plugin to the same release: /plugin marketplace update tandem, then /plugin uninstall tandem@tandem and /plugin install tandem@tandem."
 fi
 exit 0
