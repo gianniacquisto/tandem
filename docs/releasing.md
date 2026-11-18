@@ -2,7 +2,7 @@
 
 One repo, one workflow: a tag's Release run builds and verifies three standalone `tandem` archives, then publishes them with `install.sh` and one `SHA256SUMS`. There is no Homebrew tap, no Electron package and no Node toolchain in the path (CUT-16, [ADR 0046](adr/0046-tandem-serve-and-single-binary-distribution.md)).
 
-A release cuts only on the human's explicit words naming the version: a batch close cuts no release by default and never prompts for one. The manual acts below live in [`examples/skills/tandem-sprint/SKILL.md`](../examples/skills/tandem-sprint/SKILL.md) §5 as the same steps, run by hand when the human asks.
+A release cuts only on the human's explicit words naming the version: a batch close cuts no release by default and never prompts for one. The manual acts below live in [`examples/skills/tandem-sprint/SKILL.md`](../examples/skills/tandem-sprint/SKILL.md) under Release as the same steps, run by hand when the human asks.
 
 To cut a release:
 

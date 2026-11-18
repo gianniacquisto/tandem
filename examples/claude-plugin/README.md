@@ -38,8 +38,8 @@ The plugin's root is `examples/`, so the examples load as they are, with no copy
 | --- | --- | --- |
 | Manifest | `examples/.claude-plugin/plugin.json` | Names the plugin and points at the two files below. |
 | MCP server | `claude-plugin/mcp.json` | Registers `tandem` as a streamable-HTTP server at `http://127.0.0.1:7700/mcp`. |
-| Skills | `examples/skills/` | Memory, refine, build, sprint, tidy, interview, retro, review lenses, the team roster and the general skills. |
-| Agents | `examples/agents/` | `builder`, `refiner`, `reviewer`, `architect`, `security`, `ux`. |
+| Skills | `examples/skills/` | Every skill there: refine, sprint, tidy, interview, retro, review lenses, the team roster and the general skills (`grilling`, `tdd`, `writing-for-agents`). |
+| Agents | `examples/agents/` | Every agent there: `scout`, `refiner`, `builder`, `reviewer`. |
 | Hook | `claude-plugin/hooks.json`, `claude-plugin/scripts/check-serve.sh` | On session start or resume: is the server up, does it match the binary, is a newer release out. Silent when all three are fine. |
 
 ## Settings
@@ -54,6 +54,7 @@ A token-guarded server (`TANDEM_TOKEN`) is not covered: the plugin sends no `Aut
 
 ## Notes
 
+- `examples/AGENTS.md` (tier 1, the memory instructions) is not loaded: a plugin cannot add to Claude's standing instructions. Copy it into `~/.claude/CLAUDE.md` or import it from there.
 - The plugin installs nothing into `~/.tandem` and does not start the server: `tandem serve` is started by hand (ADR 0047).
 - Plugin skills and agents are namespaced: `/tandem:tandem-sprint`, the `tandem:builder` subagent. If you also copied the examples into `~/.claude/skills` or `~/.claude/agents`, both copies load; remove the hand-copied ones to keep one.
 - The skills and agents encode this repository's own workflow (roster, statuses, review gate). `tandem-team` is a roster template: the plugin ships it as is, so edit a copy if your team differs.
