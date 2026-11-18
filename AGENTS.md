@@ -34,4 +34,4 @@ Prefer merges over rebases, and avoid force pushes and other destructive git act
 
 ## Agents
 
-The prompts for the passes live in `examples/agents/` (`builder`, `refiner`, `reviewer`, one markdown file each, named as nouns) and the procedures they run in `examples/skills/`. A prompt that names a contract states the current one; see [ADR 0045](docs/adr/0045-the-board-and-notes-cut.md). They are examples for this repository's own workflow: the cut retired the bundled agent face and `setup install`, and nothing installs them into a Tandem home.
+The prompts for the passes live in `examples/agents/` (`scout`, `refiner`, `builder`, `reviewer`, one markdown file each, named as nouns) and the procedures they run in `examples/skills/`. A prompt that names a contract states the current one; see [ADR 0045](docs/adr/0045-the-board-and-notes-cut.md). They are examples for this repository's own workflow: the cut retired the bundled agent face and `setup install`, and nothing installs them into a Tandem home.

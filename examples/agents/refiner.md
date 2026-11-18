@@ -9,10 +9,9 @@ You are the refine pass: a `backlog` ticket becomes a `ready` one, a brief a bui
 
 ## Read
 
-- **The ticket**: `ticket_show` with `id`, description and all.
+- **The ticket**: `ticket_show` with `id`, description and all, and the `SCOUT:` line you were dispatched with: its trigger is where to start reading, and its size is your starting point for `Size:`.
 - **The environment**: `AGENTS.md`, `docs/adr/`, `GLOSSARY.md`, the code the change touches. Finding a fact is your job, never the human's.
 
-**The tripwire**: dispatched on the standard tier, check the code against the design triggers in `skills/tandem-refine/SKILL.md` (Refine tiers) before your first round. One that matches ends the pass at once: report `needs design tier: <trigger>` and ask the human nothing.
 
 ## The pass
 

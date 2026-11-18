@@ -10,6 +10,7 @@ A template: the roster below is this repository's own. Replace it with your team
 | Role | Owns | Lives in |
 | --- | --- | --- |
 | `human` | the decisions: a preference, a spend, an irreversible or outward-facing act; the release | |
+| `scout` | one ticket's refine tier and size: reads, reports, writes nothing | `agents/scout.md` |
 | `refiner` | `backlog` to `ready` (or `on-hold`) | `agents/refiner.md`, run by `skills/tandem-refine/` |
 | `builder` | one ticket: branch, build, verify, PR, `in-review` | `agents/builder.md` |
 | `reviewer` | the merge gate: merge, escalate or block | `agents/reviewer.md` |
