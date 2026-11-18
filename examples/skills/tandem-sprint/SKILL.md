@@ -32,7 +32,7 @@ Read the board in one round: `ticket_list` for the label's open tickets, and `ti
 
 ## Model routing
 
-Every dispatch names its model and effort; a subagent never inherits the session's model. The brief's `Size:` line (written by the refiner) picks them. A drawn ticket with no `Size:` gets a `scout` (`agents/scout.md`, on `sonnet`, low effort) before its build, and the scout's size stands. The session running the sprint only follows this table, so it can run on any model, `haiku` included.
+Every dispatch names its model and effort; a subagent never inherits the session's model. The brief's `Size:` line (written by the refiner) picks them. A drawn ticket with no `Size:` takes the size from its latest `scout` comment, or, with none, gets a `scout` (`agents/scout.md`, on `sonnet`, low effort) before its build; the scout's size stands. The session running the sprint only follows this table, so it can run on any model, `haiku` included.
 
 | Size | The ticket | Builder | Reviewer |
 | --- | --- | --- | --- |
