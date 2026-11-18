@@ -304,6 +304,9 @@ pub enum Filter {
 }
 
 impl Filter {
+    /// Every wire value `parse` accepts, so the tool schema's enum cannot drift.
+    pub const WIRE_VALUES: [&'static str; 3] = ["open", "done", "all"];
+
     /// `None` (the CLI's `--filter` omitted) means the default filter, `open`.
     /// Any other value that is not one of the three cases is invalid.
     pub fn parse(raw: Option<&str>) -> Result<Self, DomainError> {

@@ -23,6 +23,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::bikeshed::health::BikeshedHealth;
+use crate::domain::query::Filter;
+use crate::domain::ticket::Status;
 use crate::wire::views::{
     BacklinkView, CommentView, NoteContentView, NoteMoveView, NoteNodeView, NotePathView,
     NoteWriteView, TicketDetail, TicketSummary,
@@ -300,11 +302,13 @@ pub struct ProjectDeleteParams {
 // MARK: - Input schemas
 
 /// One tool input's shape: an object whose properties are the params struct's
-/// fields. Every wire param is optional at parse (an absent field is the CLI's
-/// absent flag), so `required` is always empty; the registry test pins the
-/// property set against the struct's serialized fields, so a field added to
-/// one without the other fails the build.
-fn object_schema(properties: &[(&str, serde_json::Value)]) -> serde_json::Value {
+/// fields. Every wire param stays optional at parse (an absent field is the
+/// CLI's absent flag, and the domain refuses a missing one in its own words),
+/// so `required` is advertised only: it lets a host or model catch the gap
+/// before the round-trip and never changes what the door accepts. The registry
+/// test pins the property set against the struct's serialized fields and the
+/// `required` list against the params the domain refuses without.
+fn object_schema(properties: &[(&str, serde_json::Value)], required: &[&str]) -> serde_json::Value {
     let mut map = serde_json::Map::new();
     for (name, schema) in properties {
         map.insert((*name).to_string(), (*schema).clone());
@@ -312,8 +316,14 @@ fn object_schema(properties: &[(&str, serde_json::Value)]) -> serde_json::Value 
     serde_json::json!({
         "type": "object",
         "properties": serde_json::Value::Object(map),
-        "required": [],
+        "required": required,
     })
+}
+
+/// A string field whose value is one of a closed set, so a host can validate
+/// it and a model stops guessing.
+fn one_of(values: &[&str], description: &str) -> serde_json::Value {
+    serde_json::json!({"type": "string", "enum": values, "description": description})
 }
 
 /// A string field.
@@ -334,99 +344,123 @@ fn boolean(description: &str) -> serde_json::Value {
 impl TicketListParams {
     /// The tool input for `ticket.list`.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("filter", string("open (default), done or all")),
-            (
-                "text",
-                string("a case- and accent-insensitive substring of the title or description"),
-            ),
-            (
-                "status",
-                string("comma-separated values, e.g. ready,in-progress"),
-            ),
-            (
-                "assignee",
-                string("an exact name, self for your own, or \"\" for the unowned"),
-            ),
-            (
-                "label",
-                string("a label name, or \"\" for the default area"),
-            ),
-            (
-                "archived",
-                boolean("alone it is the archive; with a filter, the archive joins it"),
-            ),
-            (
-                "blocked",
-                boolean("only the tickets waiting on an open blocker"),
-            ),
-        ])
+        object_schema(
+            &[
+                (
+                    "filter",
+                    one_of(&Filter::WIRE_VALUES, "open (default), done or all"),
+                ),
+                (
+                    "text",
+                    string("a case- and accent-insensitive substring of the title or description"),
+                ),
+                (
+                    "status",
+                    string("comma-separated values, e.g. ready,in-progress"),
+                ),
+                (
+                    "assignee",
+                    string("an exact name, self for your own, or \"\" for the unowned"),
+                ),
+                (
+                    "label",
+                    string("a label name, or \"\" for the default area"),
+                ),
+                (
+                    "archived",
+                    boolean("alone it is the archive; with a filter, the archive joins it"),
+                ),
+                (
+                    "blocked",
+                    boolean("only the tickets waiting on an open blocker"),
+                ),
+            ],
+            &[],
+        )
     }
 }
 
 impl TicketIdParams {
     /// The tool input for the one-ticket reads and writes.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[(
-            "id",
-            string("the ticket's UUID or its ref (the label key and number, TAN-42)"),
-        )])
+        object_schema(
+            &[(
+                "id",
+                string("the ticket's UUID or its ref (the label key and number, TAN-42)"),
+            )],
+            &["id"],
+        )
     }
 }
 
 impl NotePathParams {
     /// The tool input for the note reads and creates that name one path.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[("path", string("the bikeshed-root-relative path"))])
+        object_schema(
+            &[("path", string("the bikeshed-root-relative path"))],
+            &["path"],
+        )
     }
 }
 
 impl NoteWriteParams {
     /// The tool input for `note.write`: the path and its whole text.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("path", string("the bikeshed-root-relative path")),
-            (
-                "text",
-                string("the note's whole text; a missing text is refused"),
-            ),
-        ])
+        object_schema(
+            &[
+                ("path", string("the bikeshed-root-relative path")),
+                (
+                    "text",
+                    string("the note's whole text; a missing text is refused"),
+                ),
+            ],
+            &["path", "text"],
+        )
     }
 }
 
 impl NoteMoveParams {
     /// The tool input for `note.move`: what moves, and the folder it lands in.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("path", string("the note or folder that moves")),
-            ("into", string("the folder it moves into; the root is \"\"")),
-        ])
+        object_schema(
+            &[
+                ("path", string("the note or folder that moves")),
+                ("into", string("the folder it moves into; the root is \"\"")),
+            ],
+            &["path", "into"],
+        )
     }
 }
 
 impl TicketAddParams {
     /// The tool input for `ticket.add`.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("title", string("one line, trimmed; required")),
-            (
-                "status",
-                string("backlog (default), on-hold, ready, in-progress, in-review or done"),
-            ),
-            (
-                "assignee",
-                string("a name, self to claim it, or human for the human"),
-            ),
-            ("label", string("the label; it must exist")),
-            (
-                "origin",
-                string("who filed it, self for this agent; written at add, never changed"),
-            ),
-            (
-                "description",
-                string("the markdown body; no flag is no body"),
-            ),
-        ])
+        object_schema(
+            &[
+                ("title", string("one line, trimmed; required")),
+                (
+                    "status",
+                    one_of(
+                        &Status::WIRE_VALUES,
+                        "backlog (default), on-hold, ready, in-progress, in-review or done",
+                    ),
+                ),
+                (
+                    "assignee",
+                    string("a name, self to claim it, or human for the human"),
+                ),
+                ("label", string("the label; it must exist")),
+                (
+                    "origin",
+                    string("who filed it, self for this agent; written at add, never changed"),
+                ),
+                (
+                    "description",
+                    string("the markdown body; no flag is no body"),
+                ),
+            ],
+            &["title"],
+        )
     }
 }
 
@@ -434,62 +468,77 @@ impl TicketSetParams {
     /// The tool input for `ticket.set`: every field named is changed in one
     /// write, everything unnamed is left alone.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("id", string("the ticket's UUID or its ref")),
-            (
-                "title",
-                string("one line, trimmed; an empty title is refused"),
-            ),
-            (
-                "status",
-                string("backlog, on-hold, ready, in-progress, in-review or done"),
-            ),
-            (
-                "assignee",
-                string("a name, self, human, or \"\" to clear the owner"),
-            ),
-            (
-                "description",
-                string("the markdown body, or \"\" to clear it"),
-            ),
-        ])
+        object_schema(
+            &[
+                ("id", string("the ticket's UUID or its ref")),
+                (
+                    "title",
+                    string("one line, trimmed; an empty title is refused"),
+                ),
+                (
+                    "status",
+                    one_of(
+                        &Status::WIRE_VALUES,
+                        "backlog, on-hold, ready, in-progress, in-review or done",
+                    ),
+                ),
+                (
+                    "assignee",
+                    string("a name, self, human, or \"\" to clear the owner"),
+                ),
+                (
+                    "description",
+                    string("the markdown body, or \"\" to clear it"),
+                ),
+            ],
+            &["id"],
+        )
     }
 }
 
 impl TicketMoveParams {
     /// The tool input for `ticket.move`.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("id", string("the ticket's UUID or its ref")),
-            (
-                "label",
-                string("the label, or \"\" for the default area; it must exist"),
-            ),
-            ("index", integer("0-based within the label; omit to append")),
-        ])
+        object_schema(
+            &[
+                ("id", string("the ticket's UUID or its ref")),
+                (
+                    "label",
+                    string("the label, or \"\" for the default area; it must exist"),
+                ),
+                ("index", integer("0-based within the label; omit to append")),
+            ],
+            &["id"],
+        )
     }
 }
 
 impl TicketBlockParams {
     /// The tool input for `ticket.block`.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("id", string("the ticket's UUID or its ref")),
-            ("on", string("the ticket it waits on, as a UUID or a ref")),
-        ])
+        object_schema(
+            &[
+                ("id", string("the ticket's UUID or its ref")),
+                ("on", string("the ticket it waits on, as a UUID or a ref")),
+            ],
+            &["id", "on"],
+        )
     }
 }
 
 impl TicketUnblockParams {
     /// The tool input for `ticket.unblock`: every edge when `on` is absent.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("id", string("the ticket's UUID or its ref")),
-            (
-                "on",
-                string("the edge to remove; omit to remove every edge the ticket has"),
-            ),
-        ])
+        object_schema(
+            &[
+                ("id", string("the ticket's UUID or its ref")),
+                (
+                    "on",
+                    string("the edge to remove; omit to remove every edge the ticket has"),
+                ),
+            ],
+            &["id"],
+        )
     }
 }
 
@@ -497,58 +546,70 @@ impl TicketArchiveParams {
     /// The tool input for `ticket.archive`: one ticket, or the done ones when
     /// `id` is absent.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[(
-            "id",
-            string("the ticket's UUID or its ref; omit to archive every done ticket"),
-        )])
+        object_schema(
+            &[(
+                "id",
+                string("the ticket's UUID or its ref; omit to archive every done ticket"),
+            )],
+            &[],
+        )
     }
 }
 
 impl CommentAddParams {
     /// The tool input for `ticket.comment.add`.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("id", string("the ticket's UUID or its ref")),
-            ("author", string("who signs the line; write the role out")),
-            ("body", string("the comment body; an empty body is refused")),
-        ])
+        object_schema(
+            &[
+                ("id", string("the ticket's UUID or its ref")),
+                ("author", string("who signs the line; write the role out")),
+                ("body", string("the comment body; an empty body is refused")),
+            ],
+            &["id", "body"],
+        )
     }
 }
 
 impl LabelAddParams {
     /// The tool input for `label.add`.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("name", string("the label name; required")),
-            (
-                "abbr",
-                string("the ref key it issues; omit for the first three alphanumerics"),
-            ),
-            (
-                "project",
-                string(
-                    "the parent project; omit to create or reuse the project named for the label",
+        object_schema(
+            &[
+                ("name", string("the label name; required")),
+                (
+                    "abbr",
+                    string("the ref key it issues; omit for the first three alphanumerics"),
                 ),
-            ),
-        ])
+                (
+                    "project",
+                    string(
+                        "the parent project; omit to create or reuse the project named for the label",
+                    ),
+                ),
+            ],
+            &["name"],
+        )
     }
 }
 
 impl LabelRenameParams {
     /// The tool input for `label.rename`.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("from", string("the label's current name")),
-            ("to", string("the new name")),
-            (
-                "abbr",
-                string("the new ref key; refused once the key is frozen"),
-            ),
-            (
-                "project",
-                string("the new parent project; omit to keep the label's project"),
-            ),
-        ])
+        object_schema(
+            &[
+                ("from", string("the label's current name")),
+                ("to", string("the new name")),
+                (
+                    "abbr",
+                    string("the new ref key; refused once the key is frozen"),
+                ),
+                (
+                    "project",
+                    string("the new parent project; omit to keep the label's project"),
+                ),
+            ],
+            &["from", "to"],
+        )
     }
 }
 
@@ -556,51 +617,57 @@ impl LabelDeleteParams {
     /// The tool input for `label.delete`: members fall back to the default
     /// area, never deleted.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[("name", string("the label name"))])
+        object_schema(&[("name", string("the label name"))], &["name"])
     }
 }
 
 impl LabelMoveParams {
     /// The tool input for `label.move`: reorder the declared labels.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("name", string("the label name")),
-            (
-                "index",
-                integer("0-based in the label list; omit to append"),
-            ),
-        ])
+        object_schema(
+            &[
+                ("name", string("the label name")),
+                (
+                    "index",
+                    integer("0-based in the label list; omit to append"),
+                ),
+            ],
+            &["name"],
+        )
     }
 }
 
 impl ProjectAddParams {
     /// The tool input for `project.add`.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[("name", string("the project name; required"))])
+        object_schema(&[("name", string("the project name; required"))], &["name"])
     }
 }
 
 impl ProjectRenameParams {
     /// The tool input for `project.rename`: labels move with the project.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[
-            ("from", string("the project's current name")),
-            ("to", string("the new name")),
-        ])
+        object_schema(
+            &[
+                ("from", string("the project's current name")),
+                ("to", string("the new name")),
+            ],
+            &["from", "to"],
+        )
     }
 }
 
 impl ProjectDeleteParams {
     /// The tool input for `project.delete`: refused while labels belong.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[("name", string("the project name"))])
+        object_schema(&[("name", string("the project name"))], &["name"])
     }
 }
 
 impl EmptyParams {
     /// The tool input for the methods that take nothing.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[])
+        object_schema(&[], &[])
     }
 }
 
