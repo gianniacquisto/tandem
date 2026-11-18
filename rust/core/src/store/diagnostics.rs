@@ -30,6 +30,12 @@ pub enum Health {
     Legacy {
         version: i64,
     },
+    /// A database written by a newer build: the repair is to upgrade this
+    /// binary, not to restore or import.
+    Newer {
+        store: i64,
+        build: i64,
+    },
 }
 
 /// The rolling backup beside the store (ADR 0018): absent, or its age.
@@ -48,6 +54,7 @@ impl Store {
             Ok(Some((open, done))) => Health::Counts { open, done },
             Ok(None) => Health::Absent,
             Err(super::StoreError::Legacy { version }) => Health::Legacy { version },
+            Err(super::StoreError::Newer { store, build }) => Health::Newer { store, build },
             Err(_) => Health::Unreadable,
         }
     }

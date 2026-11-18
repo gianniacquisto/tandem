@@ -101,6 +101,27 @@ fn a_schema_this_build_does_not_read_is_red() {
 }
 
 #[test]
+fn a_store_newer_than_the_build_is_red_and_says_upgrade() {
+    let mut facts = facts();
+    facts.store_health = Health::Newer {
+        store: 14,
+        build: 13,
+    };
+    let report = report(&facts);
+    assert!(!report.ok);
+    let store = check(&report, "store");
+    assert!(!store.ok);
+    assert!(store.detail.contains("schema v14"), "{}", store.detail);
+    assert!(store.detail.contains("reads up to v13"), "{}", store.detail);
+    assert!(
+        store.detail.contains("Upgrade this binary"),
+        "{}",
+        store.detail
+    );
+    assert!(!store.detail.contains("ADR"), "{}", store.detail);
+}
+
+#[test]
 fn an_unreadable_store_is_red_and_names_the_recovery() {
     let mut facts = facts();
     facts.store_health = Health::Unreadable;

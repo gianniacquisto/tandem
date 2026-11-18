@@ -634,3 +634,72 @@ fn a_hostile_tool_name_is_logged_escaped_on_one_line() {
     );
     assert!(text.contains("\\n"), "the newline is escaped: {text}");
 }
+
+/// A store the build wrote, then stamped one version past what it reads: the
+/// shape a newer binary leaves after its first write.
+fn stamp_newer(database: &std::path::Path) -> i64 {
+    let ahead = tandem_core::store::CURRENT_VERSION + 1;
+    let connection = rusqlite::Connection::open(database).expect("the store opens");
+    connection
+        .execute(
+            "INSERT INTO schema_migrations (version, applied_at, author) VALUES (?1, '2026-11-16T00:00:00Z', 'newer')",
+            [ahead],
+        )
+        .expect("the newer version is stamped");
+    ahead
+}
+
+#[test]
+fn a_newer_store_is_named_in_the_health_block_and_on_a_tool_call() {
+    let sandbox = Sandbox::new("mcp-newer-store");
+    sandbox
+        .board()
+        .add("seed", tandem_core::domain::AddTicket::default())
+        .expect("the seed lands");
+    let ahead = stamp_newer(&sandbox.database());
+    let store = sandbox.store();
+
+    let asked = call(
+        &store,
+        &request(
+            json!(1),
+            "initialize",
+            json!({"protocolVersion": "2025-03-26"}),
+        ),
+    )
+    .expect("initialize answers");
+    let health = &asked["result"]["health"];
+    assert_eq!(health["storeOk"], false, "{health}");
+    let detail = health["storeDetail"]
+        .as_str()
+        .expect("storeDetail is a string");
+    assert!(detail.contains(&format!("schema v{ahead}")), "{detail}");
+    assert!(detail.contains("Upgrade this binary"), "{detail}");
+    assert!(!detail.contains("ADR"), "{detail}");
+
+    let listed = call(&store, &tool_call(2, "ticket_list", json!({}))).expect("the call answers");
+    assert_eq!(listed["result"]["isError"], true, "{listed}");
+    let text = listed["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or("");
+    assert!(text.contains("written by a newer Tandem"), "{text}");
+    assert!(!text.contains("Try again"), "{text}");
+}
+
+#[test]
+fn a_store_at_the_build_version_has_no_store_detail() {
+    let sandbox = Sandbox::new("mcp-current-store");
+    let asked = call(
+        &sandbox.store(),
+        &request(
+            json!(1),
+            "initialize",
+            json!({"protocolVersion": "2025-03-26"}),
+        ),
+    )
+    .expect("initialize answers");
+    assert!(
+        asked["result"]["health"]["storeDetail"].is_null(),
+        "{asked}"
+    );
+}

@@ -2,6 +2,7 @@
 //! shell each of them draws in.
 
 use super::*;
+use crate::domain::DomainError;
 
 /// The board's visible set: every non-archived ticket, narrowed by the project
 /// focus, the label, the assignee and the title search.
@@ -259,11 +260,23 @@ fn render_board(
     notice: Option<String>,
 ) -> Result<BoardView, String> {
     let board = context.board();
-    let (tickets, revision) = board
-        .list_snapshot(&TicketQuery::default())
-        .map_err(|error| error.message())?;
-    let (projects, _) = board.projects_snapshot().map_err(|error| error.message())?;
-    let (labels, _) = board.labels_snapshot().map_err(|error| error.message())?;
+    // A store newer than this build cannot be read: draw an empty board with
+    // the upgrade words as the page notice, not a bare 500. Any other failure
+    // stays the 500 it was.
+    let (tickets, revision, notice) = match board.list_snapshot(&TicketQuery::default()) {
+        Ok((tickets, revision)) => (tickets, revision, notice),
+        Err(error @ DomainError::StoreNewer(_)) => (Vec::new(), 0, Some(error.message())),
+        Err(error) => return Err(error.message()),
+    };
+    let refused = notice.is_some() && revision == 0 && tickets.is_empty();
+    let (projects, _) = match board.projects_snapshot() {
+        Err(DomainError::StoreNewer(_)) if refused => (Vec::new(), 0),
+        other => other.map_err(|error| error.message())?,
+    };
+    let (labels, _) = match board.labels_snapshot() {
+        Err(DomainError::StoreNewer(_)) if refused => (Vec::new(), 0),
+        other => other.map_err(|error| error.message())?,
+    };
     let shown = visible(&tickets, &projects, filters);
     let shown = shown.unwrap_or_default();
 
