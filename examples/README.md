@@ -8,11 +8,23 @@ Each tier works without the next.
 
 | Tier | Copy | You get |
 | --- | --- | --- |
-| 1. Memory | `AGENTS.md`, `skills/tandem-memory/` | Orient from the board and notes, leave a handoff comment. The smallest set: about 4 KB of instructions. |
-| 2. Workflow | `skills/tandem-refine`, `skills/tandem-build`, `skills/tandem-sprint`, `agents/builder.md`, `agents/refiner.md` | Refine, build and run a batch of tickets. |
-| 3. Review | `agents/reviewer.md`, `skills/review-lenses/`, `agents/{architect,security,ux}.md` | A merge gate read through named lenses. |
+| 1. Memory | `AGENTS.md` | Orient from the board and notes, leave a handoff comment. |
+| 2. Workflow | `skills/tandem-refine`, `skills/tandem-sprint`, `agents/refiner.md`, `agents/builder.md`, `agents/reviewer.md`, `skills/review-lenses/` | Refine tickets, then run sprints that build, gate and merge them. |
+| 3. Upkeep | `skills/tandem-tidy`, `skills/tandem-interview`, `skills/retro` | Board hygiene, the human's decision queue, retrospectives. |
 
-Also here: `skills/tandem-team` (a roster template: replace it with your own), `skills/tandem-tidy`, `skills/tandem-interview`, `skills/retro`, and general skills (`grilling`, `tdd`, `writing-for-agents`).
+Also here: `skills/tandem-team` (a roster template: replace it with your own) and general skills (`grilling`, `tdd`, `writing-for-agents`).
+
+## The workflow
+
+```
+backlog --refine--> ready --sprint: build--> in-review --gate--> done
+                      ^                         |
+                      +--- slipped              +--> in-review, assignee human (escalated)
+```
+
+- **Refine** (`skills/tandem-refine`, human present): grill, write the brief, set `ready` or park `on-hold`.
+- **Sprint** (`skills/tandem-sprint`): draw up to five `ready` tickets, build each in its own worktree, gate each through the reviewer, fix at most twice, and close with every ticket landed, escalated, slipped or parked.
+- **Upkeep**, on the human's word: tidy the board, clear the human's queue with an interview, run a retro on a session.
 
 ## Set up
 

@@ -3,51 +3,27 @@ name: retro
 description: "Run a retrospective on a named coding session, on manual invocation only, and file what it finds as backlog tickets in the label of the project the pass ran in. Reach for it when the user asks for a retro or a retrospective, or asks what a pass should have done differently."
 ---
 
-Derived from the `retro` skill in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, see `NOTICE.txt`), adapted: the output is tickets on the board, not a report to the user.
+Derived from the `retro` skill in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, see `NOTICE.txt`), adapted: the output is tickets on the board.
 
-You suggest improvements to the coding agent's **environment** — the files, skills, checks and tools it works with — not to the code it wrote. You produce no code and no design; a ticket is the whole output. A retro that files nothing is a valid result; one that files a ticket nobody can act on is not.
-
-## Manual only
-
-Retro is a manual standalone pass on a named coding session transcript: the human invokes it (after a sprint, refine, or build pass alike) and decides each time. Nothing ever auto-dispatches or prompts it: not the batch close, not any other skill, not any pass's end.
+You find improvements to the coding agent's **environment** (the files, skills, checks and tools it works with), not to the code it wrote. A ticket is the whole output; filing nothing is a valid result. Only the human invokes a retro: no skill or pass ends by running one.
 
 ## Read
 
-1. Load `writing-for-agents` for the writing style.
-2. **The session** — `opencode api session.list` finds the id; `opencode api session.message.list --param sessionID=<id> --param limit=20 --param order=asc` returns the transcript, tool calls included, oldest first, and it pages by cursor: re-call with `--param cursor=<cursor.next from the last response>` until a page comes back empty. The envelope is `{"cursor": {...}, "data": [...]}`: the page is `.data`, the next call's cursor is `.cursor.next`, and the empty-page probe is `jq '.data|length'`, never `.messages|length`, which reads 0 on a full page. `--param order=asc` goes on the first call only. No offset parameter exists — cursor paging is the only way past the first page, so a single call returns the newest slice only. Two read rules: do not pass `order` on continuation pages (order + cursor together returns zero messages, silently); redirect each response to a file and `jq` the file — the CLI byte-truncates a large body when stdout is a pipe (observed cuts at 262144–393216 on a 516 KB body, mid-string, silently). The transcript is the primary source: a finding without a message in it is a guess. No session named → the most recently updated session that is not this one, and say which you took. A read that comes back cut anyway — `jq: parse error: Unfinished string at EOF`, or a page that fails to parse — means the view is partial: say so, and re-read the missing pages smaller, rather than presenting what you read as the whole transcript.
-3. **The environment**: the repo's `AGENTS.md`, its check command, and the board (`ticket_list` with `filter` all). A finding an open ticket already covers is a duplicate, not a finding.
-
-## Categories
-
-- **Navigation** — hard-to-find files, hidden dependencies, a missing pointer.
-- **Automated checks** — a mistake a check could have caught. Read the repo's own check command first: a check that exists but sits unwired is the finding, and a repo with no guardrail at all is itself a finding.
-- **Coding standards** — a rule for the reviewer to enforce; a mechanical violation deserves a deterministic check over a written rule.
-- **Tool economy** — expensive tool calls that could be streamlined.
-- **No-ops** — steering instructions that change nothing.
-- **Information access** — information the agent never had.
+1. **The session transcript**, the primary source: a finding with no message behind it is a guess. No session named means the most recently updated one that is not this one; say which you took. On opencode: `opencode api session.list` for the id, then `opencode api session.message.list --param sessionID=<id> --param limit=20 --param order=asc`, redirected to a file and read with `jq` (a piped body is silently truncated). Page with `--param cursor=<.cursor.next>` until `jq '.data|length'` is 0, and drop `order` on continuation pages (order with cursor returns nothing). A page that fails to parse means a partial read: re-read it smaller and say so.
+2. **The environment**: the repo's `AGENTS.md`, its check command, and `ticket_list` with `filter` all. A finding an open ticket covers is a duplicate.
 
 ## The bar
 
-A finding becomes a ticket only with all three: an **anchor** (a `file:line`, an exact command, or a message that shows the cost), a **named cost**, and an **owner's next move**. Not filed: generic advice, a preference with no cost, a restatement of an existing rule, a duplicate, your own run. More than five tickets usually means the bar was lowered — pick the clearest costs and say what you dropped.
-
-## The label
-
-A finding files into the project's label, on the sprint skill's one derivation (`skills/tandem-sprint/SKILL.md`, §2): the basename of the directory the retro'd session ran in, with the `-wt-<slug>` suffix stripped, matched case-insensitively against `label_list` and written back in the label's stored spelling. A Tandem session, in the checkout or in a worktree beside it, files into `Tandem`: the worktree slug resolves to the project. A finding about another project's files belongs to that project and files into its label.
-
-`Retro` is the label for the findings that **belong to no project**: a cost with no repo to fix it, a harness rule no project owns. It is not the default, and a finding about a project's own skills, agents or checks never lands there. The origin is separate from the label and never moves: `origin` is `retro`, so the board still says a retro filed it.
+A finding is filed only with all three: an **anchor** (a `file:line`, an exact command, or a message that shows the cost), a **named cost**, and **the owner's next move**. Look for: hard-to-find files, a mistake a check could have caught (a check that exists but is unwired is the finding), a rule the reviewer should enforce, expensive tool calls, instructions that changed nothing, and information the agent never had. More than five findings usually means the bar slipped: keep the clearest and say what you dropped.
 
 ## File
 
-Dedupe first with `ticket_list`, `filter` all and `text` set to the title words. Then derive `label` (the project's, above; `Retro` when no project owns the finding), call `label_add` with `name` Retro only when filing into `Retro` and that label is missing, and file with `ticket_add` carrying `title` ("Retro: <one sentence, specific enough to disagree with>"), `status` backlog, `origin` retro, `label`, and the body in `description`.
-
-The `origin` is `retro`, never assigned. The body is a **filing**, not a brief: `Filed by retro (<session id>).`, then **Why** (the anchor and the cost), **What**, **Done when** (only if the session makes it visible). No options, no recommendation. Never edit the code the session touched: a retro that fixes what it finds cannot report honestly on it.
+The label is the project's, derived as the sprint derives it (`skills/tandem-sprint/SKILL.md`, §1) from the directory the session ran in; `Retro` only for a finding no project owns. Dedupe with `ticket_list` and `text`, then `ticket_add` with `title` "Retro: <one specific sentence>", `status` backlog, `origin` retro, `label`, and a `description` of `Filed by retro (<session id>).` then **Why** (anchor and cost), **What**, and **Done when** where the session shows it. No options, no recommendation, and no edit to the code the session touched.
 
 ## Report
 
 ```
-RETRO: <session id> — <n> filed, <m> skipped — <the finding that matters most>
+RETRO: <session id>: <n> filed, <m> skipped: <the finding that matters most>
 ```
 
-Then the ticket list, one line each, and each skipped candidate with its reason. No questions to the caller, no offer to fix.
-
-The retro's record is the tickets it filed and its final reply: end the reply with the `RETRO:` line as the summary. File a ticket for every finding; nothing is kept in a capture layer.
+Then one line per ticket filed and per candidate skipped, with its reason.
