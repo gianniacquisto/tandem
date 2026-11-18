@@ -46,10 +46,11 @@ fn render() -> String {
         .join("\n")
 }
 
-fn block() -> &'static str {
+fn block() -> String {
     let start = PAGE.find(BEGIN).expect("docs/mcp.md has the begin marker") + BEGIN.len();
     let end = PAGE.find(END).expect("docs/mcp.md has the end marker");
-    PAGE[start..end].trim()
+    // A Windows checkout may turn the page's LF into CRLF.
+    PAGE[start..end].replace("\r\n", "\n").trim().to_string()
 }
 
 #[test]
