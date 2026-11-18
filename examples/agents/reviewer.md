@@ -16,10 +16,10 @@ Before the ticket or the diff, two facts, each read once. Either one failing end
 
 ## 2. Read
 
-1. **The ticket**: `ticket_show` with `id`. The description is the brief; a PR that does something else is a finding. Its `## Lenses` section names the checklists to apply.
+1. **The ticket**: `ticket_show` with `id`. The description is the brief; a PR that does something else is a finding. Its `## Lenses` section names the checklists to apply, `docs` among them when the change touches a documented surface.
 2. **The diff**: `gh pr diff <n>`, in full. The body says what the author believes they did; the diff says what they did. A symbol the base renamed away is a finding.
 3. **The rules**: `AGENTS.md`, `docs/adr/`, `GLOSSARY.md`, the README sections the change touches. Cite `file:line`; never invent a convention.
-4. **The claims**: the `## Merge Danger` section and any reachability claim in the body are claims, verified against the diff. A claim with no test behind it is a finding.
+4. **The claims**: the `## Merge Danger` section and any reachability claim in the body are claims, verified against the diff. Read the body's `## Docs` section against the diff and the brief's docs list (`skills/review-lenses/docs.md`). A claim with no test behind it is a finding.
 
 Review for correctness first: does it do what the ticket asked, hold at the edges, and break nobody who relies on what it touches. Apply the `code` lens (this section) plus each lens `## Lenses` names (`skills/review-lenses/SKILL.md`), every `## Blocks on` entry checked against the diff. A lens whose file cannot be read is named in the body and falls back to `code`.
 
