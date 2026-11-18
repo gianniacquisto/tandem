@@ -20,6 +20,26 @@
         "ok": true
       },
       {
+        "detail": "no store yet, nothing to check",
+        "name": "integrity",
+        "ok": true
+      },
+      {
+        "detail": "no store yet, nothing to check",
+        "name": "references",
+        "ok": true
+      },
+      {
+        "detail": "no store yet",
+        "name": "space",
+        "ok": true
+      },
+      {
+        "detail": "binary 2.0.0; this build writes schema v13; no store yet",
+        "name": "versions",
+        "ok": true
+      },
+      {
         "detail": "<tandem-home>/bikeshed \u2014 a file, not a folder; pick a folder",
         "name": "bikeshed",
         "ok": false

@@ -18,6 +18,26 @@
         "ok": true
       },
       {
+        "detail": "quick_check ok",
+        "name": "integrity",
+        "ok": true
+      },
+      {
+        "detail": "0 orphan comments, 0 orphan edges, 0 tickets naming a missing label",
+        "name": "references",
+        "ok": true
+      },
+      {
+        "detail": "27 page(s) of 4096 bytes, 10 free; WAL 0 bytes; over 20 percent of the file is free pages, which `sqlite3 tandem.db VACUUM` reclaims while `tandem serve` is stopped",
+        "name": "space",
+        "ok": true
+      },
+      {
+        "detail": "binary 2.0.0; this build writes schema v13; store schema v13",
+        "name": "versions",
+        "ok": true
+      },
+      {
         "detail": "<tandem-home>/bikeshed \u2014 3 note(s)",
         "name": "bikeshed",
         "ok": true

@@ -57,7 +57,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
 
 pub use browser_sessions::{SESSION_IDLE_SECONDS, SESSION_TOUCH_SECONDS, SessionCheck};
-pub use diagnostics::{BackupHealth, Health};
+pub use diagnostics::{BackupHealth, Health, Pages, References, StoreInspection};
 #[cfg(test)]
 pub(crate) use export::inspect_with;
 pub use export::{ExportCopy, Inspection, Refusal, inspect_unpacked};

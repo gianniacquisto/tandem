@@ -10,7 +10,9 @@ use std::time::Duration;
 
 use tandem_core::diagnostics::{self, CHECK_NAMES, Facts, age_text, report};
 use tandem_core::domain::{AddTicket, Board};
-use tandem_core::store::{BackupHealth, Health, Home, HomeSource, Store};
+use tandem_core::store::{
+    BackupHealth, Health, Home, HomeSource, Pages, References, Store, StoreInspection,
+};
 
 fn facts() -> Facts {
     Facts {
@@ -22,6 +24,18 @@ fn facts() -> Facts {
         store_backup: BackupHealth::Present {
             age: Duration::from_secs(300),
         },
+        store_revision: 7,
+        store_inspection: Some(StoreInspection {
+            integrity: Ok(()),
+            references: Some(References::default()),
+            pages: Some(Pages {
+                page_count: 100,
+                free_pages: 5,
+                page_size: 4096,
+            }),
+            wal_bytes: 0,
+        }),
+        binary_version: "1.2.3".to_string(),
         bikeshed_path: PathBuf::from("/Users/tester/.tandem-dev/bikeshed"),
         bikeshed_note_count: 4,
         bikeshed_is_file: false,
@@ -49,7 +63,7 @@ fn temp_store(name: &str) -> (Store, PathBuf) {
 }
 
 #[test]
-fn a_healthy_machine_passes_with_the_three_checks_in_the_pinned_order() {
+fn a_healthy_machine_passes_with_every_check_in_the_pinned_order() {
     let report = report(&facts());
     assert!(report.ok);
     assert_eq!(
@@ -60,7 +74,18 @@ fn a_healthy_machine_passes_with_the_three_checks_in_the_pinned_order() {
             .collect::<Vec<_>>(),
         CHECK_NAMES
     );
-    assert_eq!(CHECK_NAMES, ["home", "store", "bikeshed"]);
+    assert_eq!(
+        CHECK_NAMES,
+        [
+            "home",
+            "store",
+            "integrity",
+            "references",
+            "space",
+            "versions",
+            "bikeshed"
+        ]
+    );
     assert!(report.checks.iter().all(|check| check.ok));
     assert_eq!(
         check(&report, "home").detail,
@@ -81,6 +106,8 @@ fn an_absent_store_is_a_valid_empty_setup() {
     let mut facts = facts();
     facts.store_health = Health::Absent;
     facts.store_version = None;
+    facts.store_inspection = None;
+    facts.store_revision = 0;
     let report = report(&facts);
     assert!(report.ok);
     assert_eq!(
@@ -216,5 +243,140 @@ fn gathering_names_a_bikeshed_path_that_is_a_file() {
 
     assert!(!report.ok);
     assert!(!check(&report, "bikeshed").ok);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn an_absent_backup_on_a_written_store_is_red_and_says_what_to_do() {
+    let mut facts = facts();
+    facts.store_backup = BackupHealth::Absent;
+    let report = report(&facts);
+    assert!(!report.ok);
+    let store = check(&report, "store");
+    assert!(!store.ok);
+    assert!(store.detail.contains("no backup yet"), "{}", store.detail);
+    assert!(store.detail.contains("revision 7"), "{}", store.detail);
+    facts.store_revision = 2;
+    assert!(check(&diagnostics::report(&facts), "store").ok);
+}
+
+#[test]
+fn the_versions_row_carries_the_three_versions_and_a_newer_store_says_upgrade() {
+    let mut facts = facts();
+    let row = check(&report(&facts), "versions").clone();
+    assert!(row.ok);
+    assert!(row.detail.contains("binary 1.2.3"), "{}", row.detail);
+    assert!(
+        row.detail.contains("this build writes schema v"),
+        "{}",
+        row.detail
+    );
+    assert!(row.detail.contains("store schema v1"), "{}", row.detail);
+    facts.store_health = Health::Newer {
+        store: 99,
+        build: 13,
+    };
+    let report = report(&facts);
+    let row = check(&report, "versions");
+    assert!(!row.ok);
+    assert!(row.detail.contains("store schema v99"), "{}", row.detail);
+    assert!(row.detail.contains("upgrade"), "{}", row.detail);
+}
+
+#[test]
+fn free_pages_past_a_fifth_of_the_file_add_a_hint_and_stay_green() {
+    let mut facts = facts();
+    facts.store_inspection.as_mut().unwrap().pages = Some(Pages {
+        page_count: 100,
+        free_pages: 25,
+        page_size: 4096,
+    });
+    let report = report(&facts);
+    let space = check(&report, "space");
+    assert!(space.ok);
+    assert!(space.detail.contains("VACUUM"), "{}", space.detail);
+    assert!(
+        !check(&diagnostics::report(&self::facts()), "space")
+            .detail
+            .contains("VACUUM")
+    );
+}
+
+/// A store with one ticket, so the schema and a row exist.
+fn written_store(name: &str) -> (Store, PathBuf) {
+    let (store, root) = temp_store(name);
+    Board::new(store.clone())
+        .add("Doctor probe", AddTicket::default())
+        .expect("the ticket is written");
+    (store, root)
+}
+
+#[test]
+fn an_orphan_comment_and_an_orphan_edge_are_named_with_their_counts() {
+    let (store, root) = written_store("orphans");
+    let connection = rusqlite::Connection::open(store.database()).unwrap();
+    connection
+        .execute(
+            "INSERT INTO comments (ticket_id, author, at, body) VALUES ('ghost-1', 'a', 't', 'secret text')",
+            [],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO ticket_dependencies (ticket_id, depends_on_id, author) VALUES ('ghost-2', 'ghost-3', 'a')",
+            [],
+        )
+        .unwrap();
+    drop(connection);
+
+    let report = report(&diagnostics::gather(store.home()));
+
+    assert!(!report.ok);
+    let refs = check(&report, "references");
+    assert!(!refs.ok);
+    assert!(
+        refs.detail.contains("1 orphan comment(s) (first: ghost-1)"),
+        "{}",
+        refs.detail
+    );
+    assert!(
+        refs.detail
+            .contains("1 orphan edge(s) (first: ghost-2 -> ghost-3)"),
+        "{}",
+        refs.detail
+    );
+    assert!(!refs.detail.contains("secret text"));
+    assert!(check(&report, "integrity").ok);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_corrupt_page_turns_the_integrity_row_red() {
+    let (store, root) = written_store("corrupt");
+    // Fold the WAL into the file, then scribble over a data page.
+    let connection = rusqlite::Connection::open(store.database()).unwrap();
+    connection
+        .execute_batch("PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode = DELETE;")
+        .unwrap();
+    drop(connection);
+    let mut bytes = std::fs::read(store.database()).unwrap();
+    let page = 4096;
+    for chunk in bytes.chunks_mut(page).skip(1) {
+        for byte in chunk.iter_mut().take(64) {
+            *byte = 0xFF;
+        }
+    }
+    std::fs::write(store.database(), bytes).unwrap();
+
+    let report = report(&diagnostics::gather(store.home()));
+
+    assert!(!report.ok);
+    let integrity = check(&report, "integrity");
+    assert!(!integrity.ok, "{}", integrity.detail);
+    assert!(
+        integrity.detail.contains("tandem.db.bak"),
+        "{}",
+        integrity.detail
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
