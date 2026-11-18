@@ -1,5 +1,7 @@
 # The bikeshed editor is a block editor over the markdown file
 
+> **Status:** Superseded by 0045. See [the index](README.md).
+
 The bikeshed editor is a CodeMirror 6 inline live preview: raw markdown whose markers are hidden as the caret moves away, with tables, frontmatter and code tagged out of flow ([ADR 0012](0012-editor-formatting.md)). The human has decided the editor becomes a **block editor over the same `.md` file**. The file stays the source of truth and the editor never becomes one: every top-level block keeps its exact source bytes, and only a block the human actually edited is rendered from its model. Constructs the model does not cover, such as frontmatter, tables, raw HTML, display math and footnotes, survive by construction rather than by a per-construct case.
 
 Decided 2026-11-09 (UI-17 built the model, the save seam and the round-trip gate).

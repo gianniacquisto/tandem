@@ -1,5 +1,7 @@
 # Ticket dependencies: an edge in the store, a derived block on the ticket, and prose only for the reason
 
+> **Status:** In force, amended by 0045. See [the index](README.md).
+
 Three open tickets carried their dependency in a hand-written `## Blocked on` section (TAN-217, TAN-224, RET-58), and the board could not read any of them. The sprint's batch draw selects on status alone, so a blocked ticket was drawn and then discovered to be blocked by reading the whole body (RET-58 recorded the cost as one slot and four full reads), and the other end is worse: a section that names a person, a release or a credential has no ticket id at all, so no reader can tell when the block has lifted.
 
 The store already had a seam for the relation and no use for it: the schema's rule is **columns are typed, never JSON strings** ([`StoreSchema.swift`](../../Sources/TandemCore/StoreSchema.swift)), and the exception it names is a small ordered list that is never filtered. A blocked list is filtered (the draw reads it) and is read from both ends, so it is a table, not a column.

@@ -1,5 +1,7 @@
 # Agent, skill and lens: a specialist reader owns each lens, and the gate stays one
 
+> **Status:** In force, amended by 0045. See [the index](README.md).
+
 The lens set is one reviewer's checklist (`skills/review-lenses/`): it names what to look for, but no one owns the architecture or security intent from the brief through to the PR. The refiner records the intent and the reviewer re-derives it; the specialist who could carry it has no identity to speak with. This record gives each lens a named reader at both ends without splitting the merge gate: the specialist contributes constraints at refine and a conformance read at review, and the reviewer remains the one verdict.
 
 Decided 2026-11-08 (TAN-326). The intended number was 0042; 0042 and 0043 landed while this ticket waited, so this branch takes the next free number, 0044, under the repo's collision rule.

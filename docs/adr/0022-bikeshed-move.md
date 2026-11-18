@@ -1,5 +1,7 @@
 # Bikeshed move: a move is a core operation, the same transaction as a rename
 
+> **Status:** In force. See [the index](README.md).
+
 [ADR 0005](0005-wikilink-rename-rewriting.md) settled that an app-performed **rename rewrites every wikilink that resolves to the renamed note** — one locked transaction, rewrite first, then a single `rename(2)`. [ADR 0013](0013-bikeshed-folders.md) added folders, and deliberately stopped at creation: "introduces no new move mechanism: moving a note stays the existing Rename… path change", and a folder could not be moved at all.
 
 That left a hole: notes could be re-parented only by typing a new path into the Rename… sheet, and folders could not be re-parented at all. Re-organising the bikeshed meant Finder plus broken wikilinks — the exact failure the rename rewrite exists to prevent.

@@ -1,5 +1,7 @@
 # The board and notes cut: two surfaces before one binary
 
+> **Status:** In force. See [the index](README.md).
+
 Tandem grew a board, a notes store, sessions, sprints, workflow runs, a harness bridge, an agent installer, a block editor and a screenshot catalogue. The next step is one HTTP server in a single binary, and carrying every surface into it would multiply the work that migration cannot pay for. The product is cut to two surfaces: the one-axis board and the folder-and-wikilink notes store. Every later ticket in the `cut` lane deletes a slice of the rest; this record is the decision the deletions answer to.
 
 Decided 2026-11-13 (CUT-1).

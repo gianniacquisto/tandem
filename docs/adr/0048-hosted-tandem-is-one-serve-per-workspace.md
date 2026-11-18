@@ -1,5 +1,7 @@
 # Hosted Tandem is one `tandem serve` per workspace behind a control plane
 
+> **Status:** In force. See [the index](README.md).
+
 The hosted product is the same binary that self-hosters run. [ADR 0047](0047-serve-is-the-single-door.md) made `tandem serve` the single door for the board, the agents and a remote CLI, so a hosted workspace can be one published `serve` process on its own home, not a multi-tenant service. Every Hosting and `cut` ticket for the hosted product needs one record of that boundary to point at, so each can be refined against a fixed shape instead of re-deciding it.
 
 Decided 2026-11-16 (HOS-19).

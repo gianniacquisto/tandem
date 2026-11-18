@@ -1,5 +1,7 @@
 # The hidden layer is revealable in the tree, and stays out of the graph
 
+> **Status:** Surface retired by 0045. See [the index](README.md).
+
 [ADR 0016](0016-note-capture.md) hid the capture layer — `projects/<project>/.raw/`, with the consolidation archive at `projects/<project>/.raw/.done/` — so it is out of the curated wikilink graph **by construction**: `Bikeshed.isHidden` prunes the whole subtree from the tree, from `notePaths`, and therefore from `search`, from backlinks, and from wikilink resolution.
 
 That is right for reading. It left the human with no route to the queue from the app: opening Finder, or running `note stats`, was the only way to see what the agents had captured.

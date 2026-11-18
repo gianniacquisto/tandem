@@ -1,5 +1,7 @@
 # Vault protocol: per-note files, one-sided sidecar lock, journal-free rename
 
+> **Status:** In force. See [the index](README.md).
+
 The bikeshed (`~/.tandem/bikeshed/`) is a plain folder of `.md` notes (filename = note identity, nested folders allowed, non-`.md` files are attachments that are invisible in the tree) written by the app and by agents/editors that share no API with it. We decided: every app write takes an exclusive `flock` on the sidecar lockfile `~/.tandem/bikeshed.lock` (outside the vault, never renamed — the ADR 0001 pattern) held across the whole write, multi-file operations included; every write is a same-directory temp file + fsync + `rename`, and renames are plain `rename(2)`; rename-with-link-rewrite runs as one transaction under the lock, in the order ADR 0004 settles (rewrite the referencing notes first, then rename the note), with **no journal** — a crash mid-sequence yields at most broken links, never torn files or lost data.
 
 ## Why the lock is one-sided

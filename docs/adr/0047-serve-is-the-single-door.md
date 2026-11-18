@@ -1,5 +1,7 @@
 # Tandem serve is the single door: MCP over HTTP, one process
 
+> **Status:** In force, amended (CUT-37). See [the index](README.md).
+
 Every agent session spawned its own `tandem mcp` child over stdio, each opening `tandem.db`, so the human saw a row of `tandem` processes and no single entry point, and no agent could reach a board on another machine. One long-lived `tandem serve` now answers the browser, the agents and a remote CLI over one protocol.
 
 Decided 2026-11-15 (CUT-29, which absorbed CUT-20).
@@ -24,7 +26,7 @@ By quotation, in the same PR:
 - ADR 0046: "`serve` and `mcp` are the two server doors." Now `serve` is the one.
 - ADR 0046: "No HTTP JSON-RPC. `POST /api/rpc` is not exposed ... `rpc::handle_in`, `rpc::Stream` and `rpc::StdioStream` stay for `tandem mcp`". `POST /mcp` is the MCP transport only; `/api/rpc` stays absent, and the board keeps HTML routes and SSE. The stream types are deleted.
 - ADR 0046, Why: "Loopback is the authentication." On loopback the Host, Origin and Content-Type checks are the guard; off loopback the network or the token is.
-- `docs/port.md`: "No daemon". A long-running `serve` is the daemon, started by hand.
+- The port plan (`port.md`, since removed from `docs/`): "No daemon". A long-running `serve` is the daemon, started by hand.
 
 ## Why
 

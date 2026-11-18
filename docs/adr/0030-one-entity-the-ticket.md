@@ -1,5 +1,7 @@
 # One entity, the ticket — the vocabulary rename
 
+> **Status:** In force. See [the index](README.md).
+
 The store, the app, the CLI and the docs described one object in two words: the code and the GUI had moved to **ticket**, while the CLI's verb, the store's on-disk keys and the prose still said **todo**. A session had to learn which word was real, and the word a developer typed was the older one. This ADR records the two decisions that ended the split — the verb (D1) and the on-disk names (D2) — and the reader-first order that shipped them without breaking a reader.
 
 ## Why

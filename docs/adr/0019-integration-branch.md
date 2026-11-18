@@ -1,5 +1,7 @@
 # Integration branch: `dev` takes merges, `main` tracks the latest tag
 
+> **Status:** Overtaken. See [the index](README.md).
+
 `main` was both the integration branch and the release line. A fix merged after a tag made `main` diverge from the shipped build, so "install what is on main" and "install the latest release" were two different acts, and the v0.13.0 → v0.14.0 sequence depended on the human remembering which was true.
 
 We decided: **`dev` is the integration branch (merges land there) and `main` is the release line, its head always the latest release tag.** The first cut tagged `dev` and fast-forwarded `main` to that tag *(amended 2026-10-23: `main` takes its release moves by dev→main PR; amended 2026-10-29: the tag follows the merge, on `main`'s head, see the amendments below)*, and GitHub's default branch is `dev`, so a new pull request targets the integration branch without being told to.

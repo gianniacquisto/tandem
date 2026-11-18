@@ -1,5 +1,7 @@
 # Origin: who filed a ticket is stamped at add, reads as human when absent, and never changes
 
+> **Status:** In force. See [the index](README.md).
+
 [ADR 0017](0017-the-ticket-model.md) recorded that *origin* (who added a todo) is not *assignee* (who is on it) and deferred it. It is now in: a ticket's **origin** is who filed it — `human`, or the name of the agent that filed it.
 
 ## Why

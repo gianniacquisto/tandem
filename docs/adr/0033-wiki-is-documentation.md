@@ -1,5 +1,7 @@
 # The wiki is documentation: one audience contract for humans and agents, and the page roles that serve both
 
+> **Status:** In force. See [the index](README.md).
+
 The value review (`4147A3ED`, 2026-10-26) put the question to the human and got one answer: the bikeshed is **for both readers** — a real project wiki a human reads and acts on, and the orientation surface an agent opens before it touches code. A cold read of the vault made the same point from the other side: the Overview's `Where left off` and the Risks, Gotchas and Decisions pages carried every fact the work needed, while the Index's forty-five `Next:` lines carried almost none, and several were stale. A stale `Next:` is worse than no line, because a human treats it as status and an agent treats it as truth. [ADR 0004](0004-vault-protocol.md) settled the vault's protocol and [ADR 0015](0015-bikeshed-not-vault.md) settled that the bikeshed is not a second vault; neither says who each page is *for*. This record does.
 
 ## Decision

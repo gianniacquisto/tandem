@@ -1,5 +1,7 @@
 # The artifact ships the agent face, and `tandem-cli setup` is its only writer
 
+> **Status:** Superseded by 0045. See [the index](README.md).
+
 > **Amended 2026-10-31 by PRT-20:** the cutover replaces the Swift bundle script with the Electron packaging. `app/scripts/prepare-binary.mjs` stages the face and `electron-builder` copies it into `Contents/Resources/agent/`; the artifacts are unsigned. `Scripts/make-app-bundle.sh` is deleted. The amendment's text is the bullet below.
 
 > **Amended 2026-11-12 by TAN-321:** `~/.agents/skills/` is the canonical skills root, a link set written by every install; `--host agents` is retired and refused; Claude gains `~/.claude/agents/<name>.md` prompt links. The decision's link set and the uninstall order below carry the new text. The link rule, the warning table, the manifest shape and the cask contract are unchanged.
