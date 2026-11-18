@@ -171,6 +171,15 @@ impl Access {
         }
     }
 
+    /// How a request got in, as the export permission check names it.
+    pub(super) fn export_access(&self) -> crate::archive::Access {
+        match self.mode {
+            Mode::Loopback => crate::archive::Access::Loopback,
+            Mode::Open => crate::archive::Access::Unauthenticated,
+            Mode::Token(_) => crate::archive::Access::Token,
+        }
+    }
+
     /// Whether this run signs browsers in with a token.
     pub(super) fn is_token(&self) -> bool {
         matches!(self.mode, Mode::Token(_))
@@ -678,7 +687,7 @@ fn refuse_origin(access: &Access, reason: &str) -> Response {
 }
 
 /// One refusal: the status the client gets and a reason that names no value.
-fn refuse(status: StatusCode, body: &str, reason: &str) -> Response {
+pub(super) fn refuse(status: StatusCode, body: &str, reason: &str) -> Response {
     tracing::warn!(reason, "request refused");
     (status, format!("{body}\n")).into_response()
 }

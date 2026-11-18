@@ -65,6 +65,7 @@ fn context(store: Store) -> SessionContext {
         actor: Actor::Human,
         environment: HashMap::new(),
         access: Access::loopback(7700),
+        export_check: ExportCheck::standard(),
     }
 }
 
@@ -2755,6 +2756,7 @@ async fn the_environment_is_never_logged() {
         actor: Actor::Human,
         environment,
         access: Access::loopback(7700),
+        export_check: ExportCheck::standard(),
     });
     let before = store.revision().expect("the revision reads");
     let captured = Captured::default();
@@ -4571,4 +4573,375 @@ async fn a_store_newer_than_the_build_draws_a_page_notice_not_a_500() {
     assert!(body.contains("written by a newer Tandem"), "{body}");
     assert!(body.contains("Upgrade this binary"), "{body}");
     assert!(!body.contains("ADR 0031"), "{body}");
+}
+
+// MARK: - The export route (CUT-38)
+
+/// A board with tickets and two notes, so an archive has something to restore.
+fn exportable(store: &Store) -> Board {
+    let board = setup_board(store);
+    let notes = vault(store);
+    notes
+        .write("export-probe.md", "# Probe\n\nA note that travels.\n")
+        .expect("the note is written");
+    notes
+        .write("folder/inner.md", "inner\n")
+        .expect("the nested note is written");
+    board
+}
+
+fn export_get(headers: &[(&str, &str)]) -> Request<Body> {
+    let mut builder = Request::builder()
+        .uri("/export")
+        .header(header::HOST, "127.0.0.1:7700");
+    for (name, value) in headers {
+        builder = builder.header(*name, *value);
+    }
+    builder.body(Body::empty()).expect("the request builds")
+}
+
+async fn send_raw(app: &Router, request: Request<Body>) -> (StatusCode, HeaderMap, Vec<u8>) {
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("the router answers");
+    let status = response.status();
+    let headers = response.headers().clone();
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("the body collects")
+        .to_bytes();
+    (status, headers, bytes.to_vec())
+}
+
+fn refusing_context(store: Store) -> SessionContext {
+    SessionContext {
+        export_check: ExportCheck::new(|_| Err(crate::archive::ArchiveError::NotAllowed)),
+        ..context(store)
+    }
+}
+
+#[tokio::test]
+async fn the_export_route_streams_an_archive_that_imports_into_an_empty_home() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("export-roundtrip");
+    let store = sandbox.store();
+    let board = exportable(&store);
+    let app = router(context(store.clone()));
+
+    let (status, _, bytes) = send_raw(&app, export_get(&[])).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(&bytes[..2], &[0x1f, 0x8b], "the body is gzip");
+
+    let fresh = Home::resolve(
+        Some(&sandbox.root.join("restored")),
+        None,
+        &sandbox.root.join("user"),
+    );
+    crate::archive::import(&fresh, bytes.as_slice(), None).expect("the archive imports");
+    let restored = Board::with_actor(Store::new(fresh.clone()), Actor::Human);
+    let query = crate::domain::TicketQuery::default();
+    assert_eq!(
+        restored
+            .list(&query)
+            .expect("the restored board lists")
+            .len(),
+        board.list(&query).expect("the board lists").len()
+    );
+    let note = std::fs::read_to_string(fresh.directory().join("bikeshed/export-probe.md"))
+        .expect("the note is restored");
+    assert!(note.contains("A note that travels."));
+}
+
+#[tokio::test]
+async fn the_export_route_wants_the_token_off_loopback() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("export-token");
+    exportable(&sandbox.store());
+    let app = remote_app(sandbox.store(), TOKEN);
+
+    let request = |auth: Option<&str>| {
+        let mut builder = Request::builder()
+            .uri("/export")
+            .header(header::HOST, REMOTE_HOST);
+        if let Some(auth) = auth {
+            builder = builder.header(header::AUTHORIZATION, auth);
+        }
+        builder.body(Body::empty()).expect("the request builds")
+    };
+    for auth in [None, Some("Bearer wrong-token")] {
+        let (status, headers, _) = send_raw(&app, request(auth)).await;
+        assert_ne!(status, StatusCode::OK, "{auth:?}");
+        assert_ne!(
+            headers
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok()),
+            Some("application/gzip"),
+            "{auth:?}"
+        );
+    }
+    let (status, headers, bytes) = send_raw(&app, request(Some(&format!("Bearer {TOKEN}")))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_TYPE], "application/gzip");
+    assert_eq!(&bytes[..2], &[0x1f, 0x8b]);
+}
+
+#[tokio::test]
+async fn the_export_route_refuses_a_cross_site_request() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("export-site");
+    exportable(&sandbox.store());
+    let app = router(context(sandbox.store()));
+
+    let table: [(Option<&str>, StatusCode); 6] = [
+        (None, StatusCode::OK),
+        (Some("same-origin"), StatusCode::OK),
+        (Some("none"), StatusCode::OK),
+        (Some("cross-site"), StatusCode::FORBIDDEN),
+        (Some("same-site"), StatusCode::FORBIDDEN),
+        (Some("anything-else"), StatusCode::FORBIDDEN),
+    ];
+    for (site, expected) in table {
+        let headers: Vec<(&str, &str)> = site.map(|s| ("sec-fetch-site", s)).into_iter().collect();
+        let (status, response_headers, body) = send_raw(&app, export_get(&headers)).await;
+        assert_eq!(status, expected, "Sec-Fetch-Site {site:?}");
+        if expected == StatusCode::FORBIDDEN {
+            assert_ne!(response_headers[header::CONTENT_TYPE], "application/gzip");
+            assert!(
+                !body.is_empty() && body[0] != 0x1f,
+                "a readable refusal, not an archive"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_export_response_is_an_attachment_and_is_never_cached() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("export-headers");
+    exportable(&sandbox.store());
+    let app = router(context(sandbox.store()));
+
+    let (status, headers, _) = send_raw(&app, export_get(&[])).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_TYPE], "application/gzip");
+    let disposition = headers[header::CONTENT_DISPOSITION]
+        .to_str()
+        .expect("the disposition is text");
+    assert!(
+        disposition.starts_with("attachment; filename=\"tandem-export-")
+            && disposition.ends_with(".tar.gz\""),
+        "{disposition}"
+    );
+    let date = &disposition["attachment; filename=\"tandem-export-".len()..][..10];
+    assert!(
+        date.len() == 10
+            && date.as_bytes()[4] == b'-'
+            && date.as_bytes()[7] == b'-'
+            && date.bytes().filter(u8::is_ascii_digit).count() == 8,
+        "a UTC date: {date}"
+    );
+    assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+    assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+    assert!(
+        headers.get(header::CONTENT_LENGTH).is_none(),
+        "the size is not known up front"
+    );
+}
+
+#[tokio::test]
+async fn a_refused_export_answers_a_readable_403_and_streams_nothing() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("export-refused");
+    let store = sandbox.store();
+    exportable(&store);
+    let app = router(refusing_context(store));
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    let (status, headers, body) = send_raw(&app, export_get(&[])).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert_ne!(headers[header::CONTENT_TYPE], "application/gzip");
+    assert!(headers.get(header::CONTENT_DISPOSITION).is_none());
+    let text = String::from_utf8(body).expect("the refusal is text");
+    assert!(text.contains("may not export"), "{text}");
+    assert!(
+        !captured.text().contains("export started"),
+        "a refused export writes no record"
+    );
+}
+
+#[tokio::test]
+async fn the_shell_shows_the_export_control_only_when_export_is_allowed() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("export-control");
+    let store = sandbox.store();
+    exportable(&store);
+    let allowed = router(context(store.clone()));
+    let refused = router(refusing_context(store));
+
+    for uri in ["/board", "/notes"] {
+        let (_, _, page) = get(&allowed, uri).await;
+        assert!(
+            page.contains(
+                "<a class=\"menu__option\" href=\"/export\" download>Export workspace</a>"
+            ),
+            "{uri}: {page}"
+        );
+        assert!(page.contains("is not encrypted"), "{uri}: the warning line");
+        let (_, _, page) = get(&refused, uri).await;
+        assert!(!page.contains("/export"), "{uri}: {page}");
+        assert!(!page.contains("Export workspace"), "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn an_export_logs_the_actor_and_the_time_and_never_a_secret_or_a_path() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("export-log");
+    let store = sandbox.store();
+    exportable(&store);
+    let app = remote_app(store, TOKEN);
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    let request = Request::builder()
+        .uri("/export")
+        .header(header::HOST, REMOTE_HOST)
+        .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+        .header("x-tandem-agent", "backup-bot")
+        .body(Body::empty())
+        .expect("the request builds");
+    let (status, _, _) = send_raw(&app, request).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let text = captured.text();
+    let line = text
+        .lines()
+        .find(|line| line.contains("export started"))
+        .unwrap_or_else(|| panic!("the record is logged: {text}"));
+    assert!(line.contains("backup-bot"), "the actor: {line}");
+    assert!(
+        line.contains("door=\"board\"") || line.contains("door=board"),
+        "{line}"
+    );
+    assert!(line.contains("at="), "the time: {line}");
+    assert!(!text.contains(TOKEN), "the token stays out");
+    assert!(
+        !text.contains(&sandbox.root.display().to_string()),
+        "no path in the log: {text}"
+    );
+    assert!(!text.contains("A note that travels"), "no content");
+}
+
+#[tokio::test]
+async fn a_board_write_succeeds_while_an_export_is_streaming() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("export-concurrent");
+    let store = sandbox.store();
+    let board = exportable(&store);
+    // Incompressible enough to fill the channel several times over, so the
+    // writer is parked mid-archive while the write below runs.
+    let mut seed = 0x2545_f491_4f6c_dd1du64;
+    let mut big = String::new();
+    while big.len() < 6 * 1024 * 1024 {
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
+        big.push_str(&format!("{seed:016x}"));
+    }
+    std::fs::write(store.home().directory().join("bikeshed/big.md"), big)
+        .expect("the large note is written");
+    let app = router(context(store.clone()));
+
+    let response = app
+        .clone()
+        .oneshot(export_get(&[]))
+        .await
+        .expect("the router answers");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let before = store.revision().expect("the revision reads");
+    let body = format!(
+        "title=During&status=ready&label=&expected_revision={before}&project=&show_all=&assignee=&text="
+    );
+    let (status, _, page) = send(&app, form_request("/tickets", &body)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(page.contains("During"));
+    assert!(store.revision().expect("the revision reads") > before);
+    assert_eq!(
+        board
+            .list(&crate::domain::TicketQuery::default())
+            .expect("the board lists")
+            .iter()
+            .filter(|ticket| ticket.title == "During")
+            .count(),
+        1
+    );
+
+    let bytes = response
+        .into_body()
+        .collect()
+        .await
+        .expect("the stream finishes")
+        .to_bytes();
+    assert!(bytes.len() > 1024 * 1024, "the whole archive streamed");
+}
+
+#[tokio::test]
+async fn export_answers_get_only() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("export-methods");
+    exportable(&sandbox.store());
+    let app = router(context(sandbox.store()));
+
+    for method in ["POST", "PUT", "PATCH", "DELETE"] {
+        let request = Request::builder()
+            .method(method)
+            .uri("/export")
+            .header(header::HOST, "127.0.0.1:7700")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::empty())
+            .expect("the request builds");
+        let (status, headers, _) = send_raw(&app, request).await;
+        assert_eq!(status, StatusCode::METHOD_NOT_ALLOWED, "{method}");
+        assert!(
+            headers.get(header::CONTENT_DISPOSITION).is_none(),
+            "{method}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn an_export_moves_neither_the_revision_nor_the_events_stream() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("export-quiet");
+    let store = sandbox.store();
+    exportable(&store);
+    let app = router(context(store.clone()));
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let (changes, mut receiver) = broadcast::channel(8);
+    let reads_before = store.watch_revision_reads();
+    let handle = watch(store.clone(), changes, Arc::clone(&stop));
+    let attached = Instant::now() + Duration::from_secs(10);
+    while store.watch_revision_reads() == reads_before && Instant::now() < attached {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    tokio::time::sleep(WATCH_INTERVAL * 3).await;
+    let _ = seen(&mut receiver);
+    let before = store.revision().expect("the revision reads");
+
+    let (status, _, _) = send_raw(&app, export_get(&[])).await;
+    assert_eq!(status, StatusCode::OK);
+    tokio::time::sleep(WATCH_INTERVAL * 6).await;
+
+    let events = seen(&mut receiver);
+    stop.store(true, Ordering::Relaxed);
+    let _ = handle.join();
+    assert_eq!(store.revision().expect("the revision reads"), before);
+    assert!(events.is_empty(), "the stream stayed quiet: {events:?}");
 }

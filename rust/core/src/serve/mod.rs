@@ -32,6 +32,7 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 
 use axum::{Extension, Router};
+pub use export::ExportCheck;
 pub use guard::{Access, normalize_public_origin};
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
@@ -49,6 +50,7 @@ use crate::store::{Actor, RevisionWatch, Store};
 mod assets;
 mod board;
 mod events;
+mod export;
 mod guard;
 mod login;
 mod markdown;
@@ -100,9 +102,25 @@ pub struct SessionContext {
     pub environment: Environment,
     /// How a request is let in: the bound port, and the token off loopback.
     pub access: Access,
+    /// The export permission check the `/export` route and the shell's control
+    /// ask: [`ExportCheck::standard`] in a running serve.
+    pub export_check: ExportCheck,
 }
 
 impl SessionContext {
+    /// Who asks to export: how the bind let the request in, and the actor.
+    fn export_principal(&self) -> crate::archive::Principal {
+        crate::archive::Principal {
+            access: self.access.export_access(),
+            actor: self.actor.clone(),
+        }
+    }
+
+    /// Whether this viewer may export: the shell draws its control only then.
+    fn may_export(&self) -> bool {
+        self.export_check.allows(&self.export_principal()).is_ok()
+    }
+
     fn board(&self) -> Board {
         Board::with_actor(self.store.clone(), self.actor.clone())
     }
@@ -222,6 +240,7 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/", get(board::board_page))
         .route("/board", get(board::board_page))
         .route("/events", get(events::events))
+        .route("/export", get(export::export))
         .route("/health", get(mcp::health))
         .route("/login", get(login::login_page_get).post(login::login_post))
         .route("/logout", post(login::logout_post))
@@ -618,6 +637,9 @@ struct PageView {
     stream: bool,
     /// Whether the header carries a Sign out control: token mode only.
     sign_out: bool,
+    /// Whether the header menu offers the workspace export: only when the
+    /// export permission check allows the viewer.
+    export: bool,
 }
 
 impl PageView {

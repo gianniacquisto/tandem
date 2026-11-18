@@ -37,6 +37,11 @@
           <button type="button" class="menu__option" data-theme-appearance="system" aria-pressed="true">System</button>
           <button type="button" class="menu__option" data-theme-appearance="light" aria-pressed="false">Light</button>
           <button type="button" class="menu__option" data-theme-appearance="dark" aria-pressed="false">Dark</button>
+          {%- if export %}
+          <p class="menu__title">Workspace</p>
+          <a class="menu__option" href="/export" download>Export workspace</a>
+          <p class="menu__note">The file holds every ticket and note and is not encrypted, so keep it somewhere safe.</p>
+          {%- endif %}
         </div>
       </details>
       {%- if sign_out %}
