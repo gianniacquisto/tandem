@@ -30,22 +30,36 @@ Read the board in one round: `ticket_list` for the label's open tickets, and `ti
 
 **State the batch before the first dispatch**, in one message to the human: the drawn tickets in order, the skipped ones with their reason, and the mode, **one at a time** (the default) or **in parallel** (the human's call). Zero drawn is a triage-only sprint: report it and stop.
 
+## Model routing
+
+Every dispatch names its model and effort; a subagent never inherits the session's model. The brief's `Size:` line (written by the refiner) picks them; a brief with no `Size:` is sized `M`.
+
+| Size | The ticket | Builder | Reviewer |
+| --- | --- | --- | --- |
+| `S` | mechanical: a few lines in one area, prose, config, an existing test extended | `haiku`, effort low | `haiku` |
+| `M` | one area, new behaviour, new tests | `sonnet`, effort medium | `sonnet` |
+| `L` | crosses layers, touches the schema or a published contract, or many files | `sonnet`, effort high | `sonnet` |
+
+**Escalate the model, never start high.** The first fix pass runs one step up from the build (`haiku` becomes `sonnet`; `sonnet` raises its effort to high). The second fix pass, the last before the human, runs on `opus`: the hard bug the cheaper passes could not close is where it earns its cost. No build starts on `opus`. A reviewer that answers `blocked` with `needs a stronger read` is re-dispatched once on `opus`; a second such answer escalates to the human.
+
+On a host whose dispatch takes no model, the agent's own configuration decides, and the routing is advice to the human configuring it.
+
 ## 3. Build
 
 Per ticket, in batch order:
 
 1. **Claim**: `ticket_set` with `status` in-progress and `assignee` builder.
-2. **Dispatch** the `builder` with the ticket id, its description (`ticket_show`) and its comment log (`ticket_comment_list`). The builder works in its own worktree and hands to `in-review` only on a green head.
+2. **Dispatch** the `builder`, on the model and effort the routing picks, with the ticket id, its description (`ticket_show`) and its comment log (`ticket_comment_list`). The builder works in its own worktree and hands to `in-review` only on a green head.
 3. **Check the handoff.** Re-read the ticket: `in-review` with a PR number in the log is a build. Anything else is a failed dispatch: remove its worktree, then one fresh dispatch. A second failure makes it a dead claim (§2) with the failure quoted, and the ticket slips.
 
 ## 4. Gate
 
-Dispatch the `reviewer` with the ticket id and the PR. It answers one `VERDICT:` line:
+Dispatch the `reviewer`, on the model the routing picks, with the ticket id and the PR. It answers one `VERDICT:` line:
 
 - **`merged`**: the reviewer completed the ticket. Every other open batch PR is now behind `main` and its next gate will say so.
 - **`escalated`**: accept it only after `ticket_show` reads status `in-review` and assignee `human`. Anything else is a failed gate: re-dispatch the reviewer once, then hand it over yourself. An escalated ticket leaves the active batch; the sprint does not wait for the human.
 - **`blocked`, behind its base**: bring it up to date yourself (`gh pr update-branch <n>`, a merge), wait for green on the new head (`gh pr checks <n> --watch`), and gate again. A conflict the update cannot merge is a fix pass.
-- **`blocked` on a red check, or `changes-requested`**: a **fix pass**, a fresh `builder` dispatch with four things and nothing else: the ticket id, the PR number, the head sha the gate read, and the finding quoted. Then gate again; a re-gate may resume its own reviewer session.
+- **`blocked` on a red check, or `changes-requested`**: a **fix pass**, a fresh `builder` dispatch on the routing's next model up, with four things and nothing else: the ticket id, the PR number, the head sha the gate read, and the finding quoted. Then gate again; a re-gate may resume its own reviewer session.
 
 **The fix loop has a ceiling: two fix passes per ticket.** A third failing verdict escalates: a comment quoting the three findings, then `ticket_set` with `status` in-review and `assignee` human. A branch update or a capacity-cancelled CI rerun (`agents/builder.md`, step 6) is not a fix pass and does not count.
 

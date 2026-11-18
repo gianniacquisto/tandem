@@ -35,7 +35,7 @@ The suite's evidence is the checks on the head sha. Do not re-run `cargo test`, 
 
 **A finding that must change first**: `gh api repos/<owner>/<repo>/pulls/<n>/reviews -f event=REQUEST_CHANGES -f body=@-`, findings as a `### file:line` list. Stop.
 
-**When unsure, escalate.** A wrong merge is the expensive error; a needless escalation costs one human read.
+**When unsure, escalate.** A wrong merge is the expensive error; a needless escalation costs one human read. A diff you cannot judge at all (a concurrency, security or migration question past your read) is `blocked` with the clause `needs a stronger read`, naming the question: the sprint re-runs the gate on a stronger model before it reaches the human.
 
 ## 5. Test this head
 
