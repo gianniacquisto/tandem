@@ -1,14 +1,11 @@
-//! The message set `tandem serve`'s `POST /mcp` speaks: one JSON frame in, one
-//! frame out (ADR 0047).
+//! The dispatch behind `tandem serve`'s `POST /mcp` (ADR 0047): one typed
+//! [`Method`] in, a [`Reply`] or a [`WireError`] out.
 //!
-//! The core owns the dispatch and nothing else:
-//!
-//! - **The dispatch** ([`handle`]): one frame in, one frame out, through the
-//!   same domain calls the CLI's verbs make. A malformed frame is an error
-//!   frame and never a panic: a request body is untrusted input, and the
-//!   server holds the store for every session.
-//! - **The transport** is not here. `tandem serve` carries a frame as an HTTP
-//!   body; the MCP door ([`crate::mcp`]) answers through [`handle_in`].
+//! [`execute`] is the one dispatch (ADR 0009): every arm is the CLI verb's
+//! domain call with the same defaults, and the MCP door ([`crate::mcp`]) reads a
+//! tool call's arguments into a [`Method`] and calls it directly. No frame is
+//! built or parsed here: the transport and the JSON-RPC envelope are the MCP
+//! door's.
 
 use crate::bikeshed::Bikeshed;
 use crate::diagnostics;
@@ -16,107 +13,28 @@ use crate::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, Status, TicketQuery, resolve_assignee,
     resolve_origin,
 };
-use crate::env::Environment;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, LabelDeletionReply, LabelListReply,
-    MarkdownReply, Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply, NoteReadReply,
-    NoteRecoveriesReply, NoteTreeReply, NoteWriteReply, Outcome, ProjectEntry, ProjectListReply,
-    Reply, Request, Response, TicketListReply, TicketReply, WireError,
+    Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply, NoteReadReply, NoteTreeReply,
+    NoteWriteReply, ProjectEntry, ProjectListReply, Reply, TicketListReply, TicketReply, WireError,
 };
 use crate::wire::{
-    BacklinkView, CommentView, MarkdownBlockView, NoteContentView, NoteMoveView, NoteNodeView,
-    NotePathView, NoteWriteView, RecoveryView, TicketDetail, TicketSummary,
+    BacklinkView, CommentView, NoteContentView, NoteMoveView, NoteNodeView, NotePathView,
+    NoteWriteView, TicketDetail, TicketSummary,
 };
 
-/// The most one frame may carry. A description is text a human wrote; a
+/// The most a request body may carry. A description is text a human wrote; a
 /// megabyte is far past any of them, and the cap keeps an untrusted writer from
-/// growing this process's heap one line at a time. A frame of exactly this many
-/// bytes is legal; the newline that ends it is the stream's, not the frame's.
+/// growing this process's heap one line at a time. `tandem serve` applies it as
+/// the body limit on every route.
 pub const MAX_FRAME: usize = 4 * 1024 * 1024;
-
-// MARK: - One frame
-
-/// Answer one frame: a request becomes a result or an error, and a frame that
-/// is not a request becomes a parse error.
-///
-/// This is the whole protocol minus the transport, so the suite can drive it
-/// without a process and the pipe test can drive it through one.
-pub fn handle(frame: &str, store: &Store, actor: &Actor) -> String {
-    handle_in(frame, store, actor, &crate::env::process())
-}
-
-/// [`handle`] with the environment injected, so a test names a throwaway home
-/// instead of the process's own.
-pub fn handle_in(frame: &str, store: &Store, actor: &Actor, environment: &Environment) -> String {
-    let response = match serde_json::from_str::<Request>(frame) {
-        Ok(request) => {
-            let id = request.id;
-            match execute(request.method, store, actor, environment) {
-                Ok(reply) => Response {
-                    id: Some(id),
-                    outcome: Outcome::Result(reply),
-                },
-                Err(error) => Response {
-                    id: Some(id),
-                    outcome: Outcome::Error(error),
-                },
-            }
-        }
-        Err(error) => Response {
-            id: frame_id(frame),
-            outcome: Outcome::Error(classify(frame, &error)),
-        },
-    };
-    serde_json::to_string(&response).unwrap_or_else(|_| {
-        r#"{"id":null,"error":{"code":"parse","message":"the answer is not writable"}}"#.to_string()
-    })
-}
-
-/// The id a frame that failed to parse still carried, when it carried one.
-fn frame_id(frame: &str) -> Option<u64> {
-    serde_json::from_str::<serde_json::Value>(frame)
-        .ok()
-        .and_then(|value| value.get("id").and_then(serde_json::Value::as_u64))
-}
-
-/// Why a frame was refused: an unknown method is a method error, everything
-/// else is a parse error. The distinction is what lets a client tell a version
-/// skew from a malformed call.
-fn classify(frame: &str, error: &serde_json::Error) -> WireError {
-    let value = serde_json::from_str::<serde_json::Value>(frame).ok();
-    let method = value
-        .as_ref()
-        .and_then(|value| value.get("method"))
-        .and_then(serde_json::Value::as_str);
-    match method {
-        Some(name)
-            if !crate::wire::rpc::METHODS
-                .iter()
-                .any(|(tag, _)| *tag == name) =>
-        {
-            WireError::method(format!("the wire does not answer the method `{name}`"))
-        }
-        Some(name) => WireError::parse(format!(
-            "the frame's params for `{name}` are not readable: {error}"
-        )),
-        None => WireError::parse(format!("the frame is not a request: {error}")),
-    }
-}
 
 // MARK: - Dispatch
 
 /// One method through the domain. Every arm is the CLI verb's call, with the
 /// same defaults: the wire adds no rule of its own.
-///
-/// `_environment` is the process's, injected by [`handle_in`] so the doors keep
-/// one shape; no arm reads it since the note capture left (CUT-7).
-fn execute(
-    method: Method,
-    store: &Store,
-    actor: &Actor,
-    _environment: &Environment,
-) -> Result<Reply, WireError> {
+pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireError> {
     let board = Board::with_actor(store.clone(), actor.clone());
     match method {
         Method::TicketList(params) => {
@@ -260,17 +178,6 @@ fn execute(
             Ok(Reply::CommentList(CommentListReply {
                 revision,
                 comments: comments.iter().map(CommentView::new).collect(),
-            }))
-        }
-        Method::MarkdownBlocks(params) => {
-            // The parsing is the domain's (`TicketMarkdown`), so the sheet draws
-            // the same blocks the ticket sheet draws from the same dialect. The
-            // message touches no store: it is a pure projection of the text the
-            // face already holds, and it answers without a lock.
-            Ok(Reply::Markdown(MarkdownReply {
-                blocks: MarkdownBlockView::blocks(&crate::domain::TicketMarkdown::blocks(
-                    params.text.as_deref(),
-                )),
             }))
         }
         Method::LabelList(_) => {
@@ -461,13 +368,6 @@ fn execute(
                 backlinks: rows.iter().map(BacklinkView::new).collect(),
             }))
         }
-        Method::NoteRecoveries(_) => Ok(Reply::NoteRecoveries(NoteRecoveriesReply {
-            recoveries: open_bikeshed(store)
-                .recoveries()
-                .iter()
-                .map(RecoveryView::new)
-                .collect(),
-        })),
     }
 }
 
