@@ -30,6 +30,7 @@
 //! text, or the environment, and every value a client chose (a tool or method
 //! name) is Debug-escaped so a control character cannot break the line.
 
+use std::sync::OnceLock;
 use std::time::Instant;
 
 use serde_json::{Value, json};
@@ -67,7 +68,7 @@ pub fn remote_verb(verb: &str) -> Option<RemoteVerb> {
     let (tag, _) = crate::wire::rpc::METHODS
         .iter()
         .find(|(_, spelled)| !spelled.is_empty() && *spelled == verb)?;
-    let tool = tools().into_iter().find(|tool| tool.method_tag == *tag)?;
+    let tool = tools().iter().find(|tool| tool.method_tag == *tag)?;
     let unwrap = match *tag {
         "ticket.show" | "ticket.add" | "ticket.set" | "ticket.move" | "ticket.block"
         | "ticket.unblock" | "ticket.complete" => Some("ticket"),
@@ -314,7 +315,7 @@ fn call_frame(
         .and_then(|params| params.get("name"))
         .and_then(Value::as_str)
         .unwrap_or("");
-    let Some(tool) = tools().into_iter().find(|tool| tool.name == name) else {
+    let Some(tool) = tools().iter().find(|tool| tool.name == name) else {
         tracing::warn!(tool = ?name, "unknown tool");
         return error_frame(id, INVALID_PARAMS, format!("Unknown tool: {name}"));
     };
@@ -397,9 +398,68 @@ pub struct Tool {
     pub description: &'static str,
     /// The input shape, derived from the params struct (never a hand copy).
     pub input_schema: Value,
+    /// What a host may assume about the call without asking the human.
+    pub annotations: Annotations,
     /// The params the schema derives from, so the registry test can pin one
     /// against the other.
     pub method: Method,
+}
+
+/// The MCP tool annotations (`readOnlyHint`, `destructiveHint`,
+/// `idempotentHint`, `openWorldHint`: defined since `2025-03-26`, unchanged in
+/// `2025-11-25`; a `2024-11-05` client ignores the unknown key). They are hints
+/// a host may use to skip or force a prompt, so a wrong `read_only` on a
+/// writing tool is an approval bypass: the registry test pins every flag.
+///
+/// The spec defaults `destructiveHint` to true and `readOnlyHint` to false, so
+/// every flag is written out on every tool and a later tool cannot inherit a
+/// default by omission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Annotations {
+    /// The call changes nothing in the store or the vault.
+    pub read_only: bool,
+    /// The call can lose what was there: a delete, an overwrite, a bulk act.
+    pub destructive: bool,
+    /// Calling again with the same arguments changes nothing more.
+    pub idempotent: bool,
+}
+
+impl Annotations {
+    /// A read: no write at all.
+    const READ: Self = Self {
+        read_only: true,
+        destructive: false,
+        idempotent: true,
+    };
+    /// A write that adds or edits and loses nothing it cannot rebuild.
+    const WRITE: Self = Self {
+        read_only: false,
+        destructive: false,
+        idempotent: false,
+    };
+    /// A write that can lose what was there.
+    const DESTRUCTIVE: Self = Self {
+        read_only: false,
+        destructive: true,
+        idempotent: false,
+    };
+    /// The same write, safe to repeat.
+    const fn idempotent(self) -> Self {
+        Self {
+            idempotent: true,
+            ..self
+        }
+    }
+
+    /// The wire object.
+    fn wire(&self) -> Value {
+        json!({
+            "readOnlyHint": self.read_only,
+            "destructiveHint": self.destructive,
+            "idempotentHint": self.idempotent,
+            "openWorldHint": false,
+        })
+    }
 }
 
 impl Tool {
@@ -409,6 +469,7 @@ impl Tool {
             "name": self.name,
             "description": self.description,
             "inputSchema": self.input_schema,
+            "annotations": self.annotations.wire(),
         })
     }
 
@@ -425,13 +486,22 @@ impl Tool {
 /// The tools: one per covered wire method. The schema beside each entry is
 /// the params struct's own derivation, so the list cannot drift from the wire
 /// without the registry test failing.
-pub fn tools() -> Vec<Tool> {
+///
+/// Built once: a `tools/call` looks its tool up by name in the same list
+/// `tools/list` serves.
+pub fn tools() -> &'static [Tool] {
+    static TOOLS: OnceLock<Vec<Tool>> = OnceLock::new();
+    TOOLS.get_or_init(build_tools)
+}
+
+fn build_tools() -> Vec<Tool> {
     vec![
         Tool {
             name: "ticket_list",
             method_tag: "ticket.list",
             description: "List the tickets in view, in stored order. Every filter is optional and they combine.",
             input_schema: TicketListParams::schema(),
+            annotations: Annotations::READ,
             method: Method::TicketList(TicketListParams::default()),
         },
         Tool {
@@ -439,6 +509,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "ticket.show",
             description: "Read one ticket whole: the only read that carries the description.",
             input_schema: TicketIdParams::schema(),
+            annotations: Annotations::READ,
             method: Method::TicketShow(TicketIdParams::default()),
         },
         Tool {
@@ -446,6 +517,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "ticket.add",
             description: "File a ticket. A title alone lands backlog, unowned, on top of the default area.",
             input_schema: TicketAddParams::schema(),
+            annotations: Annotations::WRITE,
             method: Method::TicketAdd(TicketAddParams::default()),
         },
         Tool {
@@ -453,6 +525,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "ticket.set",
             description: "Change the fields named in one write; everything unnamed is left alone.",
             input_schema: TicketSetParams::schema(),
+            annotations: Annotations::WRITE.idempotent(),
             method: Method::TicketSet(TicketSetParams::default()),
         },
         Tool {
@@ -460,6 +533,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "ticket.move",
             description: "Move between labels and/or within one. Omit the index to append.",
             input_schema: TicketMoveParams::schema(),
+            annotations: Annotations::WRITE,
             method: Method::TicketMove(TicketMoveParams::default()),
         },
         Tool {
@@ -467,6 +541,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "ticket.block",
             description: "Record that one ticket waits on another, as an edge in the store.",
             input_schema: TicketBlockParams::schema(),
+            annotations: Annotations::WRITE.idempotent(),
             method: Method::TicketBlock(TicketBlockParams::default()),
         },
         Tool {
@@ -474,6 +549,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "ticket.unblock",
             description: "Remove one edge, or every edge the ticket has when `on` is absent.",
             input_schema: TicketUnblockParams::schema(),
+            annotations: Annotations::DESTRUCTIVE,
             method: Method::TicketUnblock(TicketUnblockParams::default()),
         },
         Tool {
@@ -481,6 +557,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "ticket.complete",
             description: "The short path to done: idempotent, no reopen verb.",
             input_schema: TicketIdParams::schema(),
+            annotations: Annotations::WRITE.idempotent(),
             method: Method::TicketComplete(TicketIdParams::default()),
         },
         Tool {
@@ -488,6 +565,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "ticket.archive",
             description: "Archive one ticket, or every done ticket when `id` is absent.",
             input_schema: TicketArchiveParams::schema(),
+            annotations: Annotations::DESTRUCTIVE,
             method: Method::TicketArchive(TicketArchiveParams::default()),
         },
         Tool {
@@ -495,6 +573,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "ticket.comment.add",
             description: "Append to the ticket's discussion log. Write the role out as the author.",
             input_schema: CommentAddParams::schema(),
+            annotations: Annotations::WRITE,
             method: Method::TicketCommentAdd(CommentAddParams::default()),
         },
         Tool {
@@ -502,6 +581,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "ticket.comment.list",
             description: "List the ticket's discussion log in append order.",
             input_schema: TicketIdParams::schema(),
+            annotations: Annotations::READ,
             method: Method::TicketCommentList(TicketIdParams::default()),
         },
         Tool {
@@ -509,6 +589,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "label.list",
             description: "List every label, in render order.",
             input_schema: EmptyParams::schema(),
+            annotations: Annotations::READ,
             method: Method::LabelList(EmptyParams {}),
         },
         Tool {
@@ -516,6 +597,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "label.add",
             description: "Declare a label. A label must exist before tickets move to it.",
             input_schema: LabelAddParams::schema(),
+            annotations: Annotations::WRITE,
             method: Method::LabelAdd(LabelAddParams::default()),
         },
         Tool {
@@ -523,6 +605,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "label.rename",
             description: "Rename a label, rewriting every ticket in it in one write.",
             input_schema: LabelRenameParams::schema(),
+            annotations: Annotations::WRITE,
             method: Method::LabelRename(LabelRenameParams::default()),
         },
         Tool {
@@ -530,6 +613,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "label.delete",
             description: "Delete a label; members fall back to the default area, never deleted.",
             input_schema: LabelDeleteParams::schema(),
+            annotations: Annotations::DESTRUCTIVE,
             method: Method::LabelDelete(LabelDeleteParams::default()),
         },
         Tool {
@@ -537,6 +621,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "label.move",
             description: "Reorder the declared labels; the index is 0-based and clamps.",
             input_schema: LabelMoveParams::schema(),
+            annotations: Annotations::WRITE,
             method: Method::LabelMove(LabelMoveParams::default()),
         },
         Tool {
@@ -544,6 +629,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "project.list",
             description: "List every project with its labels, in render order.",
             input_schema: EmptyParams::schema(),
+            annotations: Annotations::READ,
             method: Method::ProjectList(EmptyParams {}),
         },
         Tool {
@@ -551,6 +637,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "project.add",
             description: "Declare a project. A project must exist before labels name it as parent.",
             input_schema: ProjectAddParams::schema(),
+            annotations: Annotations::WRITE,
             method: Method::ProjectAdd(ProjectAddParams::default()),
         },
         Tool {
@@ -558,6 +645,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "project.rename",
             description: "Rename a project, moving its labels with it.",
             input_schema: ProjectRenameParams::schema(),
+            annotations: Annotations::WRITE,
             method: Method::ProjectRename(ProjectRenameParams::default()),
         },
         Tool {
@@ -565,6 +653,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "project.delete",
             description: "Delete an empty project; refused while labels belong to it.",
             input_schema: ProjectDeleteParams::schema(),
+            annotations: Annotations::DESTRUCTIVE,
             method: Method::ProjectDelete(ProjectDeleteParams::default()),
         },
         Tool {
@@ -572,6 +661,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "doctor.report",
             description: "Report where this machine's Tandem state lives and whether it is healthy.",
             input_schema: EmptyParams::schema(),
+            annotations: Annotations::READ,
             method: Method::DoctorReport(EmptyParams {}),
         },
         Tool {
@@ -579,6 +669,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "note.tree",
             description: "Read the vault's folder tree: folders first, notes after, hidden entries skipped.",
             input_schema: EmptyParams::schema(),
+            annotations: Annotations::READ,
             method: Method::NoteTree(EmptyParams {}),
         },
         Tool {
@@ -586,6 +677,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "note.read",
             description: "Read one note: its whole text, the content hash a save compares and its mtime.",
             input_schema: NotePathParams::schema(),
+            annotations: Annotations::READ,
             method: Method::NoteRead(NotePathParams::default()),
         },
         Tool {
@@ -593,6 +685,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "note.write",
             description: "Write a note's whole text, atomically, under the vault lock. A missing text is refused.",
             input_schema: NoteWriteParams::schema(),
+            annotations: Annotations::DESTRUCTIVE,
             method: Method::NoteWrite(NoteWriteParams::default()),
         },
         Tool {
@@ -600,6 +693,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "note.create",
             description: "Create an empty note. A taken path is refused, never overwritten.",
             input_schema: NotePathParams::schema(),
+            annotations: Annotations::WRITE,
             method: Method::NoteCreate(NotePathParams::default()),
         },
         Tool {
@@ -607,6 +701,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "note.createFolder",
             description: "Create a folder, with no note in it.",
             input_schema: NotePathParams::schema(),
+            annotations: Annotations::WRITE,
             method: Method::NoteCreateFolder(NotePathParams::default()),
         },
         Tool {
@@ -614,6 +709,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "note.move",
             description: "Move a note or folder into another folder, rewriting every wikilink that resolves to it.",
             input_schema: NoteMoveParams::schema(),
+            annotations: Annotations::DESTRUCTIVE,
             method: Method::NoteMove(NoteMoveParams::default()),
         },
         Tool {
@@ -621,6 +717,7 @@ pub fn tools() -> Vec<Tool> {
             method_tag: "note.health",
             description: "Check the vault's link graph: broken links, orphans and counts, the same report note links prints.",
             input_schema: EmptyParams::schema(),
+            annotations: Annotations::READ,
             method: Method::NoteHealth(EmptyParams {}),
         },
     ]
