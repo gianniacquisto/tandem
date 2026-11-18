@@ -420,6 +420,7 @@ fn notes_response(
         body: askama::filters::Safe(body),
         stream: true,
         sign_out: context.access.is_token(),
+        export: context.may_export(),
     })
     .render()
     {

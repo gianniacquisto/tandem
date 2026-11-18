@@ -1218,6 +1218,7 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
             actor: Actor::current(),
             environment: environment(),
             access,
+            export_check: tandem_core::serve::ExportCheck::standard(),
         };
         tracing::info!(
             address = %address,
