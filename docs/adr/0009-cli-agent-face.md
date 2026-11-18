@@ -1,5 +1,7 @@
 # The agent face is a CLI, not an MCP server
 
+> **Status:** In force as amended by 0047 (single door). See [the index](README.md).
+
 [ADR 0001](0001-store-protocol.md) fixed the store protocol and [ADR 0003](0003-distribution.md) decided how agents reach it: an MCP stdio server, `tandem-mcp`, shipped **inside** the app bundle and reached at its in-bundle path, exposing three tools — `list`, `add`, `complete` — whose descriptions are specified verbatim as *"the agent's only documentation"* (the app spec and its tool-contract ticket). The app's wayfinder map cut the alternative on purpose: *"CLI adapter for non-MCP agents or shell scripting — the MCP server is the agent surface."* We decided: **the MCP server retires and a command-line binary, `tandem-cli`, becomes the agent face.** It ships in the app bundle and is reached at its in-bundle path exactly as `tandem-mcp` is today; it linked TandemCore and wrote the store **directly**, under the same sidecar lock the app took; it is **agents-only**, with one output path (store-schema JSON on stdout, the short actionable text on stderr); its grammar is namespaced (`tandem-cli todo list|add|complete`, `tandem-cli note rename`); and the tool descriptions move **verbatim** into a `tandem` skill that owns the contract.
 
 ## Why the protocol was never the problem

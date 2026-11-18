@@ -1,5 +1,7 @@
 # A ticket can become a note — the other half of the note↔ticket pair
 
+> **Status:** Surface retired by 0045. See [the index](README.md).
+
 [ADR 0010](0010-todo-note-links.md) made a todo point at a bikeshed note. This adds the other half of that pair: **a ticket can be promoted to a note** — the note is created from the ticket's title and description, and the ticket's `link` points at the note it became.
 
 ## Why

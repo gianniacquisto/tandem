@@ -1,5 +1,7 @@
 # Workflows are data; a sprint is the workflow's current run
 
+> **Status:** Superseded by 0045 in its data half. See [the index](README.md).
+
 The board's columns were a fixed six: `Status::WORKFLOW` in the core and `STATUSES` in the renderer were the only source. Adding a column meant a build of the core, the CLI, MCP, the wire and the board. The human's ask is to add or change a workflow without redeveloping the app, and TAN-327's "Selected for development" column was the first case.
 
 Decided 2026-11-08 (TAN-328 built the foundation).

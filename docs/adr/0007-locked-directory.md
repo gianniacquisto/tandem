@@ -1,5 +1,7 @@
 # Shared storage mechanics: one `LockedDirectory` primitive owns the sidecar protocol
 
+> **Status:** In force. See [the index](README.md).
+
 [ADR 0001](0001-store-protocol.md) fixed the store protocol — sidecar `flock`, atomic temp + fsync + `rename`, orphan-temp cleanup — and [ADR 0004](0004-vault-protocol.md) reused it for the vault. Both domains implemented it **separately**: `Store` and `Bikeshed` each carried the same 2 s retry window, the same 10–50 ms backoff, the same 60 s orphan age, and their own copies of lock acquire/release, `fsync`, the atomic write, and the orphan sweep — differing only in the temp-file prefix (`.todos-` / `.note-`) and the names of the errors they throw. We decided: a single core primitive, `LockedDirectory`, owns those mechanics. `Store` and `Bikeshed` keep their schema, their recovery policy, and their **own error vocabulary**; the primitive throws a neutral `LockedDirectoryError` that each domain translates into its own errors at the seam. No file format, no user-facing message, and no public surface changes.
 
 ## Why the primitive owns the mechanism, not the vocabulary

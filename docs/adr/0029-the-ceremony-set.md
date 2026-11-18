@@ -1,5 +1,7 @@
 # The ceremony set — a roster, a standup, a sprint cycle, and the minutes
 
+> **Status:** Superseded by 0045. See [the index](README.md).
+
 Six passes run on a Tandem board — capture, triage, dispatch, review, retro, consolidate — and no ceremony stands between them. The passes do their own job; nothing gathers the team, nothing stands it up, nothing plans a batch, and nothing posts to the log. This ADR records the ceremony set that fills the gap: a roster of the roles, a standup, a sprint cycle, and the ticket comment log as the minutes. The set adds no field, no verb and no surface — it names what already runs, and it points at the two sibling tickets that build the standup and the sprint cycle.
 
 ## Why

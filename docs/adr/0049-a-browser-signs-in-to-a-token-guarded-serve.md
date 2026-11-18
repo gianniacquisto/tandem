@@ -1,5 +1,7 @@
 # A browser signs in to a token-guarded serve: a session cookie, held by the instance
 
+> **Status:** In force. See [the index](README.md).
+
 [ADR 0047](0047-serve-is-the-single-door.md) put a bearer token on every route of a non-loopback `tandem serve` and deferred the browser half. A browser does not send `Authorization` on a page load, a form post or an `EventSource`, so a token-guarded board was reachable by agents and the remote CLI but not by a person. That blocks the self-hoster behind a reverse proxy, the container image (CUT-28) and the hosted product, whose fleet runs the unmodified release and keeps the control plane out of the request path ([ADR 0048](0048-hosted-tandem-is-one-serve-per-workspace.md)). The instance must therefore hold the browser session itself.
 
 Decided 2026-11-16 (CUT-34).

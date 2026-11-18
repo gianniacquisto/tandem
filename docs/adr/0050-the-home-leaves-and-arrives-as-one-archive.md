@@ -1,5 +1,7 @@
 # The home leaves and arrives as one archive
 
+> **Status:** In force. See [the index](README.md).
+
 A Tandem home is two things, `tandem.db` and `bikeshed/`, and until now there was no supported way to move one: [ADR 0018](0018-rolling-store-backup.md)'s rolling backup is one write old and covers no notes, and a user changing machines, a self-hoster leaving or a hosted workspace changing region copied files by hand. [ADR 0048](0048-hosted-tandem-is-one-serve-per-workspace.md) promises that a workspace leaves, arrives or changes region as one archive, and that a suspended workspace still yields its export while its instance is stopped. The fleet runs the published release unpatched, so the verb is an open core feature a self-hoster gets too.
 
 Decided 2026-11-17 (CUT-35, refined 2026-11-16; the board's download is CUT-38).

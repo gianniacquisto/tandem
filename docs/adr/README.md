@@ -79,7 +79,7 @@ The status comes from each record's own header and from the "Prior records" list
 | 0045 | [The board and notes cut](0045-the-board-and-notes-cut.md) | In force | |
 | 0046 | [Tandem serve and single-binary distribution](0046-tandem-serve-and-single-binary-distribution.md) | In force, amended by 0047 (single door) | Its "two server doors", "no HTTP JSON-RPC" and "loopback is the authentication" clauses are superseded. |
 | 0047 | [Lanes are labels](0047-lanes-are-labels.md) | In force | Schema v12. |
-| 0047 | [Tandem serve is the single door](0047-serve-is-the-single-door.md) | In force, amended (CUT-37) | MCP over HTTP on `tandem serve`; `tandem mcp` is retired. Shares its number with the record above: two branches took 0047 and both merged. One of them should be renumbered. |
+| 0047 | [Tandem serve is the single door](0047-serve-is-the-single-door.md) | In force, amended (CUT-37) | MCP over HTTP on `tandem serve`; `tandem mcp` is retired. Shares its number with the record above: two branches took 0047 and both merged. Both stay as numbered, and the index check accepts the pair; a renumbering is a human call. |
 | 0048 | [Hosted Tandem is one `tandem serve` per workspace](0048-hosted-tandem-is-one-serve-per-workspace.md) | In force | The hosted product is the published binary, one serve and one home per workspace, behind a closed control plane that holds no content. Records the boundary; the siblings own their parts. |
 | 0049 | [A browser signs in to a token-guarded serve](0049-a-browser-signs-in-to-a-token-guarded-serve.md) | In force | A session cookie held by the instance, a keyed digest in `browser_sessions` (schema v13). Supersedes the browser-login half of 0047. |
 | 0050 | [The home leaves and arrives as one archive](0050-the-home-leaves-and-arrives-as-one-archive.md) | In force | `tandem export` and `tandem import`: one streamed `.tar.gz` of the store and the notes, no secrets, restored only into an empty home; one export permission check and a record line. Amends 0047's list of verbs with no remote form; 0018's "no restore verb" stands for the rolling `.bak`. |
@@ -87,4 +87,4 @@ The status comes from each record's own header and from the "Prior records" list
 
 ## Adding a record
 
-Take the next free number, add the file, and add its row here in the same change. When a record supersedes or amends an older one, say so at the top of the older file and update that row too.
+Take the next free number, add the file with a `> **Status:** ...` line under its title, and add its row here in the same change. `rust/core/tests/adr_index.rs` fails when a record has no row or no status line. When a record supersedes or amends an older one, say so at the top of the older file and update that row too.

@@ -1,5 +1,7 @@
 # A Claude Code plugin is the connector
 
+> **Status:** In force. See [the index](README.md).
+
 Connecting Claude Code to Tandem meant pasting a JSON block into `~/.claude.json` and copying skills by hand. Claude Code installs plugins from a marketplace, which is a git repository with a manifest, so this repository can be its own marketplace and the connection becomes two commands.
 
 Decided 2026-11-18 (MCP-9).

@@ -1,5 +1,7 @@
 # Vault path hygiene: one rule, not three copies
 
+> **Status:** In force. See [the index](README.md).
+
 [ADR 0004](0004-vault-protocol.md) put the vault behind a path-hygiene rule — refuse an empty path, any empty component (`//`), and any `.` or `..` component; the boundary that keeps a resolved path inside the vault. It lived in **three** places. `Bikeshed.fileURL(for:)` (TandemCore) and `VaultPaths.url` (the GUI target) were documented as copies "kept in step by review, not by code", and `BikeshedModel.existingVaultFile` carried a third, subtly different variant (a case-insensitive walk). The copies had already diverged: `VaultPaths.url` standardized the root, the core's did not. We decided: **one public rule**, `VaultPath.url(under:for:)` in TandemCore. The core, the GUI (`EditorHost`'s scheme handler and `BikeshedModel`'s link routing), and the model's markdown-link walk all call it; the GUI's `VaultPaths` is deleted.
 
 ## Why

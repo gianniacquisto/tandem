@@ -2,6 +2,8 @@
 
 # The harness keeps a home of Tandem's, and the environment is the seam
 
+> **Status:** Superseded by 0040. See [the index](README.md).
+
 The app runs its own agent loop by spawning a bundled `opencode` binary, so the store the harness writes must sit in Tandem's home and never in the one the human's own editor uses. The binary makes that harder than `app.name` suggests: every global path is `join(root, "opencode")` with `root` fixed at build time (`const app = "opencode"` in upstream `packages/util/src/global.ts`), so `app.name` is cosmetic for paths, and a naive spawn writes `~/.local/share/opencode/{auth.json,snapshot,tool-output,worktree}`, `~/.config/opencode` and `~/.cache/opencode`.
 
 The seam is the environment. Upstream's `global-roots.ts` resolves `XDG_DATA_HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME` and `XDG_STATE_HOME` once, at module load, and `os.tmpdir()` for the one root it does not take from XDG. A child spawned with those set inherits them, and the binary itself carries `OPENCODE_DB` and `OPENCODE_CONFIG_DIR` for the two paths the SDK calls `database.path` and `config.directory`. That was the claim; this record is what the spike measured.

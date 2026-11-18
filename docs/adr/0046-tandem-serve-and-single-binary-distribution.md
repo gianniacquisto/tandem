@@ -1,5 +1,7 @@
 # Tandem serve: one binary, one loopback server, server-rendered HTML
 
+> **Status:** In force, amended by 0047 (single door). See [the index](README.md).
+
 Tandem's Rust core already owns the domain, the store and the wire, but the UI still needs a second stack to draw it: Electron spawns the core over stdio and a React renderer talks JSON-RPC back. The next step is one binary. Keeping `POST /api/rpc` alive for the React face would preserve a transport that a server-rendered board replaces in the same release, so the cut merges the transport phase and the HTML phase into one decision.
 
 Decided 2026-11-13 (CUT-14).

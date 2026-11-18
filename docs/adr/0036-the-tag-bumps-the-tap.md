@@ -2,6 +2,8 @@
 
 # The tag bumps the tap: the release job rewrites the cask and pushes it
 
+> **Status:** Superseded by 0046. See [the index](README.md).
+
 Half the release act was CI and half was a human at a terminal. A `v*` tag runs [`release.yml`](../../.github/workflows/release.yml), which verifies the build, publishes the GitHub release with `Tandem-<version>.zip` and `SHA256SUMS`, and writes the body from [`Scripts/release-notes.sh`](../../Scripts/release-notes.sh). The other half was `Casks/tandem.rb` in [`gianniacquisto/homebrew-tap`](https://github.com/gianniacquisto/homebrew-tap): a human bumped its `version` and `sha256` and ran `brew style` and `brew audit --cask --strict` before pushing (`docs/releasing.md` steps 4 and 5, done by hand for every release, tap PRs #16 to #32).
 
 That hand step is the lag, and the lag is unbounded: v0.32.0 had no cask at all while 0.33.0 shipped, and v0.30.0 published while the tap still served 0.31.0. The tap's own `autobump.yml` cannot close it: it fires on a 06:55 UTC daily cron and on a push to itself, has no `workflow_dispatch` and no release trigger, and runs `brew bump --no-fork --open-pr`, so even when it fires it opens a PR a human merges. The human, 2026-10-29: "i want releases to be immediately available after tagging".

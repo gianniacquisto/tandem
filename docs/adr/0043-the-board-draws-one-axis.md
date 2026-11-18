@@ -1,5 +1,7 @@
 # The board draws one axis: the workflow's stages
 
+> **Status:** In force, amended by 0045. See [the index](README.md).
+
 The board carried two axes. Lanes were rows and the active workflow's stages were columns ([ADR 0041](0041-workflows-are-data.md)), so five lanes by six stages was 30 cells and most of them were empty dashed drop targets; a lane was also a filter in the header, so one fact was drawn twice. The board now draws one column per stage and nothing else: a lane is a chip on the card and a filter in the header, and the project is the focus the columns are narrowed by.
 
 Decided 2026-11-11 (UI-33 built it).

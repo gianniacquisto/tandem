@@ -1,5 +1,7 @@
 # Sessions are records, not tickets: the board holds only work
 
+> **Status:** Superseded by 0045. See [the index](README.md).
+
 > **Amended 2026-10-26 by [ADR 0031](0031-one-database-the-store.md):** a session is a row of the store's `sessions` table, not `sessions.json`, and its own `sessions.lock` went with the file. The record, its fields and its five verbs are unchanged. The amendment's text is ADR 0031's.
 >
 > **Amended 2026-10-27 by RET-43:** a re-dispatched pass in an opencode session whose record has already ended gets its own record, keyed `<opencode id>-2`, `<opencode id>-3`, …. The amendment at the end of this page states it.

@@ -1,5 +1,7 @@
 # The store is one database: `tandem.db`, WAL, and an import marker
 
+> **Status:** In force as amended. See [the index](README.md).
+
 > **Amended 2026-10-30 by the Rust port (PRT-4):** v1 of the ported schema ships `schema_migrations` alone. `store_imports` arrives with PRT-18's one-off import of the real home, which owns that amendment: there is nothing to import until that script runs, and a marker table no writer writes is a second truth waiting to disagree. The rest of this record stands, including the marker's rule for the domains the port lands later.
 >
 > **Amended 2026-10-30 by PRT-18, the one-off import of the real home:** **no `store_imports` table ships in the port.** The amendment above said the marker would arrive with this ticket; it does not, and the rest of that amendment stands. The port has no JSON read-fallback for a marker to gate: a v5 file is refused, never read, at the schema seam (`refuse_legacy`, `rust/core/src/store/schema.rs:232`), so "did this domain's import finish?" has no reader whose answer would change. The one import is `Scripts/import-legacy.py`: it writes the whole target store in one run, keeps the source's database as `legacy.db`, and proves the run with its verification mode. A marker table no writer writes would be the second truth waiting to disagree that this record already rules out, with nothing left to disagree with. The marker's rule for the domains the port lands later is untouched.

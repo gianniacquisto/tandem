@@ -1,5 +1,7 @@
 # A setup verb outside the domains: `tandem-cli doctor`
 
+> **Status:** In force as amended. See [the index](README.md).
+
 > **Amended 2026-11-13 by CUT-3:** the check list is three. `doctor` reports `home`, `store` and `bikeshed`; the `lock`, `app`, `skills`, `comments`, JSON-leftover, `agent-face` and `mcp` rows retired with the surfaces that owned them ([ADR 0045](0045-the-board-and-notes-cut.md)). `home` is informational, `store` and `bikeshed` can fail, and the report shape and exit codes are unchanged.
 
 > **Amended 2026-11-02 by TAN-274:** the check list is thirteen. One informational row joins last and names the MCP door beside the CLI: `mcp` reports the `tandem-mcp` server's presence at the binary's own version, with its tool count over the covered wire-method count, asserted statically against the registry rather than by spawning the server. The report shape, the names, the order and the exit codes are unchanged; a drift fails the registry test before it can ship, so the row names the numbers.

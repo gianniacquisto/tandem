@@ -1,5 +1,7 @@
 # A todo may link to a bikeshed note
 
+> **Status:** Surface retired by 0045. See [the index](README.md).
+
 The todo store ([ADR 0001](0001-store-protocol.md)) and the bikeshed ([ADR 0004](0004-vault-protocol.md)) are two surfaces of one app that never crossed: a todo is a title and a done state, a note is a file, and the bikeshed spec lists **"note↔todo cross-references"** explicitly out of scope. We decided to reverse that line, narrowly: a todo may carry an optional `link` — a **vault-root-relative path** to a note, like `projects/App.md`, or `null`. The row shows a quiet paperclip that opens the note in the Bikeshed tab; a context menu sets, changes, and clears it. `link` is **additive** to schema v1, so the envelope stays `version: 1`. It is **GUI-only**: there is no CLI verb, exactly like `update` and `move`.
 
 ## Why the link is a path, not a name

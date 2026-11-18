@@ -1,5 +1,7 @@
 # Sprints are records, not tickets: a sprint's own row, handle, batch and close
 
+> **Status:** Superseded by 0045. See [the index](README.md).
+
 > **Amended 2026-11-08 by [ADR 0041](0041-workflows-are-data.md):** a sprint becomes the workflow's current run; TAN-332 turns this record's table into the `workflow_runs` history. Until then the `sprints` table is untouched. The amendment's text is ADR 0041's.
 >
 > **Amended 2026-11-10 by TAN-353:** the batch write is also the link to the sprint's opening session, so a ticket the sprint drew is attributed to the pass that drew it. `sprint ticket` appends the batch entry and the session link in one transaction; a sprint opened with no session still takes its batch and links nothing.

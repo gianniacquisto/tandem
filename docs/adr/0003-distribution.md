@@ -2,6 +2,8 @@
 
 # Distribution: prebuilt cask, in-bundle MCP binary, no formula
 
+> **Status:** Superseded by 0046. See [the index](README.md).
+
 > **Amended 2026-10-30 by [ADR 0036](0036-the-tag-bumps-the-tap.md):** the tag run now bumps the tap's cask itself, in the same run that publishes the release, so the consequence below that has the tap's daily `autobump` opening the bump PR is retired. The one-cask distribution decision is unchanged. The amendment's text is ADR 0036's.
 
 > **Amended 2026-10-29 by [ADR 0034](0034-agent-face-in-the-artifact.md):** the prebuilt artifact now also carries `Contents/Resources/agent/` (the skills, the agent prompts and `AGENTS.md`, plus a `VERSION` marker), so a skill and the CLI it drives ship from one tag; `tandem-cli setup install` writes it into the Tandem home. The one-cask distribution decision is unchanged. The amendment's text is ADR 0034's.

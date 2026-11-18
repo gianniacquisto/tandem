@@ -1,5 +1,7 @@
 # The notes folder is the bikeshed, not a "vault"
 
+> **Status:** In force. See [the index](README.md).
+
 Tandem's notes surface carried two names: **Bikeshed** for the surface, **"vault"** for the folder holding the notes ([ADR 0004](0004-vault-protocol.md), "Vault protocol"; GLOSSARY called "vault" the accepted alternate). We decided: **one name.** The folder is the bikeshed too, and "vault" is retired from the app, the CLI, the GLOSSARY, and the live code. The word survives only in this repo's historical records — the dated ADRs and the retired planning notes written when it was the term.
 
 ## Why

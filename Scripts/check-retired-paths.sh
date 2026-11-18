@@ -7,7 +7,7 @@
 # no longer exists, and PR #283 found that class of rot in review instead of in
 # a check. This greps the tracked tree and names every file and line that still
 # mentions a retired path, minus the mentions the allowlist below records: the
-# ADRs, the port's dated spec, the example face the cut retired, and the
+# ADRs, the example face the cut retired, and the
 # provenance notes that point at the git history.
 #
 # Run it from anywhere: `bash Scripts/check-retired-paths.sh`.

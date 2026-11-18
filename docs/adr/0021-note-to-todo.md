@@ -1,5 +1,7 @@
 # A note can become a ticket — the reverse of the todo→note link
 
+> **Status:** Surface retired by 0045. See [the index](README.md).
+
 [ADR 0010](0010-todo-note-links.md) made a todo point at a bikeshed note, and closed with the line that "the note→todo direction stays out of scope". This reverses that line, narrowly: **a piece of a note can be filed as a ticket**, and the ticket points back at the note it came from.
 
 ## Why
