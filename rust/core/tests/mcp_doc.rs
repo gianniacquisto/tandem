@@ -37,7 +37,10 @@ fn render() -> String {
             } else {
                 params.join(", ")
             };
-            format!("- `{}`: {} Params: {}.", tool.name, tool.description, params)
+            format!(
+                "- `{}`: {} Params: {}.",
+                tool.name, tool.description, params
+            )
         })
         .collect::<Vec<_>>()
         .join("\n")
