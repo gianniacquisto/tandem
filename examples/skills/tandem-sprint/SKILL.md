@@ -36,11 +36,13 @@ Every dispatch names its model and effort; a subagent never inherits the session
 
 | Size | The ticket | Builder | Reviewer |
 | --- | --- | --- | --- |
-| `S` | mechanical: a few lines in one area, prose, config, an existing test extended | `haiku`, effort low | `haiku` |
-| `M` | one area, new behaviour, new tests | `sonnet`, effort medium | `sonnet` |
-| `L` | crosses layers, touches the schema or a published contract, or many files | `sonnet`, effort high | `sonnet` |
+| `S` | mechanical: a few lines in one area, prose, config, an existing test extended | `haiku`, low | `haiku`, low |
+| `M` | one area, new behaviour, new tests | `sonnet`, low | `sonnet`, medium |
+| `L` | crosses layers, touches the schema or a published contract, or many files | `sonnet`, medium | `sonnet`, medium |
 
-**Escalate the model, never start high.** The first fix pass runs one step up from the build (`haiku` becomes `sonnet`; `sonnet` raises its effort to high). The second fix pass, the last before the human, runs on `opus`: the hard bug the cheaper passes could not close is where it earns its cost. No build starts on `opus`. A reviewer that answers `blocked` with `needs a stronger read` is re-dispatched once on `opus`; a second such answer escalates to the human.
+**Effort is paid per turn.** A builder takes many turns and its tests are its check, so it runs low and earns medium only on an `L` ticket. A reviewer takes few turns and judgement is its whole job, so it runs medium past `S`. Nothing runs at high effort.
+
+**Escalate the model, never start high.** The first fix pass runs on `sonnet`, medium. The second, the last before the human, runs on `opus`, medium: the hard bug the cheaper passes could not close is where it earns its cost. No build starts on `opus`. A reviewer that answers `blocked` with `needs a stronger read` is re-dispatched once on `opus`, medium; a second such answer escalates to the human.
 
 On a host whose dispatch takes no model, the agent's own configuration decides, and the routing is advice to the human configuring it.
 
@@ -59,7 +61,7 @@ Dispatch the `reviewer`, on the model the routing picks, with the ticket id and 
 - **`merged`**: the reviewer completed the ticket. Every other open batch PR is now behind `main` and its next gate will say so.
 - **`escalated`**: accept it only after `ticket_show` reads status `in-review` and assignee `human`. Anything else is a failed gate: re-dispatch the reviewer once, then hand it over yourself. An escalated ticket leaves the active batch; the sprint does not wait for the human.
 - **`blocked`, behind its base**: bring it up to date yourself (`gh pr update-branch <n>`, a merge), wait for green on the new head (`gh pr checks <n> --watch`), and gate again. A conflict the update cannot merge is a fix pass.
-- **`blocked` on a red check, or `changes-requested`**: a **fix pass**, a fresh `builder` dispatch on the routing's next model up, with four things and nothing else: the ticket id, the PR number, the head sha the gate read, and the finding quoted. Then gate again; a re-gate may resume its own reviewer session.
+- **`blocked` on a red check, or `changes-requested`**: a **fix pass**, a fresh `builder` dispatch on the routing's fix-pass model, with four things and nothing else: the ticket id, the PR number, the head sha the gate read, and the finding quoted. Then gate again; a re-gate may resume its own reviewer session.
 
 **The fix loop has a ceiling: two fix passes per ticket.** A third failing verdict escalates: a comment quoting the three findings, then `ticket_set` with `status` in-review and `assignee` human. A branch update or a capacity-cancelled CI rerun (`agents/builder.md`, step 6) is not a fix pass and does not count.
 
