@@ -45,7 +45,7 @@ The status comes from each record's own header and from the "Prior records" list
 | 0011 | [Chosen vault](0011-chosen-vault.md) | Surface retired by 0045 | The settings that stored the choice were cut; the notes live at `<home>/bikeshed`. |
 | 0012 | [Editor formatting](0012-editor-formatting.md) | Superseded by 0045 | Amended earlier by 0042. |
 | 0013 | [Bikeshed folders](0013-bikeshed-folders.md) | In force | Folders are plain directories. |
-| 0014 | [`doctor`](0014-cli-doctor.md) | In force as amended | Three checks since CUT-3: home, store, bikeshed. Read-only. |
+| 0014 | [`doctor`](0014-cli-doctor.md) | In force as amended | Seven checks: home, store, integrity, references, space, versions, bikeshed. Read-only. |
 | 0015 | [Bikeshed, not vault](0015-bikeshed-not-vault.md) | In force | The name of the notes folder. |
 | 0016 | [Note capture](0016-note-capture.md) | Superseded by 0045 | The capture verb and the hidden `.raw/` layer. |
 | 0017 | [The ticket model](0017-the-ticket-model.md) | In force as amended | Amended by 0031, 0041 and 0043. Status is six fixed stages again since 0045. |
