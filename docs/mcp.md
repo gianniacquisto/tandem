@@ -2,19 +2,25 @@
 
 `tandem serve` is the MCP server: agents reach it at `POST /mcp`. How to connect a host is in the README's [Connect your agent](../README.md#connect-your-agent). Tools marked read-only in `tools/list` may run without asking the human; the rest write.
 
+## Lean answers
+
+The ticket tools answer lean by default, so an agent does not pay again for text it already holds. A write (`ticket_add`, `ticket_set`, `ticket_move`, `ticket_block`, `ticket_unblock`, `ticket_complete`, and `ticket_archive` with an id) answers `{revision, ticket: {ref, id, status, assignee, label, blocked}}`, with `title` added when the write could have changed it, and never the description. `ticket_comment_add` answers `{revision, at, author}`, not the body. `ticket_list` rows and `ticket_show` omit a field that is null, false or an empty array, drop `done`, keep `id` only for a ticket with no ref, and name a blocker as `{ref, status}`. `ticket_list` also takes `limit` and reports `total` when it cut the list.
+
+Pass `detail: "full"` to any of these tools for the whole shape, every field as the CLI prints it. The remote CLI always sends it, so `TANDEM_SERVER` stdout is the local verb's stdout. To read the whole ticket after a write, call `ticket_show` with `detail: "full"`.
+
 The list below is generated from `tools()` in `rust/core/src/mcp.rs`, one line per tool with its parameter names. A test (`rust/core/tests/mcp_doc.rs`) fails when this page and the registry disagree. After a tool change, regenerate with `TANDEM_BLESS=1 cargo test -p tandem-core --test mcp_doc`.
 
 <!-- tools:begin -->
-- `ticket_list`: List the tickets in view, in stored order. Every filter is optional and they combine. Params: `archived`, `assignee`, `blocked`, `filter`, `label`, `status`, `text`.
-- `ticket_show`: Read one ticket whole: the only read that carries the description. Params: `id` (required).
-- `ticket_add`: File a ticket. A title alone lands backlog, unowned, on top of the default area. Params: `assignee`, `description`, `label`, `origin`, `status`, `title` (required).
-- `ticket_set`: Change the fields named in one write; everything unnamed is left alone. Params: `assignee`, `description`, `id` (required), `status`, `title`.
-- `ticket_move`: Move between labels and/or within one. Omit the index to append. Params: `id` (required), `index`, `label`.
-- `ticket_block`: Record that one ticket waits on another, as an edge in the store. Params: `id` (required), `on` (required).
-- `ticket_unblock`: Remove one edge, or every edge the ticket has when `on` is absent. Params: `id` (required), `on`.
-- `ticket_complete`: The short path to done: idempotent, no reopen verb. Params: `id` (required).
-- `ticket_archive`: Archive one ticket, or every done ticket when `id` is absent. Params: `id`.
-- `ticket_comment_add`: Append to the ticket's discussion log. Write the role out as the author. Params: `author`, `body` (required), `id` (required).
+- `ticket_list`: List the tickets in view, in stored order. Every filter is optional and they combine. A row omits null, false and empty fields; detail "full" returns every field. Params: `archived`, `assignee`, `blocked`, `detail`, `filter`, `label`, `limit`, `status`, `text`.
+- `ticket_show`: Read one ticket whole: the only read that carries the description. Null, false and empty fields are omitted; detail "full" returns every field. Params: `detail`, `id` (required).
+- `ticket_add`: File a ticket. A title alone lands backlog, unowned, on top of the default area. Answers a short receipt without the description; detail "full" returns the whole ticket. Params: `assignee`, `description`, `detail`, `label`, `origin`, `status`, `title` (required).
+- `ticket_set`: Change the fields named in one write; everything unnamed is left alone. Answers a short receipt without the description; detail "full" returns the whole ticket. Params: `assignee`, `description`, `detail`, `id` (required), `status`, `title`.
+- `ticket_move`: Move between labels and/or within one. Omit the index to append. Answers a short receipt; detail "full" returns the whole ticket. Params: `detail`, `id` (required), `index`, `label`.
+- `ticket_block`: Record that one ticket waits on another, as an edge in the store. Answers a short receipt; detail "full" returns the whole ticket. Params: `detail`, `id` (required), `on` (required).
+- `ticket_unblock`: Remove one edge, or every edge the ticket has when `on` is absent. Answers a short receipt; detail "full" returns the whole ticket. Params: `detail`, `id` (required), `on`.
+- `ticket_complete`: The short path to done: idempotent, no reopen verb. Answers a short receipt; detail "full" returns the whole ticket. Params: `detail`, `id` (required).
+- `ticket_archive`: Archive one ticket, or every done ticket when `id` is absent. One ticket answers a short receipt; detail "full" returns the whole ticket. Params: `detail`, `id`.
+- `ticket_comment_add`: Append to the ticket's discussion log. Write the role out as the author. Answers the time and author, not the body; detail "full" echoes the comment. Params: `author`, `body` (required), `detail`, `id` (required).
 - `ticket_comment_list`: List the ticket's discussion log in append order. Params: `id` (required).
 - `label_list`: List every label, in render order. Params: none.
 - `label_add`: Declare a label. A label must exist before tickets move to it. Params: `abbr`, `name` (required), `project`.

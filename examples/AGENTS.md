@@ -14,6 +14,7 @@ Memory is the notes store (`~/.tandem/bikeshed/`, markdown with `[[wikilinks]]`)
 Agents call Tandem through the MCP tools, never through the shell.
 
 - **Statuses**: `backlog`, `on-hold` (parked), `ready`, `in-progress`, `in-review`, `done`. `human` is an assignee only while a question is open.
+- **Answers**: ticket tools answer lean: a write returns a short receipt without the description, `ticket_comment_add` returns no body, and `ticket_list` rows omit empty fields (`limit` cuts the list and `total` reports the matches). Pass `detail: "full"` for the whole shape.
 - **Description**: written once as the brief. `ticket_set`'s `description` **replaces** the body and there is no append parameter, so append by reading with `ticket_show` and passing the combined text after a blank line.
 - **Comments**: the log is append-only, so a correction is a new comment. Sign with your role written out as `author`.
 - **Blocks**: `ticket_block` writes the edge. The block is derived and lifts when the blocker reaches `done`; the reason goes in a `## Blocked on` section of the description.

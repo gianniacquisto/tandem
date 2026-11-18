@@ -18,7 +18,11 @@ pub(super) const SERVER_VARIABLE: &str = "TANDEM_SERVER";
 
 /// Run `command` against the server at `server`.
 pub(super) fn run(server: &str, command: &Command) -> Result<(), Failure> {
-    let (verb, arguments) = call_for(command)?;
+    let (verb, mut arguments) = call_for(command)?;
+    // The local verb prints the whole ticket, so the remote one asks for it:
+    // the lean answer is the agent's default, never the CLI's (MCP-3). A tool
+    // with no such argument ignores it.
+    arguments.insert("detail".into(), Value::String("full".into()));
     let remote = tandem_core::mcp::remote_verb(&verb).ok_or_else(|| {
         Failure::message(format!(
             "tandem {verb}: this verb has no remote form; it runs against the local store only."

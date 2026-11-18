@@ -38,6 +38,7 @@ use serde_json::{Value, json};
 use crate::env::Environment;
 use crate::rpc::execute;
 use crate::store::{Actor, Store};
+use crate::wire::rpc::Reply;
 use crate::wire::rpc::{
     CommentAddParams, EmptyParams, LabelAddParams, LabelDeleteParams, LabelMoveParams,
     LabelRenameParams, Method, NoteMoveParams, NotePathParams, NoteWriteParams, ProjectAddParams,
@@ -72,6 +73,7 @@ pub fn remote_verb(verb: &str) -> Option<RemoteVerb> {
     let unwrap = match *tag {
         "ticket.show" | "ticket.add" | "ticket.set" | "ticket.move" | "ticket.block"
         | "ticket.unblock" | "ticket.complete" => Some("ticket"),
+        "ticket.comment.add" => Some("comment"),
         "note.write" => Some("write"),
         "note.move" => Some("moved"),
         "note.health" => Some("health"),
@@ -331,6 +333,16 @@ fn call_frame(
             format!("Invalid arguments for tool: {name}"),
         );
     }
+    let detail = match Detail::from_arguments(tool, &arguments) {
+        Ok(detail) => detail,
+        Err(message) => {
+            tracing::warn!(tool = tool.name, "invalid arguments: detail");
+            return error_frame(id, INVALID_PARAMS, message);
+        }
+    };
+    // A receipt names the title only when the write could have changed it.
+    let title_changed = tool.method_tag == "ticket.add"
+        || (tool.method_tag == "ticket.set" && arguments.get("title").is_some());
     let started = Instant::now();
     let outcome = Method::from_call(tool.method_tag, arguments)
         .and_then(|method| execute(method, store, actor));
@@ -338,9 +350,7 @@ fn call_frame(
     match outcome {
         Ok(reply) => {
             tracing::info!(tool = tool.name, outcome = "ok", latency_ms, "tools/call");
-            // Through a `Value` so the keys come out in the order the door has
-            // always answered them.
-            let result = serde_json::to_value(&reply).unwrap_or(Value::Null);
+            let result = render(tool.method_tag, &reply, detail, title_changed);
             result_frame(
                 id,
                 json!({"content": [{"type": "text", "text": result.to_string()}]}),
@@ -356,6 +366,147 @@ fn call_frame(
             )
         }
     }
+}
+
+// MARK: - Lean and full answers
+
+/// How much of a reply the caller asked for. An agent that names nothing gets
+/// [`Detail::Lean`]; the remote CLI always names `"full"`, because it rebuilds
+/// the local verb's stdout from the result and that must not change with the
+/// door.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Detail {
+    Lean,
+    Full,
+}
+
+impl Detail {
+    /// The `detail` a call names, for a tool whose schema carries one; a tool
+    /// without it ignores the argument and answers as it always did.
+    fn from_arguments(tool: &Tool, arguments: &Value) -> Result<Self, String> {
+        if tool.input_schema["properties"].get("detail").is_none() {
+            return Ok(Self::Full);
+        }
+        match arguments.get("detail") {
+            None | Some(Value::Null) => Ok(Self::Lean),
+            Some(Value::String(word)) if word == "lean" => Ok(Self::Lean),
+            Some(Value::String(word)) if word == "full" => Ok(Self::Full),
+            Some(_) => Err(format!(
+                "Invalid arguments for tool: {}: detail is \"lean\" or \"full\"",
+                tool.name
+            )),
+        }
+    }
+}
+
+/// The `detail` property a lean-capable tool's schema adds to its params.
+fn with_detail(mut schema: Value) -> Value {
+    schema["properties"]["detail"] = one_of_detail();
+    schema
+}
+
+fn one_of_detail() -> Value {
+    json!({
+        "type": "string",
+        "enum": ["lean", "full"],
+        "description": "lean (default) omits what you already hold and empty fields; full returns the whole ticket, every field",
+    })
+}
+
+/// The reply as the tool result. [`Detail::Full`] is the reply as the wire
+/// types serialize it, through a `Value` so the keys come out in the order the
+/// door has always answered them. [`Detail::Lean`] is derived from that same
+/// value, so the lean shape has one mapping and no copy of a field list beside
+/// the wire types' own.
+fn render(tag: &str, reply: &Reply, detail: Detail, title_changed: bool) -> Value {
+    let full = serde_json::to_value(reply).unwrap_or(Value::Null);
+    if detail == Detail::Full {
+        return full;
+    }
+    match reply {
+        Reply::Ticket(_) if tag == "ticket.show" => map_key(full, "ticket", lean_ticket),
+        Reply::Ticket(_) => lean_receipt(&full, title_changed),
+        Reply::TicketList(_) => map_key(full, "tickets", |rows| match rows {
+            Value::Array(rows) => Value::Array(rows.into_iter().map(lean_ticket).collect()),
+            other => other,
+        }),
+        Reply::Comment(_) => {
+            let comment = &full["comment"];
+            json!({"revision": full["revision"], "at": comment["at"], "author": comment["author"]})
+        }
+        _ => full,
+    }
+}
+
+/// `value` with the entry under `key` replaced by `f` of it.
+fn map_key(mut value: Value, key: &str, f: impl FnOnce(Value) -> Value) -> Value {
+    if let Some(slot) = value.get_mut(key) {
+        let taken = slot.take();
+        *slot = f(taken);
+    }
+    value
+}
+
+/// A write's receipt: the revision and enough of the ticket to see where it
+/// stands. The description is never echoed, and the title only when the write
+/// could have changed it.
+fn lean_receipt(full: &Value, title_changed: bool) -> Value {
+    let ticket = &full["ticket"];
+    let mut kept = serde_json::Map::new();
+    for key in ["ref", "id", "status", "assignee", "label", "blocked"] {
+        kept.insert(key.to_string(), ticket[key].clone());
+    }
+    if title_changed {
+        kept.insert("title".to_string(), ticket["title"].clone());
+    }
+    json!({"revision": full["revision"], "ticket": Value::Object(kept)})
+}
+
+/// A ticket or a list row without its defaults: a null, a false and an empty
+/// array are dropped, `done` (the status says it) goes, the `id` stays only
+/// for a ticket with no ref, and a blocker is its ref (or id) and status.
+fn lean_ticket(ticket: Value) -> Value {
+    let Value::Object(fields) = ticket else {
+        return ticket;
+    };
+    let has_ref = fields.get("ref").is_some_and(|value| !value.is_null());
+    let mut kept = serde_json::Map::new();
+    for (key, value) in fields {
+        let default = match &value {
+            Value::Null | Value::Bool(false) => true,
+            Value::Array(items) => items.is_empty(),
+            _ => false,
+        };
+        if default || key == "done" || (key == "id" && has_ref) {
+            continue;
+        }
+        let value = if key == "blockedBy" || key == "blocks" {
+            lean_blockers(value)
+        } else {
+            value
+        };
+        kept.insert(key, value);
+    }
+    Value::Object(kept)
+}
+
+/// A blocker edge's far end: `{ref, status}`, or the id for a ticket with no ref.
+fn lean_blockers(blockers: Value) -> Value {
+    let Value::Array(blockers) = blockers else {
+        return blockers;
+    };
+    Value::Array(
+        blockers
+            .into_iter()
+            .map(|blocker| {
+                let name = match blocker["ref"].as_str() {
+                    Some(reference) => ("ref", json!(reference)),
+                    None => ("id", blocker["id"].clone()),
+                };
+                json!({name.0: name.1, "status": blocker["status"]})
+            })
+            .collect(),
+    )
 }
 
 /// A success frame.
@@ -499,80 +650,80 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_list",
             method_tag: "ticket.list",
-            description: "List the tickets in view, in stored order. Every filter is optional and they combine.",
-            input_schema: TicketListParams::schema(),
+            description: "List the tickets in view, in stored order. Every filter is optional and they combine. A row omits null, false and empty fields; detail \"full\" returns every field.",
+            input_schema: with_detail(TicketListParams::schema()),
             annotations: Annotations::READ,
             method: Method::TicketList(TicketListParams::default()),
         },
         Tool {
             name: "ticket_show",
             method_tag: "ticket.show",
-            description: "Read one ticket whole: the only read that carries the description.",
-            input_schema: TicketIdParams::schema(),
+            description: "Read one ticket whole: the only read that carries the description. Null, false and empty fields are omitted; detail \"full\" returns every field.",
+            input_schema: with_detail(TicketIdParams::schema()),
             annotations: Annotations::READ,
             method: Method::TicketShow(TicketIdParams::default()),
         },
         Tool {
             name: "ticket_add",
             method_tag: "ticket.add",
-            description: "File a ticket. A title alone lands backlog, unowned, on top of the default area.",
-            input_schema: TicketAddParams::schema(),
+            description: "File a ticket. A title alone lands backlog, unowned, on top of the default area. Answers a short receipt without the description; detail \"full\" returns the whole ticket.",
+            input_schema: with_detail(TicketAddParams::schema()),
             annotations: Annotations::WRITE,
             method: Method::TicketAdd(TicketAddParams::default()),
         },
         Tool {
             name: "ticket_set",
             method_tag: "ticket.set",
-            description: "Change the fields named in one write; everything unnamed is left alone.",
-            input_schema: TicketSetParams::schema(),
+            description: "Change the fields named in one write; everything unnamed is left alone. Answers a short receipt without the description; detail \"full\" returns the whole ticket.",
+            input_schema: with_detail(TicketSetParams::schema()),
             annotations: Annotations::WRITE.idempotent(),
             method: Method::TicketSet(TicketSetParams::default()),
         },
         Tool {
             name: "ticket_move",
             method_tag: "ticket.move",
-            description: "Move between labels and/or within one. Omit the index to append.",
-            input_schema: TicketMoveParams::schema(),
+            description: "Move between labels and/or within one. Omit the index to append. Answers a short receipt; detail \"full\" returns the whole ticket.",
+            input_schema: with_detail(TicketMoveParams::schema()),
             annotations: Annotations::WRITE,
             method: Method::TicketMove(TicketMoveParams::default()),
         },
         Tool {
             name: "ticket_block",
             method_tag: "ticket.block",
-            description: "Record that one ticket waits on another, as an edge in the store.",
-            input_schema: TicketBlockParams::schema(),
+            description: "Record that one ticket waits on another, as an edge in the store. Answers a short receipt; detail \"full\" returns the whole ticket.",
+            input_schema: with_detail(TicketBlockParams::schema()),
             annotations: Annotations::WRITE.idempotent(),
             method: Method::TicketBlock(TicketBlockParams::default()),
         },
         Tool {
             name: "ticket_unblock",
             method_tag: "ticket.unblock",
-            description: "Remove one edge, or every edge the ticket has when `on` is absent.",
-            input_schema: TicketUnblockParams::schema(),
+            description: "Remove one edge, or every edge the ticket has when `on` is absent. Answers a short receipt; detail \"full\" returns the whole ticket.",
+            input_schema: with_detail(TicketUnblockParams::schema()),
             annotations: Annotations::DESTRUCTIVE,
             method: Method::TicketUnblock(TicketUnblockParams::default()),
         },
         Tool {
             name: "ticket_complete",
             method_tag: "ticket.complete",
-            description: "The short path to done: idempotent, no reopen verb.",
-            input_schema: TicketIdParams::schema(),
+            description: "The short path to done: idempotent, no reopen verb. Answers a short receipt; detail \"full\" returns the whole ticket.",
+            input_schema: with_detail(TicketIdParams::schema()),
             annotations: Annotations::WRITE.idempotent(),
             method: Method::TicketComplete(TicketIdParams::default()),
         },
         Tool {
             name: "ticket_archive",
             method_tag: "ticket.archive",
-            description: "Archive one ticket, or every done ticket when `id` is absent.",
-            input_schema: TicketArchiveParams::schema(),
+            description: "Archive one ticket, or every done ticket when `id` is absent. One ticket answers a short receipt; detail \"full\" returns the whole ticket.",
+            input_schema: with_detail(TicketArchiveParams::schema()),
             annotations: Annotations::DESTRUCTIVE,
             method: Method::TicketArchive(TicketArchiveParams::default()),
         },
         Tool {
             name: "ticket_comment_add",
             method_tag: "ticket.comment.add",
-            description: "Append to the ticket's discussion log. Write the role out as the author.",
-            input_schema: CommentAddParams::schema(),
+            description: "Append to the ticket's discussion log. Write the role out as the author. Answers the time and author, not the body; detail \"full\" echoes the comment.",
+            input_schema: with_detail(CommentAddParams::schema()),
             annotations: Annotations::WRITE,
             method: Method::TicketCommentAdd(CommentAddParams::default()),
         },

@@ -703,3 +703,319 @@ fn a_store_at_the_build_version_has_no_store_detail() {
         "{asked}"
     );
 }
+
+// MARK: - Lean and full answers (MCP-3)
+
+/// One tool call, its result text parsed.
+fn result_of(store: &tandem_core::store::Store, name: &str, arguments: Value) -> (String, Value) {
+    let text = tool_text(&call(store, &tool_call(1, name, arguments)).expect("the call answers"));
+    let value = serde_json::from_str(&text).expect("the tool result is JSON");
+    (text, value)
+}
+
+const SECRET_BRIEF: &str = "BRIEF-SENTINEL-the-description-an-agent-already-holds";
+
+/// The ticket a write answered, with a description the agent sent.
+fn filed(store: &tandem_core::store::Store) -> String {
+    let (_, added) = result_of(
+        store,
+        "ticket_add",
+        json!({"title": "Carries a brief", "description": SECRET_BRIEF}),
+    );
+    added["ticket"]["id"].as_str().expect("an id").to_string()
+}
+
+#[test]
+fn no_write_tool_echoes_the_description_it_was_sent_and_a_comment_does_not_echo_its_body() {
+    let sandbox = Sandbox::new("mcp-lean-writes");
+    let store = sandbox.store();
+    result_of(&store, "label_add", json!({"name": "epic"}));
+    let other = result_of(&store, "ticket_add", json!({"title": "Other"})).1["ticket"]["id"]
+        .as_str()
+        .expect("an id")
+        .to_string();
+    let id = filed(&store);
+
+    let calls = [
+        (
+            "ticket_add",
+            json!({"title": "Again", "description": SECRET_BRIEF}),
+        ),
+        (
+            "ticket_set",
+            json!({"id": id, "status": "ready", "description": SECRET_BRIEF}),
+        ),
+        ("ticket_move", json!({"id": id, "label": "epic"})),
+        ("ticket_block", json!({"id": id, "on": other})),
+        ("ticket_unblock", json!({"id": id})),
+        ("ticket_complete", json!({"id": id})),
+        ("ticket_archive", json!({"id": id})),
+    ];
+    for (name, arguments) in calls {
+        let (text, value) = result_of(&store, name, arguments);
+        assert!(
+            !text.contains(SECRET_BRIEF),
+            "{name} echoed the description: {text}"
+        );
+        assert!(value.get("revision").is_some(), "{name} names its revision");
+        assert!(value["ticket"].get("description").is_none(), "{name}");
+        assert!(value["ticket"].get("createdAt").is_none(), "{name}");
+        assert_eq!(
+            value["ticket"]
+                .as_object()
+                .map(|fields| fields.contains_key("status")),
+            Some(true),
+            "{name} says where the ticket stands"
+        );
+    }
+
+    let id = filed(&store);
+    let (text, comment) = result_of(
+        &store,
+        "ticket_comment_add",
+        json!({"id": id, "author": "builder", "body": "COMMENT-SENTINEL"}),
+    );
+    assert!(!text.contains("COMMENT-SENTINEL"), "{text}");
+    assert_eq!(
+        comment.as_object().map(|fields| {
+            let mut keys: Vec<_> = fields.keys().cloned().collect();
+            keys.sort();
+            keys
+        }),
+        Some(vec!["at".to_string(), "author".into(), "revision".into()])
+    );
+}
+
+#[test]
+fn a_receipt_names_the_title_only_when_the_write_could_have_changed_it() {
+    let sandbox = Sandbox::new("mcp-lean-title");
+    let store = sandbox.store();
+    let (_, added) = result_of(&store, "ticket_add", json!({"title": "  Trim me  "}));
+    assert_eq!(added["ticket"]["title"], "Trim me", "the stored title");
+    let id = added["ticket"]["id"].as_str().expect("an id").to_string();
+    let (_, moved) = result_of(&store, "ticket_set", json!({"id": id, "status": "ready"}));
+    assert!(moved["ticket"].get("title").is_none());
+    let (_, renamed) = result_of(&store, "ticket_set", json!({"id": id, "title": "New"}));
+    assert_eq!(renamed["ticket"]["title"], "New");
+}
+
+#[test]
+fn a_default_open_row_drops_its_defaults_and_a_busy_row_keeps_its_own() {
+    let sandbox = Sandbox::new("mcp-lean-rows");
+    let store = sandbox.store();
+    result_of(&store, "ticket_add", json!({"title": "Plain"}));
+    let plain = result_of(&store, "ticket_add", json!({"title": "Blocker"})).1["ticket"]["id"]
+        .as_str()
+        .expect("an id")
+        .to_string();
+    let busy = result_of(
+        &store,
+        "ticket_add",
+        json!({"title": "Busy", "assignee": "builder", "status": "ready"}),
+    )
+    .1["ticket"]["id"]
+        .as_str()
+        .expect("an id")
+        .to_string();
+    result_of(&store, "ticket_block", json!({"id": busy, "on": plain}));
+    sandbox
+        .board()
+        .set_link(&busy, Some("notes/busy.md"))
+        .expect("the link is set");
+
+    let (_, listed) = result_of(&store, "ticket_list", json!({}));
+    let rows = listed["tickets"].as_array().expect("rows");
+    let row = |title: &str| {
+        rows.iter()
+            .find(|row| row["title"] == title)
+            .unwrap_or_else(|| panic!("a row titled {title}"))
+    };
+
+    let plain_row = row("Plain");
+    for dropped in [
+        "archived",
+        "assignee",
+        "blocked",
+        "blockedBy",
+        "blocks",
+        "completedAt",
+        "done",
+        "link",
+    ] {
+        assert!(plain_row.get(dropped).is_none(), "{dropped}: {plain_row}");
+    }
+    assert!(plain_row.get("id").is_some(), "no ref keeps its id");
+
+    let busy_row = row("Busy");
+    assert_eq!(busy_row["assignee"], "builder");
+    assert_eq!(busy_row["blocked"], true);
+    assert_eq!(busy_row["link"], "notes/busy.md");
+    assert!(busy_row.get("done").is_none());
+    let blocker = &busy_row["blockedBy"][0];
+    assert_eq!(blocker["status"], "backlog");
+    assert_eq!(
+        blocker.as_object().map(|fields| fields.len()),
+        Some(2),
+        "a blocker is a name and a status: {blocker}"
+    );
+    assert_eq!(
+        row("Plain")["blocks"],
+        Value::Null,
+        "the edge reads from one end per row"
+    );
+}
+
+#[test]
+fn limit_cuts_the_list_and_total_says_how_many_matched() {
+    let sandbox = Sandbox::new("mcp-limit");
+    let store = sandbox.store();
+    for title in ["A", "B", "C"] {
+        result_of(&store, "ticket_add", json!({"title": title}));
+    }
+    let (_, cut) = result_of(&store, "ticket_list", json!({"limit": 2}));
+    assert_eq!(cut["tickets"].as_array().map(Vec::len), Some(2));
+    assert_eq!(cut["total"], 3);
+    let (_, whole) = result_of(&store, "ticket_list", json!({"limit": 3}));
+    assert_eq!(whole["tickets"].as_array().map(Vec::len), Some(3));
+    assert!(
+        whole.get("total").is_none(),
+        "an uncut list reports no total"
+    );
+}
+
+#[test]
+fn detail_full_answers_the_whole_shape_for_every_affected_tool() {
+    let sandbox = Sandbox::new("mcp-full");
+    let store = sandbox.store();
+    result_of(&store, "label_add", json!({"name": "epic"}));
+    let other = result_of(&store, "ticket_add", json!({"title": "Other"})).1["ticket"]["id"]
+        .as_str()
+        .expect("an id")
+        .to_string();
+    let id = filed(&store);
+
+    let full = json!({"detail": "full"});
+    let with = |mut arguments: Value| {
+        arguments["detail"] = full["detail"].clone();
+        arguments
+    };
+
+    // The whole ticket: what `ticket show` always answered.
+    let (_, shown) = result_of(&store, "ticket_show", with(json!({"id": id})));
+    let whole_keys: Vec<String> = shown["ticket"]
+        .as_object()
+        .expect("a ticket")
+        .keys()
+        .cloned()
+        .collect();
+    assert!(whole_keys.len() >= 17, "{whole_keys:?}");
+    for key in [
+        "archived",
+        "assignee",
+        "blocked",
+        "blockedBy",
+        "done",
+        "link",
+    ] {
+        assert!(whole_keys.iter().any(|k| k == key), "full keeps {key}");
+    }
+    assert_eq!(shown["ticket"]["description"], SECRET_BRIEF);
+
+    let writes = [
+        (
+            "ticket_add",
+            json!({"title": "W", "description": SECRET_BRIEF}),
+        ),
+        ("ticket_set", json!({"id": id, "status": "ready"})),
+        ("ticket_move", json!({"id": id, "label": "epic"})),
+        ("ticket_block", json!({"id": id, "on": other})),
+        ("ticket_unblock", json!({"id": id})),
+        ("ticket_complete", json!({"id": id})),
+        ("ticket_archive", json!({"id": id})),
+    ];
+    for (name, arguments) in writes {
+        let (_, value) = result_of(&store, name, with(arguments));
+        let keys: Vec<String> = value["ticket"]
+            .as_object()
+            .unwrap_or_else(|| panic!("{name} answers a ticket"))
+            .keys()
+            .cloned()
+            .collect();
+        assert_eq!(keys, whole_keys, "{name} full is the whole ticket");
+    }
+
+    let id = filed(&store);
+    let (_, comment) = result_of(
+        &store,
+        "ticket_comment_add",
+        with(json!({"id": id, "author": "builder", "body": "Landed"})),
+    );
+    assert_eq!(comment["comment"]["body"], "Landed");
+    assert!(comment["comment"].get("at").is_some());
+
+    let (_, listed) = result_of(&store, "ticket_list", with(json!({"filter": "all"})));
+    let row = &listed["tickets"][0];
+    let mut keys: Vec<&str> = row
+        .as_object()
+        .expect("a row")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort();
+    assert_eq!(
+        keys,
+        [
+            "archived",
+            "assignee",
+            "blocked",
+            "blockedBy",
+            "blocks",
+            "completedAt",
+            "createdAt",
+            "descriptionLength",
+            "done",
+            "id",
+            "label",
+            "link",
+            "number",
+            "origin",
+            "ref",
+            "status",
+            "title"
+        ],
+        "a full row is the 17 fields"
+    );
+    assert!(listed.get("total").is_none());
+}
+
+#[test]
+fn an_unknown_detail_is_an_invalid_params_error_and_a_tool_without_one_ignores_it() {
+    let sandbox = Sandbox::new("mcp-detail-bad");
+    let store = sandbox.store();
+    let refused = call(
+        &store,
+        &tool_call(1, "ticket_list", json!({"detail": "everything"})),
+    )
+    .expect("answers");
+    assert_eq!(refused["error"]["code"], -32602);
+    let listed =
+        call(&store, &tool_call(2, "label_list", json!({"detail": "x"}))).expect("answers");
+    assert!(listed["error"].is_null(), "{listed}");
+    for tool in mcp::tools() {
+        let has = tool.input_schema["properties"].get("detail").is_some();
+        let affected = [
+            "ticket_list",
+            "ticket_show",
+            "ticket_add",
+            "ticket_set",
+            "ticket_move",
+            "ticket_block",
+            "ticket_unblock",
+            "ticket_complete",
+            "ticket_archive",
+            "ticket_comment_add",
+        ]
+        .contains(&tool.name);
+        assert_eq!(has, affected, "{}", tool.name);
+    }
+}
