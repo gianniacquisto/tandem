@@ -93,6 +93,15 @@ fn store_check(facts: &Facts) -> DoctorCheck {
                  import of a v5 home is recorded in ADR 0031 and the git history (PRT-18); {backup}"
             ),
         },
+        Health::Newer { store, build } => DoctorCheck {
+            name: "store".to_string(),
+            ok: false,
+            detail: format!(
+                "{path} \u{2014} schema v{store}; this build reads up to v{build}. The store was \
+                 written by a newer Tandem. Upgrade this binary (run the installer again), and \
+                 restart `tandem serve`; {backup}"
+            ),
+        },
         Health::Unreadable => DoctorCheck {
             name: "store".to_string(),
             ok: false,

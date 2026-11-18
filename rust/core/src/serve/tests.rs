@@ -4549,3 +4549,26 @@ async fn every_route_and_refusal_carries_the_security_headers() {
         "pages are never cached"
     );
 }
+
+#[tokio::test]
+async fn a_store_newer_than_the_build_draws_a_page_notice_not_a_500() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-newer-store");
+    setup_board(&sandbox.store());
+    let ahead = crate::store::CURRENT_VERSION + 1;
+    rusqlite::Connection::open(sandbox.root.join("home").join("tandem.db"))
+        .expect("the store opens")
+        .execute(
+            "INSERT INTO schema_migrations (version, applied_at, author) VALUES (?1, '2026-11-16T00:00:00Z', 'newer')",
+            [ahead],
+        )
+        .expect("the newer version is stamped");
+    let app = router(context(sandbox.store()));
+
+    let (status, _, body) = get(&app, "/").await;
+
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("written by a newer Tandem"), "{body}");
+    assert!(body.contains("Upgrade this binary"), "{body}");
+    assert!(!body.contains("ADR 0031"), "{body}");
+}

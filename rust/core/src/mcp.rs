@@ -278,17 +278,24 @@ pub fn server_version() -> String {
 /// report, so every call stays cheap.
 fn health_block(store: &Store) -> Value {
     let home = store.home();
+    let health = store.health();
     let store_ok = matches!(
-        store.health(),
+        health,
         crate::store::Health::Absent | crate::store::Health::Counts { .. }
     );
-    json!({
+    let mut block = json!({
         "home": crate::wire::slashed_path(home.directory()),
         "homeSource": home.source().as_str(),
         "storeOk": store_ok,
         "version": server_version(),
         "tools": tools().len(),
-    })
+    });
+    // A newer store is the one refusal an agent host can act on, so the block
+    // says why in the store's own words.
+    if let crate::store::Health::Newer { store, build } = health {
+        block["storeDetail"] = json!(crate::store::StoreError::Newer { store, build }.to_string());
+    }
+    block
 }
 
 /// One `tools/call`: the named tool becomes the `(id, method, params)` frame

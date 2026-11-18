@@ -17,9 +17,7 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OpenFlags};
 
-use super::{
-    CURRENT_VERSION, Result, Store, StoreError, copy_into, open_read_only, schema, sibling,
-};
+use super::{Result, Store, StoreError, copy_into, open_read_only, schema, sibling};
 
 /// Tables an archive carries. The first group is the current schema; the second
 /// is what an older store still holds before its first write migrates it (a
@@ -256,8 +254,8 @@ pub(crate) fn inspect_with(
     }
     match schema::refuse_legacy(&connection) {
         Ok(()) => {}
-        Err(StoreError::Legacy { version }) if version > CURRENT_VERSION => {
-            return Err(Refusal::Newer { version });
+        Err(StoreError::Newer { store, .. }) => {
+            return Err(Refusal::Newer { version: store });
         }
         Err(StoreError::Legacy { version }) => {
             return Err(Refusal::Foreign(format!(

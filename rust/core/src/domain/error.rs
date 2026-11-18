@@ -24,6 +24,9 @@ pub enum DomainError {
     Locked(PathBuf),
     /// The store itself failed: an unreadable file, a full disk.
     Io(String),
+    /// The store was written by a newer Tandem: the words name the upgrade, and
+    /// retrying cannot help.
+    StoreNewer(String),
     /// A row this build cannot read: a ticket's id or timestamp is not the shape
     /// the store writes. A row that is silently repaired (a nil id, a zero time) is
     /// a ticket that moved or vanished, and the diff matches rows by id, so the
@@ -121,6 +124,7 @@ impl DomainError {
                 home.display()
             ),
             Self::Io(detail) => format!("Tandem store error: {detail}. Try again."),
+            Self::StoreNewer(detail) => detail.clone(),
             Self::Unreadable(detail) => format!(
                 "The store holds a row this build cannot read ({detail}). Restore the backup \
                  at tandem.db.bak, or import the home again."
@@ -255,6 +259,7 @@ impl From<StoreError> for DomainError {
     fn from(error: StoreError) -> Self {
         match error {
             StoreError::Locked { home } => Self::Locked(home),
+            newer @ StoreError::Newer { .. } => Self::StoreNewer(newer.to_string()),
             other => Self::Io(other.to_string()),
         }
     }

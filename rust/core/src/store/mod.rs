@@ -344,8 +344,10 @@ pub enum StoreError {
     Locked { home: PathBuf },
     /// Anything else: an unreadable file, a full disk, a failed migration.
     Io(String),
-    /// A file this build does not read: schema newer than [`CURRENT_VERSION`].
+    /// A pre-port (Swift-era) file this build does not read.
     Legacy { version: i64 },
+    /// A store written by a newer build: its schema is ahead of this one's.
+    Newer { store: i64, build: i64 },
 }
 
 impl fmt::Display for StoreError {
@@ -361,6 +363,12 @@ impl fmt::Display for StoreError {
                 formatter,
                 "this home's tandem.db is schema v{version}, which this build does not read; \
                  the one-off import of a v5 home is recorded in ADR 0031 and the git history (PRT-18)"
+            ),
+            Self::Newer { store, build } => write!(
+                formatter,
+                "this home's tandem.db is schema v{store}; this build reads up to v{build}. \
+                 The store was written by a newer Tandem. Upgrade this binary (run the installer \
+                 again), and restart `tandem serve`."
             ),
         }
     }

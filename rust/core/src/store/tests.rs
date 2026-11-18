@@ -1693,6 +1693,68 @@ mod refusal {
         );
     }
 
+    fn newer_file(sandbox: &Sandbox) -> i64 {
+        sandbox
+            .store()
+            .write(&Actor::Human, |write| {
+                write.insert_project(NewProject {
+                    name: "k",
+                    position: 0,
+                })
+            })
+            .expect("the build writes its own store");
+        let ahead = CURRENT_VERSION + 1;
+        Connection::open(sandbox.database())
+            .expect("the store opens")
+            .execute(
+                "INSERT INTO schema_migrations (version, applied_at, author) VALUES (?1, '2026-11-16T00:00:00Z', 'newer')",
+                [ahead],
+            )
+            .expect("the newer version is stamped");
+        ahead
+    }
+
+    #[test]
+    fn a_newer_store_is_refused_by_a_read_and_a_write_and_says_upgrade() {
+        let sandbox = Sandbox::new("refuse-newer");
+        let ahead = newer_file(&sandbox);
+        let expected = StoreError::Newer {
+            store: ahead,
+            build: CURRENT_VERSION,
+        };
+
+        let read = sandbox.store().read(|connection| {
+            connection
+                .query_row("SELECT COUNT(*) FROM tickets", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .map_err(|error| StoreError::Io(error.to_string()))
+        });
+        assert_eq!(read.unwrap_err(), expected);
+
+        let write = sandbox.store().write(&Actor::Human, |write| {
+            write.insert_project(NewProject {
+                name: "j",
+                position: 1,
+            })
+        });
+        let error = write.expect_err("a newer store is not written");
+        assert_eq!(error, expected);
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "this home's tandem.db is schema v{ahead}; this build reads up to v{CURRENT_VERSION}. \
+                 The store was written by a newer Tandem. Upgrade this binary (run the installer \
+                 again), and restart `tandem serve`."
+            )
+        );
+        assert!(!error.to_string().contains("ADR"));
+        assert!(matches!(
+            sandbox.store().health(),
+            Health::Newer { store, build } if store == ahead && build == CURRENT_VERSION
+        ));
+    }
+
     #[test]
     fn a_v5_file_is_refused_by_a_read_too() {
         let sandbox = Sandbox::new("refuse-read");

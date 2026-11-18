@@ -749,7 +749,10 @@ pub fn refuse_legacy(connection: &Connection) -> Result<()> {
         });
     }
     match version(connection)? {
-        Some(applied) if applied > CURRENT_VERSION => Err(StoreError::Legacy { version: applied }),
+        Some(applied) if applied > CURRENT_VERSION => Err(StoreError::Newer {
+            store: applied,
+            build: CURRENT_VERSION,
+        }),
         _ => Ok(()),
     }
 }
