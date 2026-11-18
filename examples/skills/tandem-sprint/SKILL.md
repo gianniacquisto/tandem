@@ -1,6 +1,6 @@
 ---
 name: tandem-sprint
-description: "Run a sprint: draw a batch of ready tickets, build each through the builder, gate each through the reviewer, and close with every batch ticket in a known exit state. Reach for it when the user says run a sprint, asks what the workflow is, or starts a coding pass on this board."
+description: "Run a sprint: draw a batch of ready tickets, build each through the builder, gate each through the reviewer, and close with every batch ticket in a known exit state. Reach for it when the user says run a sprint, asks what the workflow is, or starts a coding pass on this board; and for drain mode when the user says drain the board, work through every ready ticket, or wants the session to run unattended."
 ---
 
 # Tandem sprint
@@ -69,6 +69,18 @@ SPRINT: <label>: <n> landed, <n> escalated, <n> slipped, <n> parked
 ```
 
 Then one line per batch ticket (`TAN-123 landed: PR #456`), one line per skipped ticket with its reason, and what waits on the human. A sprint that ends in the middle (the session dies, the human stops it) leaves dead claims, and the next sprint's §2 recovers them.
+
+## Drain mode
+
+**Drain** is the sprint with no cap and no human in the loop: it builds and gates `ready` tickets until none is left, for a session left to run on its own (spending the rest of a usage allowance, say). The human starts it by asking to drain the board, or with "sprint, drain". Every rule above holds except these:
+
+- **No batch, no cap.** Draw one ticket at a time, one at a time (never parallel), and after each one reaches an exit state, re-read the board and draw the next: a merge can unblock a ticket that was blocked at the start.
+- **Never wait on the human.** Skip §2's statement of the batch and start. Anything that needs the human is escalated or parked as §4 and §5 already say, and the drain moves on.
+- **One attempt per ticket per drain.** A ticket that slipped or was escalated in this drain is not drawn again in it, so a ticket that keeps failing cannot loop.
+- **The circuit breaker.** Three tickets in a row that end in anything but landed point at something wider than one ticket (CI down, `main` red, the builder misconfigured). Stop drawing, recover what is in flight, and close.
+- **Stop on empty**: no `ready`, unblocked ticket left that this drain has not tried. Then the close (§5) over every ticket the drain carried, with `DRAIN:` in place of `SPRINT:`.
+
+A drain that runs out of usage dies mid-ticket like any interrupted sprint: the next sprint or drain recovers the dead claim in §2. Keep the drain's own window small: read each builder and reviewer report for its one result line, and do not carry their detail forward.
 
 ## Release
 

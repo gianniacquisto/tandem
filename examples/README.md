@@ -24,6 +24,7 @@ backlog --refine--> ready --sprint: build--> in-review --gate--> done
 
 - **Refine** (`skills/tandem-refine`, human present): grill, write the brief, set `ready` or park `on-hold`.
 - **Sprint** (`skills/tandem-sprint`): draw up to five `ready` tickets, build each in its own worktree, gate each through the reviewer, fix at most twice, and close with every ticket landed, escalated, slipped or parked.
+- **Drain** (`skills/tandem-sprint`, drain mode): the sprint with no cap and no human in the loop, one ticket after another until no `ready` ticket is left, with a circuit breaker after three failures in a row. For a session left to run on its own.
 - **Upkeep**, on the human's word: tidy the board, clear the human's queue with an interview, run a retro on a session.
 
 ## Set up
