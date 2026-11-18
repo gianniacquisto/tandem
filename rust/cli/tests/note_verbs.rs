@@ -1,6 +1,6 @@
 //! The port-only note verbs the app's writes name: `note write` and `note
 //! move`. The app's `note.write` and `note.move` methods must be the CLI's own
-//! acts (`docs/port.md`, no UI-only writes), and `note --help` stays the Swift
+//! acts (no UI-only writes), and `note --help` stays the Swift
 //! capture's text, so the two verbs are documented at their own help instead.
 
 use std::fs;

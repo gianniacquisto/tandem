@@ -1,7 +1,8 @@
 # Contributing to Tandem
 
 Thanks for stopping by. Tandem is an MIT-licensed board for you and your
-AI coding agents that ships as a macOS app, and contributions are welcome.
+AI coding agents that ships as one standalone binary (`tandem serve` plus the
+CLI), and contributions are welcome.
 This file is the on-ramp: what
 you need, how to set the repo up, which checks your pull request must pass, and
 the conventions the project keeps. The tracker is the Tandem board, not GitHub issues.
@@ -9,7 +10,7 @@ the conventions the project keeps. The tracker is the Tandem board, not GitHub i
 ## Prerequisites
 
 Contributing needs only a checkout on any of the three CI platforms below; an
-Apple silicon Mac is only for shipped-app work.
+Apple silicon Mac or x86_64 Linux machine is only for shipped-binary work.
 
 - Any of the three CI platforms (macOS, Windows, Ubuntu) for Rust or release
   script work. CI runs the cargo gates on all three, and the installer suite

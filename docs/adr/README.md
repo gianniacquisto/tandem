@@ -87,7 +87,3 @@ The status comes from each record's own header and from the "Prior records" list
 ## Adding a record
 
 Take the next free number, add the file, and add its row here in the same change. When a record supersedes or amends an older one, say so at the top of the older file and update that row too.
-
-## Historical documents outside this folder
-
-[`docs/port.md`](../port.md) (the Electron port plan) and [`docs/epic-lanes.md`](../epic-lanes.md) (the lane set of the workflow era) are marked historical in their first lines. They describe decisions these records have since superseded.

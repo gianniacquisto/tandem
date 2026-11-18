@@ -1,6 +1,6 @@
 # The port's fixture home
 
-One `~/.tandem` shape both implementations read (`docs/port.md`, Phases 1).
+One `~/.tandem` shape both implementations read.
 
 This home is **content, not scratch**: it is authored here and committed, and
 no run writes into it. The binary is pointed at it with
