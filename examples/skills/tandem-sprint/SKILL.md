@@ -36,11 +36,11 @@ Every dispatch names its model and effort; a subagent never inherits the session
 
 | Size | The ticket | Builder | Reviewer |
 | --- | --- | --- | --- |
-| `S` | mechanical: a few lines in one area, prose, config, an existing test extended | `haiku`, low | `haiku`, low |
+| `S` | mechanical: a few lines in one area, prose, config, an existing test extended | `haiku`, low | `sonnet`, low |
 | `M` | one area, new behaviour, new tests | `sonnet`, low | `sonnet`, medium |
 | `L` | crosses layers, touches the schema or a published contract, or many files | `sonnet`, medium | `sonnet`, medium |
 
-**Effort is paid per turn.** A builder takes many turns and its tests are its check, so it runs low and earns medium only on an `L` ticket. A reviewer takes few turns and judgement is its whole job, so it runs medium past `S`. Nothing runs at high effort.
+**Effort is paid per turn.** A builder takes many turns and its tests are its check, so it runs low and earns medium only on an `L` ticket. A reviewer takes few turns and judgement is its whole job, so it runs medium past `S`, and never on `haiku`: the gate is where a cheap read costs most. Nothing in a sprint runs at high effort; the refiner is the one place high pays (`skills/tandem-refine/SKILL.md`).
 
 **Escalate the model, never start high.** The first fix pass runs on `sonnet`, medium. The second, the last before the human, runs on `opus`, medium: the hard bug the cheaper passes could not close is where it earns its cost. No build starts on `opus`. A reviewer that answers `blocked` with `needs a stronger read` is re-dispatched once on `opus`, medium; a second such answer escalates to the human.
 
