@@ -16,11 +16,11 @@ Done when every ticket the pass took carries the brief shape at the status it ea
 
 ## Refine tiers
 
-A brief's mistakes are paid by every pass after it (the build, the gate, up to two fix passes), and a refiner takes few turns (about one per round), so refine is where thinking is cheapest and pays most. The tier comes from the backlog ticket as written, since its `Size:` does not exist yet:
+A brief's mistakes are paid by every pass after it (the build, the gate, up to two fix passes), and a refiner takes few turns (about one per round), so refine is where a stronger model pays most. Effort stays medium: the tier raises the model, not the effort. The tier comes from the backlog ticket as written, since its `Size:` does not exist yet:
 
 | Tier | The ticket | Refiner |
 | --- | --- | --- |
 | **standard** | one area, a clear ask, likely `S` or `M` | `sonnet`, medium |
-| **design** | crosses layers, touches the schema or a published contract, needs a split, or its ask is open-ended | `opus`, high |
+| **design** | crosses layers, touches the schema or a published contract, needs a split, or its ask is open-ended | `opus`, medium |
 
-When unsure, propose **design**: a wasted high-effort interview costs less than a build on the wrong brief.
+When unsure, propose **design**: a wasted `opus` interview costs less than a build on the wrong brief.
