@@ -59,7 +59,7 @@ opencode (`~/.config/opencode/opencode.json`):
 {"mcp": {"tandem": {"type": "remote", "url": "http://127.0.0.1:7700/mcp", "headers": {"X-Tandem-Agent": "opencode"}, "oauth": false}}}
 ```
 
-Any other MCP host: a streamable-HTTP server at that URL.
+Any other MCP host: a streamable-HTTP server at that URL. The tools it gets are listed in [MCP tools](docs/mcp.md).
 
 The `X-Tandem-Agent` header names the agent a write is recorded under (lowercase letters, digits and hyphens). Without it the write is recorded as the server's own actor, which is `human` unless `TANDEM_AGENT` was set when the server started.
 
@@ -88,6 +88,7 @@ Details in [architecture](docs/architecture.md).
 
 - [Architecture](docs/architecture.md)
 - [CLI reference](docs/cli.md)
+- [MCP tools](docs/mcp.md)
 - [Store, backup and notes](docs/store.md)
 - [Glossary](GLOSSARY.md) and [ADRs](docs/adr/README.md), indexed by status
 - [Contributing](CONTRIBUTING.md) and [releasing](docs/releasing.md)
