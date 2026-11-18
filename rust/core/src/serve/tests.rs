@@ -2442,7 +2442,7 @@ async fn the_page_carries_the_release_version() {
     let app = router(context(sandbox.store()));
     let (status, _, body) = get(&app, "/board").await;
     assert_eq!(status, StatusCode::OK);
-    let want = format!("data-version=\"{}\"", env!("CARGO_PKG_VERSION"));
+    let want = format!("data-version=\"{}\"", crate::release_version());
     assert!(body.contains(&want), "the shell names the build: {body}");
 }
 

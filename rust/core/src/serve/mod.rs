@@ -621,9 +621,11 @@ struct PageView {
 }
 
 impl PageView {
-    /// The release that drew the page, on `<html data-version>`.
+    /// The release that drew the page, on `<html data-version>`: the stamp a
+    /// release build carries, the crate version on a dev build, the same
+    /// reader as `tandem --version` (COR-19).
     fn version(&self) -> &'static str {
-        env!("CARGO_PKG_VERSION")
+        crate::release_version()
     }
 }
 fn is_partial(headers: &HeaderMap) -> bool {
