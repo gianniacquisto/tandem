@@ -537,10 +537,21 @@ impl Bikeshed {
 
     // MARK: - write
 
-    /// `write(path, text)`: the autosave path, an atomic write under the lock.
-    /// A new path gets the full naming validation; an existing path (including a
-    /// pre-existing violator) is edited in place.
-    pub fn write(&self, path: &str, text: &str) -> DomainResult<Operation<WriteRecord>> {
+    /// `write(path, text, expected_hash)`: the autosave path, an atomic write
+    /// under the lock. A new path gets the full naming validation; an existing
+    /// path (including a pre-existing violator) is edited in place.
+    ///
+    /// `expected_hash` is the one conflict rule for every door. `Some(hash)` is
+    /// compared with the hash of the file as it is on disk, inside the lock and
+    /// before the write, and a mismatch is `StaleNote` with the disk untouched.
+    /// For a path with no file yet the expected hash is [`ABSENT_HASH`]. `None`
+    /// overwrites without a check.
+    pub fn write(
+        &self,
+        path: &str,
+        text: &str,
+        expected_hash: Option<&str>,
+    ) -> DomainResult<Operation<WriteRecord>> {
         let Some(url) = self.file_url(path) else {
             return Err(DomainError::InvalidName(path.to_string()));
         };
@@ -561,6 +572,22 @@ impl Bikeshed {
         self.locked(|| {
             if let Some(taken) = self.file_collision(path, false) {
                 return Err(DomainError::NoteAlreadyExists(taken));
+            }
+            if let Some(expected) = expected_hash {
+                let current = match fs::read(&url) {
+                    Ok(on_disk) => hash(&on_disk),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        ABSENT_HASH.to_string()
+                    }
+                    Err(error) => {
+                        return Err(DomainError::BikeshedIo(format!(
+                            "could not read \"{path}\": {error}"
+                        )));
+                    }
+                };
+                if current != expected {
+                    return Err(DomainError::StaleNote(path.to_string()));
+                }
             }
             self.atomic_write(bytes, &url)?;
             Ok(Operation {
@@ -1099,6 +1126,11 @@ fn collect_recoveries(directory: &Path, relative: &str, found: &mut Vec<Recovery
         }
     }
 }
+
+/// The expected hash of a note that does not exist yet: a write that expects
+/// `"absent"` succeeds only if no file is there. It cannot collide with a real
+/// hash, which is 64 hex digits.
+pub const ABSENT_HASH: &str = "absent";
 
 /// The hash of the bytes: SHA-256, lowercase hex.
 fn hash(bytes: &[u8]) -> String {

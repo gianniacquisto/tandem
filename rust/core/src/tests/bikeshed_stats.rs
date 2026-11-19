@@ -34,7 +34,9 @@ fn an_empty_bikeshed_reports_no_projects_and_zero_totals() {
 fn a_project_reports_its_curated_notes_and_newest_note_mtime() {
     let vault = Vault::new("stats-pending");
     let bikeshed = vault.bikeshed();
-    bikeshed.write("projects/tandem/Note.md", "# Note").unwrap();
+    bikeshed
+        .write("projects/tandem/Note.md", "# Note", None)
+        .unwrap();
     let consolidated = SystemTime::UNIX_EPOCH + Duration::from_secs(1_792_400_000);
     vault.set_modified("projects/tandem/Note.md", consolidated);
 
@@ -64,11 +66,15 @@ fn a_project_with_no_curated_notes_reports_none() {
 fn curated_notes_count_recursively_and_totals_sum_the_rows() {
     let vault = Vault::new("stats-counting");
     let bikeshed = vault.bikeshed();
-    bikeshed.write("projects/alpha/Top.md", "# Top").unwrap();
     bikeshed
-        .write("projects/alpha/deep/Nested.md", "# Nested")
+        .write("projects/alpha/Top.md", "# Top", None)
         .unwrap();
-    bikeshed.write("projects/beta/Only.md", "# Only").unwrap();
+    bikeshed
+        .write("projects/alpha/deep/Nested.md", "# Nested", None)
+        .unwrap();
+    bikeshed
+        .write("projects/beta/Only.md", "# Only", None)
+        .unwrap();
 
     let found = stats(&vault, None);
     assert_eq!(
@@ -95,8 +101,8 @@ fn curated_notes_count_recursively_and_totals_sum_the_rows() {
 fn project_narrows_the_report_and_an_unknown_name_is_empty() {
     let vault = Vault::new("stats-narrow");
     let bikeshed = vault.bikeshed();
-    bikeshed.write("projects/alpha/A.md", "# A").unwrap();
-    bikeshed.write("projects/beta/B.md", "# B").unwrap();
+    bikeshed.write("projects/alpha/A.md", "# A", None).unwrap();
+    bikeshed.write("projects/beta/B.md", "# B", None).unwrap();
 
     let narrowed = stats(&vault, Some("beta"));
     assert_eq!(

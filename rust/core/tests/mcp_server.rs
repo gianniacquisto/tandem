@@ -1143,3 +1143,60 @@ fn description_with_append_description_is_refused_and_nothing_is_written() {
     .expect("the tool result is JSON");
     assert_eq!(shown["ticket"]["description"], "The brief.");
 }
+
+// MARK: - note_write's expected hash (MCP-5)
+
+#[test]
+fn note_write_with_the_hash_it_read_lands_and_a_stale_hash_is_refused_in_words() {
+    let sandbox = Sandbox::new("mcp-note-hash");
+    let store = sandbox.store();
+
+    let (_, created) = result_of(
+        &store,
+        "note_write",
+        json!({"path": "Plan.md", "text": "v1", "expectedHash": "absent"}),
+    );
+    assert_eq!(created["write"]["path"], "Plan.md", "{created}");
+
+    let (_, read) = result_of(&store, "note_read", json!({"path": "Plan.md"}));
+    let hash = read["note"]["hash"].as_str().expect("a hash").to_string();
+
+    let (_, landed) = result_of(
+        &store,
+        "note_write",
+        json!({"path": "Plan.md", "text": "v2", "expectedHash": hash}),
+    );
+    assert_eq!(landed["write"]["path"], "Plan.md", "{landed}");
+
+    // The same old hash again: the note moved on, so the write is refused.
+    let refused = call(
+        &store,
+        &tool_call(
+            2,
+            "note_write",
+            json!({"path": "Plan.md", "text": "v3", "expectedHash": hash}),
+        ),
+    )
+    .expect("the call answers");
+    assert_eq!(refused["result"]["isError"], true, "{refused}");
+    let words = refused["result"]["content"][0]["text"]
+        .as_str()
+        .expect("the refusal carries text")
+        .to_string();
+    assert!(words.contains("Plan.md"), "names the path: {words}");
+    assert!(words.contains("note_read"), "says to read again: {words}");
+
+    let (_, after) = result_of(&store, "note_read", json!({"path": "Plan.md"}));
+    assert_eq!(
+        after["note"]["text"], "v2",
+        "the refusal left the note alone"
+    );
+
+    // Omitting the hash still overwrites, so no caller breaks.
+    let (_, forced) = result_of(
+        &store,
+        "note_write",
+        json!({"path": "Plan.md", "text": "v4"}),
+    );
+    assert_eq!(forced["write"]["path"], "Plan.md", "{forced}");
+}

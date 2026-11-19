@@ -143,6 +143,9 @@ pub struct NotePathParams {
 pub struct NoteWriteParams {
     pub path: Option<String>,
     pub text: Option<String>,
+    /// The hash `note_read` returned, or `"absent"` for a note that does not
+    /// exist yet. Absent from the call means overwrite without a check.
+    pub expected_hash: Option<String>,
 }
 
 /// `note.move`: the note or folder, and the folder it moves into.
@@ -424,6 +427,12 @@ impl NoteWriteParams {
                 (
                     "text",
                     string("the note's whole text; a missing text is refused"),
+                ),
+                (
+                    "expectedHash",
+                    string(
+                        "the hash note_read returned; the write is refused if the note changed since. Use \"absent\" for a note that does not exist yet. Omit to overwrite",
+                    ),
                 ),
             ],
             &["path", "text"],

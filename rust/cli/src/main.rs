@@ -360,6 +360,10 @@ struct NoteWriteArgs {
     /// The whole text; `-` or an absent flag reads stdin.
     #[arg(long, num_args = 0..=1, default_missing_value = "", allow_hyphen_values = true)]
     text: Option<String>,
+    /// The hash `note read` returned (`absent` for a new note); the write is
+    /// refused if the note changed since.
+    #[arg(long = "expected-hash")]
+    expected_hash: Option<String>,
 }
 
 #[derive(Args)]
@@ -903,7 +907,9 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
                 None | Some("-") => read_standard_input()?,
                 Some(text) => text.to_string(),
             };
-            let record = vault.write(path, &text).map_err(Failure::domain)?;
+            let record = vault
+                .write(path, &text, args.expected_hash.as_deref())
+                .map_err(Failure::domain)?;
             print(&NoteWriteView::new(&record.value))
         }
         NoteCommand::Move(args) => {

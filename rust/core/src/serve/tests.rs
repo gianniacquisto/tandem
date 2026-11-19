@@ -1480,11 +1480,11 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
     let notes = vault(&store);
     notes.create("Index.md").expect("the note is created");
     notes
-        .write("Index.md", "## Hello\n\nBody text")
+        .write("Index.md", "## Hello\n\nBody text", None)
         .expect("the note is written");
     notes.create("Other.md").expect("the note is created");
     notes
-        .write("Other.md", "See [[Index]]")
+        .write("Other.md", "See [[Index]]", None)
         .expect("the note is written");
     notes
         .create("projects/tandem/inside.md")
@@ -1546,7 +1546,7 @@ async fn the_edit_page_keeps_a_leading_blank_line_in_the_note_text() {
     let notes = vault(&store);
     notes.create("Lead.md").expect("the note is created");
     notes
-        .write("Lead.md", "\n\nfirst line")
+        .write("Lead.md", "\n\nfirst line", None)
         .expect("the note is written");
     let app = router(context(store));
 
@@ -1598,7 +1598,9 @@ async fn post_notes_save_writes_when_hash_matches_and_renders_mine_theirs_confli
     let store = sandbox.store();
     let notes = vault(&store);
     notes.create("Index.md").expect("the note is created");
-    notes.write("Index.md", "one").expect("the note is written");
+    notes
+        .write("Index.md", "one", None)
+        .expect("the note is written");
     let first = notes.read("Index.md").expect("the note reads").value;
     let app = router(context(store));
 
@@ -1619,7 +1621,7 @@ async fn post_notes_save_writes_when_hash_matches_and_renders_mine_theirs_confli
 
     let second = notes.read("Index.md").expect("the note reads").value;
     notes
-        .write("Index.md", "theirs")
+        .write("Index.md", "theirs", None)
         .expect("the other writer lands");
     let (status, _, body) = send(
         &app,
@@ -2671,7 +2673,9 @@ async fn a_note_save_logs_its_path_at_info_and_never_the_body() {
     let store = sandbox.store();
     let notes = vault(&store);
     notes.create("Index.md").expect("the note is created");
-    notes.write("Index.md", "one").expect("the note is written");
+    notes
+        .write("Index.md", "one", None)
+        .expect("the note is written");
     let first = notes.read("Index.md").expect("the note reads").value;
     let app = router(context(store));
     let captured = Captured::default();
@@ -4582,10 +4586,10 @@ fn exportable(store: &Store) -> Board {
     let board = setup_board(store);
     let notes = vault(store);
     notes
-        .write("export-probe.md", "# Probe\n\nA note that travels.\n")
+        .write("export-probe.md", "# Probe\n\nA note that travels.\n", None)
         .expect("the note is written");
     notes
-        .write("folder/inner.md", "inner\n")
+        .write("folder/inner.md", "inner\n", None)
         .expect("the nested note is written");
     board
 }

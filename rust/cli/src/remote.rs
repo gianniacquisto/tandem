@@ -385,6 +385,9 @@ fn call_for(command: &Command) -> Result<(String, Map<String, Value>), Failure> 
                     Some(text) => text.to_string(),
                 };
                 map.insert("text".into(), Value::String(text));
+                if let Some(hash) = args.expected_hash.as_deref() {
+                    map.insert("expectedHash".into(), Value::String(hash.to_string()));
+                }
                 "note write"
             }
             NoteCommand::Move(args) => {

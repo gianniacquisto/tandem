@@ -172,7 +172,7 @@ fn create_requires_a_markdown_extension() {
 fn create_on_an_existing_target_is_an_error() {
     let vault = Vault::new("ops-create-existing");
     let bikeshed = vault.bikeshed();
-    bikeshed.write("a.md", "original").unwrap();
+    bikeshed.write("a.md", "original", None).unwrap();
 
     assert_eq!(
         bikeshed.create("a.md").unwrap_err(),
@@ -287,7 +287,7 @@ fn read_returns_text_hash_and_mtime() {
     let vault = Vault::new("ops-read");
     let bikeshed = vault.bikeshed();
     let text = "# Heading\n\nbody text";
-    bikeshed.write("a.md", text).unwrap();
+    bikeshed.write("a.md", text, None).unwrap();
     let before = std::time::SystemTime::now();
 
     let note = bikeshed.read("a.md").unwrap().value;
@@ -312,7 +312,7 @@ fn write_stores_exactly_the_bytes_given() {
     let bikeshed = vault.bikeshed();
     let text = "---\ntags: [x, y]\nlink: [[Somewhere]]\n---\n\n# Title\n\
                 See [[Somewhere#Section|here]] and `[[inline code is not a link]]`.\n";
-    let record = bikeshed.write("fm.md", text).unwrap().value;
+    let record = bikeshed.write("fm.md", text, None).unwrap().value;
     assert_eq!(record.path, "fm.md");
     assert_eq!(record.hash, sha256(text));
     assert_eq!(vault.read("fm.md"), text);
@@ -323,8 +323,8 @@ fn write_stores_exactly_the_bytes_given() {
 fn write_overwrites_an_existing_note_and_records_the_new_hash() {
     let vault = Vault::new("ops-write-overwrite");
     let bikeshed = vault.bikeshed();
-    let first = bikeshed.write("a.md", "one").unwrap().value;
-    let second = bikeshed.write("a.md", "two").unwrap().value;
+    let first = bikeshed.write("a.md", "one", None).unwrap().value;
+    let second = bikeshed.write("a.md", "two", None).unwrap().value;
     assert_ne!(first.hash, second.hash);
     assert_eq!(second.hash, sha256("two"));
     assert_eq!(bikeshed.read("a.md").unwrap().value.text, "two");
@@ -382,7 +382,7 @@ fn pre_existing_name_violators_are_tolerated() {
         bikeshed.read("bad#name.md").unwrap().value.text,
         "an agent wrote this"
     );
-    bikeshed.write("bad#name.md", "edited").unwrap();
+    bikeshed.write("bad#name.md", "edited", None).unwrap();
     assert_eq!(bikeshed.read("bad#name.md").unwrap().value.text, "edited");
     assert_eq!(
         bikeshed.create("bad#name.md").unwrap_err(),
