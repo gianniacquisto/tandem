@@ -80,7 +80,14 @@ fn the_read_methods_without_a_cli_verb_are_named_here() {
         .collect();
     assert_eq!(
         reads,
-        vec!["note.tree", "note.read", "note.backlinks",],
+        vec![
+            "note.tree",
+            "note.read",
+            "note.backlinks",
+            "note.search",
+            // A write, but an agent's targeted one: its CLI door is `note write`.
+            "note.edit",
+        ],
         "a read with no CLI verb joins this list deliberately"
     );
 }

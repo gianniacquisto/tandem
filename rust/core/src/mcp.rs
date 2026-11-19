@@ -41,10 +41,10 @@ use crate::store::{Actor, Store};
 use crate::wire::rpc::Reply;
 use crate::wire::rpc::{
     CommentAddParams, EmptyParams, LabelAddParams, LabelDeleteParams, LabelMoveParams,
-    LabelRenameParams, Method, NoteMoveParams, NotePathParams, NoteWriteParams, ProjectAddParams,
-    ProjectDeleteParams, ProjectRenameParams, TicketAddParams, TicketArchiveParams,
-    TicketBlockParams, TicketIdParams, TicketListParams, TicketMoveParams, TicketSetParams,
-    TicketUnblockParams,
+    LabelRenameParams, Method, NoteEditParams, NoteMoveParams, NotePathParams, NoteSearchParams,
+    NoteWriteParams, ProjectAddParams, ProjectDeleteParams, ProjectRenameParams, TicketAddParams,
+    TicketArchiveParams, TicketBlockParams, TicketIdParams, TicketListParams, TicketMoveParams,
+    TicketSetParams, TicketUnblockParams,
 };
 
 /// The server name the `initialize` answer carries.
@@ -838,6 +838,30 @@ fn build_tools() -> Vec<Tool> {
             input_schema: NoteWriteParams::schema(),
             annotations: Annotations::DESTRUCTIVE,
             method: Method::NoteWrite(NoteWriteParams::default()),
+        },
+        Tool {
+            name: "note_edit",
+            method_tag: "note.edit",
+            description: "Replace one passage of a note without rewriting it, atomically, under the vault lock. oldText must occur exactly once: zero or several matches are refused and nothing changes. An empty oldText appends newText at the end of the note (a note that already ends in newText is left as it is). Answers the path and the new hash, never the text.",
+            input_schema: NoteEditParams::schema(),
+            annotations: Annotations::DESTRUCTIVE,
+            method: Method::NoteEdit(NoteEditParams::default()),
+        },
+        Tool {
+            name: "note_search",
+            method_tag: "note.search",
+            description: "Find notes whose title or body contains the query, case-insensitive: one row per note with its path and the title or the snippet around the match. limit defaults to 20; total reports the matches when cut.",
+            input_schema: NoteSearchParams::schema(),
+            annotations: Annotations::READ,
+            method: Method::NoteSearch(NoteSearchParams::default()),
+        },
+        Tool {
+            name: "note_backlinks",
+            method_tag: "note.backlinks",
+            description: "List the notes that link to a note: one row each, with the line of the first link.",
+            input_schema: NotePathParams::schema(),
+            annotations: Annotations::READ,
+            method: Method::NoteBacklinks(NotePathParams::default()),
         },
         Tool {
             name: "note_create",

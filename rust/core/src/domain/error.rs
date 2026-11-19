@@ -111,6 +111,13 @@ pub enum DomainError {
     /// A write carried an expected hash and the note on disk no longer has it:
     /// someone saved in between. Nothing was written.
     StaleNote(String),
+    /// A targeted edit whose `oldText` is not in the note. Nothing was written.
+    EditNoMatch(String),
+    /// A targeted edit whose `oldText` is in the note more than once. Nothing
+    /// was written.
+    EditAmbiguous { path: String, count: usize },
+    /// A targeted edit that would append nothing: both texts empty.
+    EditEmpty,
     /// A name the bikeshed's create/rename rule refuses.
     InvalidName(String),
     /// A folder moved into itself or one of its own descendants.
@@ -232,6 +239,15 @@ impl DomainError {
                 "The note \"{path}\" changed since you read it, so nothing was written. \
                  Read it again with note_read, merge your change into the new text and write it back with the new hash."
             ),
+            Self::EditNoMatch(path) => format!(
+                "oldText is not in \"{path}\", so nothing was written. Search or read the note again and copy the text exactly."
+            ),
+            Self::EditAmbiguous { path, count } => format!(
+                "oldText appears {count} times in \"{path}\", so nothing was written. Include more surrounding text so it matches once."
+            ),
+            Self::EditEmpty => {
+                "oldText and newText are both empty, so there is nothing to edit.".to_string()
+            }
             Self::NoteAlreadyExists(path) => {
                 format!("A file already exists at \"{path}\". Choose a different name.")
             }

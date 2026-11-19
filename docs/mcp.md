@@ -35,6 +35,9 @@ The list below is generated from `tools()` in `rust/core/src/mcp.rs`, one line p
 - `note_tree`: Read the vault's folder tree: folders first, notes after, hidden entries skipped. Params: none.
 - `note_read`: Read one note: its whole text, the content hash a save compares and its mtime. Params: `path` (required).
 - `note_write`: Write a note's whole text, atomically, under the vault lock. A missing text is refused. Pass expectedHash from your note_read (or "absent" for a new note): the write is then refused if the note changed since you read it. Params: `expectedHash`, `path` (required), `text` (required).
+- `note_edit`: Replace one passage of a note without rewriting it, atomically, under the vault lock. oldText must occur exactly once: zero or several matches are refused and nothing changes. An empty oldText appends newText at the end of the note (a note that already ends in newText is left as it is). Answers the path and the new hash, never the text. Params: `expectedHash`, `newText` (required), `oldText` (required), `path` (required).
+- `note_search`: Find notes whose title or body contains the query, case-insensitive: one row per note with its path and the title or the snippet around the match. limit defaults to 20; total reports the matches when cut. Params: `limit`, `query` (required).
+- `note_backlinks`: List the notes that link to a note: one row each, with the line of the first link. Params: `path` (required).
 - `note_create`: Create an empty note. A taken path is refused, never overwritten. Params: `path` (required).
 - `note_create_folder`: Create a folder, with no note in it. Params: `path` (required).
 - `note_move`: Move a note or folder into another folder, rewriting every wikilink that resolves to it. Params: `into` (required), `path` (required).

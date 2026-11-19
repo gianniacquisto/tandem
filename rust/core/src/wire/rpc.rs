@@ -27,7 +27,7 @@ use crate::domain::query::Filter;
 use crate::domain::ticket::Status;
 use crate::wire::views::{
     BacklinkView, CommentView, NoteContentView, NoteMoveView, NoteNodeView, NotePathView,
-    NoteWriteView, TicketDetail, TicketSummary,
+    NoteWriteView, SearchHitView, TicketDetail, TicketSummary,
 };
 
 // MARK: - Methods
@@ -116,6 +116,8 @@ methods! {
     NoteRead: "note.read", NotePathParams, "";
     NoteHealth: "note.health", EmptyParams, "note links";
     NoteBacklinks: "note.backlinks", NotePathParams, "";
+    NoteSearch: "note.search", NoteSearchParams, "";
+    NoteEdit: "note.edit", NoteEditParams, "";
     NoteWrite: "note.write", NoteWriteParams, "note write";
     NoteMove: "note.move", NoteMoveParams, "note move";
     NoteCreate: "note.create", NotePathParams, "note create";
@@ -145,6 +147,28 @@ pub struct NoteWriteParams {
     pub text: Option<String>,
     /// The hash `note_read` returned, or `"absent"` for a note that does not
     /// exist yet. Absent from the call means overwrite without a check.
+    pub expected_hash: Option<String>,
+}
+
+/// `note.search`: a case-insensitive substring, and how many rows to return.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NoteSearchParams {
+    pub query: Option<String>,
+    /// At most this many rows; the reply's `total` says how many matched when
+    /// the list was cut. Absent is 20; 0 returns no rows and the total.
+    pub limit: Option<i64>,
+}
+
+/// `note.edit`: replace one occurrence of `old_text` in a note, or append.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct NoteEditParams {
+    pub path: Option<String>,
+    pub old_text: Option<String>,
+    pub new_text: Option<String>,
+    /// The hash `note_read` returned; the edit is refused if the note changed
+    /// since. Absent from the call means no check.
     pub expected_hash: Option<String>,
 }
 
@@ -440,6 +464,54 @@ impl NoteWriteParams {
     }
 }
 
+impl NoteSearchParams {
+    /// The tool input for `note.search`.
+    pub fn schema() -> serde_json::Value {
+        object_schema(
+            &[
+                (
+                    "query",
+                    string(
+                        "text to find, case-insensitive, in a note's title or body; empty answers no rows",
+                    ),
+                ),
+                (
+                    "limit",
+                    integer(
+                        "at most this many rows, default 20; total reports the matches when cut; 0 returns no rows and the total",
+                    ),
+                ),
+            ],
+            &["query"],
+        )
+    }
+}
+
+impl NoteEditParams {
+    /// The tool input for `note.edit`.
+    pub fn schema() -> serde_json::Value {
+        object_schema(
+            &[
+                ("path", string("the bikeshed-root-relative path")),
+                (
+                    "oldText",
+                    string(
+                        "the text to replace; it must occur exactly once in the note, else the edit is refused and nothing changes. Empty appends newText at the end of the note (a note that already ends in newText is left as it is)",
+                    ),
+                ),
+                ("newText", string("the replacement, or the text to append")),
+                (
+                    "expectedHash",
+                    string(
+                        "the hash note_read returned; the edit is refused if the note changed since. Omit to edit the note as it is",
+                    ),
+                ),
+            ],
+            &["path", "oldText", "newText"],
+        )
+    }
+}
+
 impl NoteMoveParams {
     /// The tool input for `note.move`: what moves, and the folder it lands in.
     pub fn schema() -> serde_json::Value {
@@ -722,6 +794,7 @@ pub enum Reply {
     NoteMove(NoteMoveReply),
     NoteHealth(NoteHealthReply),
     NoteBacklinks(NoteBacklinksReply),
+    NoteSearch(NoteSearchReply),
 }
 
 /// `note.tree`: the folder and note rows, folders first as the core walks them.
@@ -765,6 +838,16 @@ pub struct NoteHealthReply {
 pub struct NoteBacklinksReply {
     pub path: String,
     pub backlinks: Vec<BacklinkView>,
+}
+
+/// `note.search`: one row per matching note, and the match count when `limit`
+/// cut the list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteSearchReply {
+    pub hits: Vec<SearchHitView>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<usize>,
 }
 
 /// `ticket.list`: the full snapshot and the revision it is a snapshot of.

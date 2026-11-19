@@ -456,7 +456,7 @@ fn mcp_over_a_real_socket_handshakes_lists_tools_and_answers_frames() {
     let listed: serde_json::Value = serde_json::from_str(&listed.body).expect("one frame");
     assert_eq!(
         listed["result"]["tools"].as_array().map(Vec::len),
-        Some(28),
+        Some(31),
         "the door covers every covered wire method"
     );
 

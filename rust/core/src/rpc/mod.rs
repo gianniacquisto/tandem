@@ -16,12 +16,13 @@ use crate::domain::{
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, LabelDeletionReply, LabelListReply,
-    Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply, NoteReadReply, NoteTreeReply,
-    NoteWriteReply, ProjectEntry, ProjectListReply, Reply, TicketListReply, TicketReply, WireError,
+    Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply, NoteReadReply, NoteSearchReply,
+    NoteTreeReply, NoteWriteReply, ProjectEntry, ProjectListReply, Reply, TicketListReply,
+    TicketReply, WireError,
 };
 use crate::wire::{
     BacklinkView, CommentView, NoteContentView, NoteMoveView, NoteNodeView, NotePathView,
-    NoteWriteView, TicketDetail, TicketSummary,
+    NoteWriteView, SearchHitView, TicketDetail, TicketSummary,
 };
 
 /// The most a request body may carry. A description is text a human wrote; a
@@ -374,6 +375,41 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
         Method::NoteHealth(_) => Ok(Reply::NoteHealth(NoteHealthReply {
             health: open_bikeshed(store).health().map_err(domain)?.value,
         })),
+        Method::NoteSearch(params) => {
+            let Some(query) = params.query.as_deref() else {
+                return Err(WireError::domain("the search carries no query"));
+            };
+            let hits = open_bikeshed(store).search(query).map_err(domain)?.value;
+            let matched = hits.len();
+            let cut = params.limit.unwrap_or(NOTE_SEARCH_LIMIT).max(0) as usize;
+            let cut = Some(cut).filter(|cut| *cut < matched);
+            Ok(Reply::NoteSearch(NoteSearchReply {
+                hits: hits
+                    .iter()
+                    .take(cut.unwrap_or(matched))
+                    .map(SearchHitView::new)
+                    .collect(),
+                total: cut.map(|_| matched),
+            }))
+        }
+        Method::NoteEdit(params) => {
+            let (Some(old), Some(new)) = (params.old_text.as_deref(), params.new_text.as_deref())
+            else {
+                return Err(WireError::domain("the edit carries no oldText or newText"));
+            };
+            let record = open_bikeshed(store)
+                .edit(
+                    named(&params.path),
+                    old,
+                    new,
+                    params.expected_hash.as_deref(),
+                )
+                .map_err(domain)?
+                .value;
+            Ok(Reply::NoteWrite(NoteWriteReply {
+                write: NoteWriteView::new(&record),
+            }))
+        }
         Method::NoteBacklinks(params) => {
             let path = named(&params.path);
             let rows = open_bikeshed(store).backlinks(path).map_err(domain)?.value;
@@ -384,6 +420,9 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
         }
     }
 }
+
+/// How many search rows an absent `limit` returns.
+const NOTE_SEARCH_LIMIT: i64 = 20;
 
 /// The bikeshed a home keeps: `<home>/bikeshed`, the one rule the CLI's note
 /// verbs and the app's reads share.

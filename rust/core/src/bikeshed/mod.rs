@@ -597,6 +597,72 @@ impl Bikeshed {
         })
     }
 
+    // MARK: - edit
+
+    /// `edit(path, old, new, expected_hash)`: replace the one occurrence of
+    /// `old` in an existing note, the read, the match and the atomic write all
+    /// under the vault lock, so two edits to one note never lose each other.
+    ///
+    /// Zero matches and more than one are refusals that leave the file as it
+    /// was. An empty `old` appends `new` at the end; a note that already ends
+    /// in `new` is left untouched, so a retried append lands once. The record
+    /// carries the hash on disk afterwards, never the text.
+    pub fn edit(
+        &self,
+        path: &str,
+        old: &str,
+        new: &str,
+        expected_hash: Option<&str>,
+    ) -> DomainResult<Operation<WriteRecord>> {
+        let Some(url) = self.file_url(path) else {
+            return Err(DomainError::InvalidName(path.to_string()));
+        };
+        if old.is_empty() && new.is_empty() {
+            return Err(DomainError::EditEmpty);
+        }
+        self.locked(|| {
+            let current = self.read_note(path)?;
+            if let Some(expected) = expected_hash
+                && current.hash != expected
+            {
+                return Err(DomainError::StaleNote(path.to_string()));
+            }
+            let edited = if old.is_empty() {
+                if current.text.ends_with(new) {
+                    return Ok(Operation {
+                        value: WriteRecord {
+                            path: path.to_string(),
+                            hash: current.hash,
+                        },
+                        note: None,
+                    });
+                }
+                format!("{}{new}", current.text)
+            } else {
+                let count = current.text.matches(old).count();
+                match count {
+                    0 => return Err(DomainError::EditNoMatch(path.to_string())),
+                    1 => current.text.replacen(old, new, 1),
+                    count => {
+                        return Err(DomainError::EditAmbiguous {
+                            path: path.to_string(),
+                            count,
+                        });
+                    }
+                }
+            };
+            let record = WriteRecord {
+                path: path.to_string(),
+                hash: hash(edited.as_bytes()),
+            };
+            self.atomic_write(edited.as_bytes(), &url)?;
+            Ok(Operation {
+                value: record,
+                note: None,
+            })
+        })
+    }
+
     // MARK: - rename
 
     /// `rename(from, to)`: change a note's path with the link rewrite (ADR 0005),
