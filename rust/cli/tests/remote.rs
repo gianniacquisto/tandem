@@ -380,3 +380,42 @@ fn remote_stdout_matches_local_stdout_for_the_verbs_with_a_lean_tool_answer() {
         assert_eq!(normalized(&remote), normalized(&local), "{args:?}");
     }
 }
+
+#[test]
+fn append_description_runs_remotely_and_appends_to_the_served_body() {
+    let sandbox = Sandbox::new("append");
+    let server = Server::start(&sandbox, "served", "127.0.0.1", None);
+    let run = |args: &[&str]| {
+        let mut command = sandbox.cli("elsewhere", Some(&server.url), None);
+        command.args(args);
+        stdout_of(command)
+    };
+
+    let (code, added, stderr) = run(&["ticket", "add", "--title", "T", "--description", "Brief."]);
+    assert_eq!(code, Some(0), "{stderr}");
+    let id = serde_json::from_str::<Value>(added.trim()).expect("JSON")["id"]
+        .as_str()
+        .expect("an id")
+        .to_string();
+
+    let (code, _, stderr) = run(&[
+        "ticket",
+        "set",
+        "--id",
+        &id,
+        "--append-description",
+        "More.",
+    ]);
+    assert_eq!(code, Some(0), "{stderr}");
+    let (_, shown, _) = run(&["ticket", "show", "--id", &id]);
+    let shown: Value = serde_json::from_str(shown.trim()).expect("JSON");
+    assert_eq!(shown["description"], "Brief.\n\nMore.");
+
+    let (code, _, stderr) = run(&["ticket", "set", "--id", &id, "--append-description", ""]);
+    assert_eq!(
+        code,
+        Some(1),
+        "an empty addition fails in the server's words"
+    );
+    assert!(!stderr.is_empty());
+}

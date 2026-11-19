@@ -1055,3 +1055,91 @@ fn an_unknown_detail_is_an_invalid_params_error_and_a_tool_without_one_ignores_i
         assert_eq!(has, affected, "{}", tool.name);
     }
 }
+
+/// Add a ticket with `description` through the tool and return its id.
+fn add_with_body(store: &tandem_core::store::Store, description: &str) -> String {
+    let added: Value = serde_json::from_str(&tool_text(
+        &call(
+            store,
+            &tool_call(
+                1,
+                "ticket_add",
+                json!({"title": "Brief", "description": description}),
+            ),
+        )
+        .expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+    added["ticket"]["id"].as_str().expect("an id").to_string()
+}
+
+#[test]
+fn append_description_adds_to_the_body_and_reads_back_combined() {
+    let sandbox = Sandbox::new("mcp-append");
+    let store = sandbox.store();
+    let id = add_with_body(&store, "The brief.");
+
+    let appended = call(
+        &store,
+        &tool_call(
+            2,
+            "ticket_set",
+            json!({"id": id, "appendDescription": "A later paragraph."}),
+        ),
+    )
+    .expect("the call answers");
+    assert!(appended["result"]["isError"].is_null(), "{appended}");
+
+    let shown: Value = serde_json::from_str(&tool_text(
+        &call(&store, &tool_call(3, "ticket_show", json!({"id": id}))).expect("answers"),
+    ))
+    .expect("the tool result is JSON");
+    assert_eq!(
+        shown["ticket"]["description"],
+        "The brief.\n\nA later paragraph."
+    );
+}
+
+#[test]
+fn an_empty_append_description_is_refused_and_the_body_stays() {
+    let sandbox = Sandbox::new("mcp-append-empty");
+    let store = sandbox.store();
+    let id = add_with_body(&store, "The brief.");
+
+    let refused = call(
+        &store,
+        &tool_call(2, "ticket_set", json!({"id": id, "appendDescription": ""})),
+    )
+    .expect("the call answers");
+    assert_eq!(refused["result"]["isError"], true, "{refused}");
+
+    let shown: Value = serde_json::from_str(&tool_text(
+        &call(&store, &tool_call(3, "ticket_show", json!({"id": id}))).expect("answers"),
+    ))
+    .expect("the tool result is JSON");
+    assert_eq!(shown["ticket"]["description"], "The brief.");
+}
+
+#[test]
+fn description_with_append_description_is_refused_and_nothing_is_written() {
+    let sandbox = Sandbox::new("mcp-append-both");
+    let store = sandbox.store();
+    let id = add_with_body(&store, "The brief.");
+
+    let refused = call(
+        &store,
+        &tool_call(
+            2,
+            "ticket_set",
+            json!({"id": id, "description": "New", "appendDescription": "More"}),
+        ),
+    )
+    .expect("the call answers");
+    assert_eq!(refused["result"]["isError"], true, "{refused}");
+
+    let shown: Value = serde_json::from_str(&tool_text(
+        &call(&store, &tool_call(3, "ticket_show", json!({"id": id}))).expect("answers"),
+    ))
+    .expect("the tool result is JSON");
+    assert_eq!(shown["ticket"]["description"], "The brief.");
+}

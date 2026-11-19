@@ -269,18 +269,18 @@ fn call_for(command: &Command) -> Result<(String, Map<String, Value>), Failure> 
                     if args.description.is_some() && args.append_description.is_some() {
                         return Err(Failure::domain(DomainError::ConflictingDescriptionEdit));
                     }
-                    if args.append_description.is_some() {
-                        return Err(Failure::message(
-                            "tandem ticket set: --append-description has no remote form; read the \
-                             ticket and send the whole --description.",
-                        ));
-                    }
                     put(&mut map, "id", args.id.as_deref());
                     put(&mut map, "title", args.title.as_deref());
                     put(&mut map, "status", args.status.as_deref());
                     put(&mut map, "assignee", args.assignee.as_deref());
                     if let Some(raw) = args.description.as_deref() {
                         map.insert("description".into(), Value::String(description_body(raw)?));
+                    }
+                    if let Some(raw) = args.append_description.as_deref() {
+                        map.insert(
+                            "appendDescription".into(),
+                            Value::String(append_description_body(raw)?),
+                        );
                     }
                     "ticket set"
                 }

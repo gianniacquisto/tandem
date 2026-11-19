@@ -191,7 +191,9 @@ pub struct TicketAddParams {
     pub description: Option<String>,
 }
 
-/// `ticket.set`: an absent field is unchanged, `description: ""` is the clear.
+/// `ticket.set`: an absent field is unchanged, `description: ""` is the clear,
+/// and `appendDescription` adds to the body (an empty addition, or both
+/// description fields in one call, is refused).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TicketSetParams {
@@ -200,6 +202,7 @@ pub struct TicketSetParams {
     pub status: Option<String>,
     pub assignee: Option<String>,
     pub description: Option<String>,
+    pub append_description: Option<String>,
 }
 
 /// `ticket.move`: to the end of the label when `index` is absent.
@@ -497,7 +500,13 @@ impl TicketSetParams {
                 ),
                 (
                     "description",
-                    string("the markdown body, or \"\" to clear it"),
+                    string("the markdown body, replacing the old one, or \"\" to clear it"),
+                ),
+                (
+                    "appendDescription",
+                    string(
+                        "text appended to the body after a blank line; the existing body is kept",
+                    ),
                 ),
             ],
             &["id"],

@@ -674,7 +674,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_set",
             method_tag: "ticket.set",
-            description: "Change the fields named in one write; everything unnamed is left alone. Answers the whole ticket; detail \"lean\" answers a short receipt without the description.",
+            description: "Change the fields named in one write; everything unnamed is left alone. To add to the description send appendDescription (the body is kept); description replaces the whole body, and the two cannot be sent together. Answers the whole ticket; detail \"lean\" answers a short receipt without the description.",
             input_schema: with_detail(TicketSetParams::schema()),
             annotations: Annotations::WRITE.idempotent(),
             method: Method::TicketSet(TicketSetParams::default()),

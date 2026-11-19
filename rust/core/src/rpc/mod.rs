@@ -112,6 +112,10 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
                 Some(raw) => Edit::Set(Some(raw)),
                 None => Edit::Unchanged,
             };
+            let append_description = match params.append_description.as_deref() {
+                Some(raw) => Edit::Set(raw),
+                None => Edit::Unchanged,
+            };
             let ticket = board
                 .set(
                     named(&params.id),
@@ -123,7 +127,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
                         status,
                         assignee,
                         description,
-                        append_description: Edit::Unchanged,
+                        append_description,
                         archived: Edit::Unchanged,
                     },
                 )
