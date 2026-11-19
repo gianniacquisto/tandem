@@ -214,7 +214,10 @@ fn remote_verbs_print_what_the_local_verbs_print() {
     });
     assert_eq!(code, Some(0), "{stderr}");
     let commented: Value = serde_json::from_str(commented.trim()).expect("stdout is JSON");
-    assert_eq!(commented["comment"]["body"], "Landed");
+    assert_eq!(
+        commented["body"], "Landed",
+        "the flat comment the local verb prints"
+    );
 }
 
 #[test]
@@ -299,5 +302,81 @@ fn export_and_import_refuse_by_name_under_a_remote_target() {
         assert_eq!(code, Some(1), "{verb}");
         assert!(stderr.contains(&format!("tandem {verb}")), "{stderr}");
         assert!(stderr.contains("no remote form"), "{stderr}");
+    }
+}
+
+/// MCP-3: the MCP door answers an agent the lean shape, so the remote CLI asks
+/// for `detail: "full"` and its stdout must stay what the local verb prints.
+/// The same script runs against a served home through the remote CLI and
+/// against a mirror home locally; every verb's stdout must match, list and
+/// archive included.
+#[test]
+fn remote_stdout_matches_local_stdout_for_the_verbs_with_a_lean_tool_answer() {
+    let sandbox = Sandbox::new("lean-parity");
+    let server = Server::start(&sandbox, "served", "127.0.0.1", None);
+    let script: &[&[&str]] = &[
+        &["label", "add", "--name", "epic", "--abbr", "LN"],
+        &[
+            "ticket",
+            "add",
+            "--title",
+            "  First  ",
+            "--label",
+            "epic",
+            "--description",
+            "A brief\nwith two lines",
+        ],
+        &[
+            "ticket",
+            "add",
+            "--title",
+            "Unlabelled",
+            "--assignee",
+            "builder",
+        ],
+        &["ticket", "list"],
+        &["ticket", "set", "--id", "LN-1", "--status", "ready"],
+        &[
+            "ticket",
+            "set",
+            "--id",
+            "LN-1",
+            "--title",
+            "Renamed",
+            "--description",
+            "New brief",
+        ],
+        &["ticket", "block", "--id", "LN-1", "--on", "LN-1"],
+        &["ticket", "list"],
+        &["ticket", "list", "--filter", "all"],
+        &[
+            "ticket", "comment", "add", "--id", "LN-1", "--author", "builder", "--body", "Landed",
+        ],
+        &["ticket", "show", "--id", "LN-1"],
+        &["ticket", "complete", "--id", "LN-1"],
+        &["ticket", "archive", "--id", "LN-1"],
+        &["ticket", "list", "--archived"],
+        &["ticket", "archive"],
+    ];
+    for args in script {
+        let (remote_code, remote, remote_err) = stdout_of({
+            let mut command = sandbox.cli("elsewhere", Some(&server.url), None);
+            command.args(*args);
+            command
+        });
+        let (local_code, local, local_err) = stdout_of({
+            let mut command = sandbox.cli("mirror", None, None);
+            command.args(*args);
+            command
+        });
+        assert_eq!(
+            remote_code, local_code,
+            "{args:?}: {remote_err} / {local_err}"
+        );
+        if remote.trim().is_empty() {
+            assert_eq!(remote, local, "{args:?}");
+            continue;
+        }
+        assert_eq!(normalized(&remote), normalized(&local), "{args:?}");
     }
 }

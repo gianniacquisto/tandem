@@ -167,6 +167,9 @@ pub struct TicketListParams {
     pub label: Option<String>,
     pub archived: bool,
     pub blocked: bool,
+    /// At most this many rows, from the top; the reply's `total` says how many
+    /// matched when the list was cut. Absent is the whole list.
+    pub limit: Option<i64>,
 }
 
 /// A method that names one ticket.
@@ -373,6 +376,12 @@ impl TicketListParams {
                 (
                     "blocked",
                     boolean("only the tickets waiting on an open blocker"),
+                ),
+                (
+                    "limit",
+                    integer(
+                        "at most this many rows from the top; total reports the matches when cut; 0 returns no rows and the total",
+                    ),
                 ),
             ],
             &[],
@@ -752,6 +761,9 @@ pub struct NoteBacklinksReply {
 pub struct TicketListReply {
     pub revision: i64,
     pub tickets: Vec<TicketSummary>,
+    /// How many tickets matched, present only when `limit` cut the list.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total: Option<usize>,
 }
 
 /// A whole ticket: `ticket.show`, and every ticket write's receipt.

@@ -50,9 +50,19 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
             )
             .map_err(domain)?;
             let (tickets, revision) = board.list_snapshot(&query).map_err(domain)?;
+            let matched = tickets.len();
+            let cut = params
+                .limit
+                .map(|limit| limit.max(0) as usize)
+                .filter(|limit| *limit < matched);
             Ok(Reply::TicketList(TicketListReply {
                 revision,
-                tickets: tickets.iter().map(TicketSummary::new).collect(),
+                tickets: tickets
+                    .iter()
+                    .take(cut.unwrap_or(matched))
+                    .map(TicketSummary::new)
+                    .collect(),
+                total: cut.map(|_| matched),
             }))
         }
         Method::TicketShow(params) => {
