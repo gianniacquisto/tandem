@@ -154,6 +154,9 @@ pub enum MemberError {
     /// The member is the workspace's last admin, who cannot be removed or
     /// demoted by any door, the operator's included (CUT-39).
     LastAdmin,
+    /// The home has no live admin yet, so the first member must be one: a
+    /// workspace is never left with members and no admin.
+    NoAdmin,
     Store(StoreError),
 }
 
@@ -166,6 +169,9 @@ impl fmt::Display for MemberError {
             }
             Self::LastAdmin => formatter.write_str(
                 "that member is the last admin, who cannot be removed or demoted: make another member an admin first",
+            ),
+            Self::NoAdmin => formatter.write_str(
+                "the first member must be an admin: a workspace needs one admin before anyone else joins",
             ),
             Self::Store(error) => error.fmt(formatter),
         }
@@ -356,6 +362,16 @@ impl Store {
                 .unwrap_or(false);
             if taken {
                 return Ok(Err(MemberError::Taken));
+            }
+            let admins: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM members WHERE role = 'admin' AND removed_at IS NULL",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|error| translate(error, connection))?;
+            if admins == 0 && role != Role::Admin {
+                return Ok(Err(MemberError::NoAdmin));
             }
             connection
                 .execute(

@@ -2790,10 +2790,24 @@ mod members {
     }
 
     #[test]
+    fn the_first_member_must_be_an_admin() {
+        let sandbox = Sandbox::new("members-first-admin");
+        let store = sandbox.store();
+        assert_eq!(
+            store.member_add("bob", Role::Member, NOW),
+            Err(MemberError::NoAdmin),
+            "a home with no admin refuses a member"
+        );
+        assert_eq!(count(&sandbox, "SELECT COUNT(*) FROM members"), 0);
+        assert!(store.member_add("alice", Role::Admin, NOW).is_ok());
+        assert!(store.member_add("bob", Role::Member, NOW).is_ok());
+    }
+
+    #[test]
     fn tokens_and_sign_in_keys_are_stored_as_digests_and_never_the_value() {
         let sandbox = Sandbox::new("members-digests");
         let store = sandbox.store();
-        store.member_add("alice", Role::Member, NOW).unwrap();
+        store.member_add("alice", Role::Admin, NOW).unwrap();
         let token = store
             .member_token_issue("alice", "laptop", NOW)
             .unwrap()
