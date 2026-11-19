@@ -50,7 +50,7 @@ struct UsedKeys {
 
 impl TokenKeys {
     /// Take the key: `true` for the first caller, `false` once it is used.
-    fn claim(&self, member: &str, key: &str) -> bool {
+    pub(super) fn claim(&self, member: &str, key: &str) -> bool {
         let scoped = format!("{member}/{key}");
         let mut used = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         if !used.set.insert(scoped.clone()) {
@@ -67,7 +67,7 @@ impl TokenKeys {
 
     /// Give a key back after a create that did not happen, so the same form
     /// can be submitted again.
-    fn release(&self, member: &str, key: &str) {
+    pub(super) fn release(&self, member: &str, key: &str) {
         let scoped = format!("{member}/{key}");
         let mut used = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         if used.set.remove(&scoped) {
@@ -77,14 +77,14 @@ impl TokenKeys {
 }
 
 /// A key the form carries: 32 lowercase hex characters.
-fn well_formed_key(key: &str) -> bool {
+pub(super) fn well_formed_key(key: &str) -> bool {
     key.len() == 32
         && key
             .bytes()
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-fn fresh_key() -> String {
+pub(super) fn fresh_key() -> String {
     let mut bytes = [0u8; 16];
     if getrandom::fill(&mut bytes).is_err() {
         tracing::error!("the system random source is unavailable");
@@ -122,7 +122,7 @@ fn gate(context: &Context) -> Result<Who, Response> {
     }
 }
 
-fn plain_failure() -> Response {
+pub(super) fn plain_failure() -> Response {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         format!("{COULD_NOT_SAVE}\n"),
@@ -130,7 +130,7 @@ fn plain_failure() -> Response {
         .into_response()
 }
 
-fn see_other(location: &str) -> Response {
+pub(super) fn see_other(location: &str) -> Response {
     let mut response = StatusCode::SEE_OTHER.into_response();
     response.headers_mut().insert(
         header::LOCATION,
@@ -143,7 +143,7 @@ fn see_other(location: &str) -> Response {
 }
 
 /// `YYYY-MM-DD`, UTC, from whole seconds.
-fn date(seconds: i64) -> String {
+pub(super) fn date(seconds: i64) -> String {
     let (year, month, day) = sheet::civil_from_days(seconds.div_euclid(86_400));
     format!("{year:04}-{month:02}-{day:02}")
 }
@@ -204,7 +204,11 @@ struct MessageView {
 
 /// The shell around one of these pages. Never cached, and no change stream: a
 /// page that may hold a token is not redrawn under the member's cursor.
-fn shell(context: &Context, body: Result<String, askama::Error>, status: StatusCode) -> Response {
+pub(super) fn shell(
+    context: &Context,
+    body: Result<String, askama::Error>,
+    status: StatusCode,
+) -> Response {
     let body = match body {
         Ok(body) => body,
         Err(error) => {
@@ -219,6 +223,7 @@ fn shell(context: &Context, body: Result<String, askama::Error>, status: StatusC
         sign_out: context.access.is_token(),
         export: context.may_export(),
         tokens: context.shows_tokens(),
+        people: context.shows_people(),
     };
     let mut response = match page.render() {
         Ok(html) => html_response(html, status),

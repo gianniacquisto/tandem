@@ -209,3 +209,43 @@ impl Store {
             .unwrap_or_default())
     }
 }
+
+impl Store {
+    /// Up to `limit` rows, newest first: the newest of all, or with `before` the
+    /// rows older than that id (the last id a reader's page ended on). A store
+    /// with no table reads as an empty record.
+    pub fn access_record_page(&self, before: Option<i64>, limit: usize) -> Result<Vec<AccessRow>> {
+        let limit = i64::try_from(limit).unwrap_or(i64::MAX);
+        Ok(self
+            .read(|connection| {
+                if !has_table(connection, "access_record")? {
+                    return Ok(Vec::new());
+                }
+                let mut statement = connection
+                    .prepare(
+                        "SELECT id, at, actor, credential, event, target, detail, door
+                         FROM access_record
+                         WHERE ?1 IS NULL OR id < ?1
+                         ORDER BY id DESC LIMIT ?2",
+                    )
+                    .map_err(|error| translate(error, connection))?;
+                let rows = statement
+                    .query_map(params![before, limit], |row| {
+                        Ok(AccessRow {
+                            id: row.get(0)?,
+                            at: row.get(1)?,
+                            actor: row.get(2)?,
+                            credential: row.get(3)?,
+                            event: row.get(4)?,
+                            target: row.get(5)?,
+                            detail: row.get(6)?,
+                            door: row.get(7)?,
+                        })
+                    })
+                    .map_err(|error| translate(error, connection))?;
+                rows.map(|row| row.map_err(|error| translate(error, connection)))
+                    .collect()
+            })?
+            .unwrap_or_default())
+    }
+}

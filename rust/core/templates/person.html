@@ -1,0 +1,38 @@
+<section class="people">
+  <p class="people__back"><a class="people__link" href="/people">Back to People</a></p>
+  <h1 class="people__title">{{ name }}</h1>
+  <p class="people__status" role="status" aria-live="polite"
+    {%- if notice.is_some() %} tabindex="-1" autofocus data-autofocus{% endif %}>
+    {%- if let Some(notice) = notice %}{{ notice }}{% endif -%}
+  </p>
+  <p class="people__lead">{{ role_label }}. Last signed in: {{ last_seen }}.</p>
+  <p class="people__row">
+    <a class="people__button" href="/people/{{ name }}/key">Reissue sign-in key</a>
+  </p>
+  <h2 class="people__subtitle">Personal tokens</h2>
+  {%- if tokens.is_empty() %}
+  <p class="people__empty">No live personal tokens.</p>
+  {%- else %}
+  <table class="people__table">
+    <caption class="people__caption">Live personal tokens</caption>
+    <thead>
+      <tr>
+        <th scope="col">Name</th>
+        <th scope="col">Created</th>
+        <th scope="col">Last used</th>
+        <th scope="col"><span class="people__hidden">Action</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for token in tokens %}
+      <tr>
+        <th scope="row" class="people__name">{{ token.label }}</th>
+        <td>{{ token.created }}</td>
+        <td>{{ token.last_used }}</td>
+        <td class="people__action"><a class="people__button people__button--danger" href="/people/{{ name }}/tokens/{{ token.id }}/revoke">Revoke token<span class="people__hidden"> {{ token.label }}</span></a></td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- endif %}
+</section>

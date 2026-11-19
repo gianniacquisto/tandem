@@ -1,0 +1,11 @@
+<section class="people">
+  <h1 class="people__title">{{ title }}</h1>
+  <p class="people__lead">{{ lead }}</p>
+  <form class="people__row" method="post" action="{{ action }}">
+    {%- for field in fields %}
+    <input type="hidden" name="{{ field.name }}" value="{{ field.value }}">
+    {%- endfor %}
+    <a class="people__button" href="{{ back }}" autofocus data-autofocus>Cancel</a>
+    <button class="people__button people__button--danger" type="submit">{{ submit }}</button>
+  </form>
+</section>

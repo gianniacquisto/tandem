@@ -955,3 +955,93 @@ impl Store {
             .flatten())
     }
 }
+
+/// One live member as the People screen reads them: the member, how many of
+/// their personal tokens are live, and when a browser session of theirs was last
+/// used (`None` while none is open, since a sign-out deletes the session).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PersonSummary {
+    pub member: Member,
+    pub live_tokens: usize,
+    pub last_signed_in: Option<i64>,
+}
+
+/// What a name is in the store: a live member, a removed one (whose name stays
+/// taken), or a name never seen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MemberState {
+    Live(Member),
+    Removed,
+    Unknown,
+}
+
+impl Store {
+    /// Every live member, oldest first, with the live token count and the last
+    /// browser-session use. No member tables reads as none.
+    pub fn people(&self) -> Result<Vec<PersonSummary>> {
+        Ok(self
+            .read(|connection| {
+                if !has_table(connection, "members")? {
+                    return Ok(Vec::new());
+                }
+                let mut statement = connection
+                    .prepare(
+                        "SELECT m.id, m.name, m.role,
+                                (SELECT COUNT(*) FROM member_tokens t
+                                 WHERE t.member_id = m.id AND t.revoked_at IS NULL),
+                                (SELECT MAX(s.last_used_at) FROM browser_sessions s
+                                 WHERE s.member_id = m.id)
+                         FROM members m WHERE m.removed_at IS NULL ORDER BY m.id",
+                    )
+                    .map_err(|error| translate(error, connection))?;
+                let rows = statement
+                    .query_map([], |row| {
+                        Ok((
+                            member_from(row)?,
+                            row.get::<_, i64>(3)?,
+                            row.get::<_, Option<i64>>(4)?,
+                        ))
+                    })
+                    .map_err(|error| translate(error, connection))?;
+                let mut people = Vec::new();
+                for row in rows {
+                    let (member, tokens, last) =
+                        row.map_err(|error| translate(error, connection))?;
+                    if let Some(member) = member {
+                        people.push(PersonSummary {
+                            member,
+                            live_tokens: usize::try_from(tokens).unwrap_or(0),
+                            last_signed_in: last,
+                        });
+                    }
+                }
+                Ok(people)
+            })?
+            .unwrap_or_default())
+    }
+
+    /// What `name` is in the store: live, removed (the tombstone), or unknown.
+    pub fn member_state(&self, name: &str) -> Result<MemberState> {
+        Ok(self
+            .read(|connection| {
+                if !has_table(connection, "members")? {
+                    return Ok(MemberState::Unknown);
+                }
+                let row: Option<(Option<Member>, Option<i64>)> = connection
+                    .query_row(
+                        "SELECT id, name, role, removed_at FROM members WHERE name = ?1",
+                        [name],
+                        |row| Ok((member_from(row)?, row.get::<_, Option<i64>>(3)?)),
+                    )
+                    .optional()
+                    .map_err(|error| translate(error, connection))?;
+                Ok(match row {
+                    None => MemberState::Unknown,
+                    Some((_, Some(_))) => MemberState::Removed,
+                    Some((Some(member), None)) => MemberState::Live(member),
+                    Some((None, None)) => MemberState::Unknown,
+                })
+            })?
+            .unwrap_or(MemberState::Unknown))
+    }
+}
