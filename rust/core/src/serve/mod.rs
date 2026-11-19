@@ -58,6 +58,7 @@ mod mcp;
 mod notes;
 mod operator;
 mod sheet;
+mod tokens;
 
 /// How often the watch stats the store's files. Short enough that a face
 /// updates before a human notices, and cheap because a tick stats twice and
@@ -256,6 +257,17 @@ impl Context {
         }
     }
 
+    /// Whether the shell links the Personal tokens screen (CUT-41): only in team
+    /// mode, and only for a browser session, a member's or the owner's. A solo
+    /// owner's `TANDEM_TOKEN` is their credential, so they get no screen. An
+    /// unreadable store reads as not team mode, so the link is simply absent.
+    fn shows_tokens(&self) -> bool {
+        matches!(
+            self.principal,
+            guard::Principal::Owner | guard::Principal::MemberSession(_)
+        ) && self.store.team_mode().unwrap_or(false)
+    }
+
     /// Whether this viewer may export: the shell draws its control only then.
     fn may_export(&self) -> bool {
         self.session
@@ -340,6 +352,11 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/tickets/{id}/status", post(board::move_ticket))
         .route("/tickets/{id}/comments", post(sheet::add_comment))
         .route("/tickets/{id}/label", post(sheet::move_to_label))
+        .route("/tokens", get(tokens::list).post(tokens::create))
+        .route(
+            "/tokens/{id}/revoke",
+            get(tokens::revoke_confirm).post(tokens::revoke),
+        )
         .route("/labels", post(board::add_label))
         .route("/labels/{name}/rename", post(board::rename_label))
         .route("/operator/v1/members/count", get(operator::count))
@@ -378,6 +395,7 @@ fn layered(
         .layer(Extension(access))
         .layer(Extension(store))
         .layer(Extension(login::LoginThrottle::new()))
+        .layer(Extension(tokens::TokenKeys::default()))
         .layer(DefaultBodyLimit::max(crate::rpc::MAX_FRAME))
         .layer(Extension(changes))
         .layer(middleware::from_fn(security_headers))
@@ -732,6 +750,9 @@ struct PageView {
     /// Whether the header menu offers the workspace export: only when the
     /// export permission check allows the viewer.
     export: bool,
+    /// Whether the header menu links the Personal tokens screen: team mode
+    /// only, for a member's browser session and for the owner's.
+    tokens: bool,
 }
 
 impl PageView {

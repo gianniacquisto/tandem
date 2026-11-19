@@ -1,0 +1,14 @@
+<section class="tokens">
+  <h1 class="tokens__title">Your new personal token</h1>
+  <p class="tokens__lead">Name: <strong class="tokens__name">{{ label }}</strong></p>
+  <p class="tokens__once"><strong>Copy it now. You will not see it again.</strong></p>
+  <label class="tokens__label" for="token-value">Personal token</label>
+  <input class="tokens__input tokens__input--value" id="token-value" type="text" readonly value="{{ token }}" spellcheck="false" autocomplete="off" autofocus data-select-all>
+  <p class="tokens__row">
+    <button class="tokens__button tokens__button--primary" type="button" data-copy-token="token-value" data-copy-status="token-copy-status">Copy token</button>
+    <span class="tokens__copied" id="token-copy-status" role="status" aria-live="polite"></span>
+  </p>
+  <p class="tokens__lead">In your tool's MCP settings, send it as a header: <code>Authorization: Bearer</code> followed by the token. The tool then works on the board as you.</p>
+  <p class="tokens__lead">If you lose it, revoke it and make a new one.</p>
+  <p><a class="tokens__button" href="/tokens">Back to your personal tokens</a></p>
+</section>

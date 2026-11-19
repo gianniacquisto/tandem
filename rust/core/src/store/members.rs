@@ -40,6 +40,12 @@ const BODY_LENGTH: usize = 43;
 /// Names no member may take: the owner's and operator's words, and `count`, which the operator route `/members/count` already answers.
 const RESERVED_NAMES: [&str; 4] = ["count", "human", "operator", "owner"];
 
+/// The most live (unrevoked) personal tokens one member holds.
+pub const MAX_LIVE_TOKENS: usize = 20;
+
+/// The longest token label, in characters.
+pub const MAX_LABEL_CHARS: usize = 60;
+
 /// A token's last use is rewritten at most this often.
 const TOKEN_TOUCH_SECONDS: i64 = 24 * 60 * 60;
 
@@ -179,6 +185,86 @@ impl fmt::Display for MemberError {
 }
 
 impl std::error::Error for MemberError {}
+
+/// Why a personal token could not be made.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TokenError {
+    /// The label breaks a rule; the one it broke.
+    Label(LabelRule),
+    /// The member already holds [`MAX_LIVE_TOKENS`] live tokens.
+    Limit,
+    Store(StoreError),
+}
+
+impl fmt::Display for TokenError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Label(rule) => write!(formatter, "the token name {}", rule.as_str()),
+            Self::Limit => write!(
+                formatter,
+                "a member holds at most {MAX_LIVE_TOKENS} personal tokens: revoke one first"
+            ),
+            Self::Store(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl std::error::Error for TokenError {}
+
+impl From<StoreError> for TokenError {
+    fn from(error: StoreError) -> Self {
+        Self::Store(error)
+    }
+}
+
+/// The rule a token label can break.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LabelRule {
+    /// Nothing, or only spaces.
+    Empty,
+    /// More than [`MAX_LABEL_CHARS`] characters.
+    TooLong,
+    /// A control character, a line or paragraph separator, or a character that
+    /// hides or reorders text.
+    NotPlain,
+}
+
+impl LabelRule {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Empty => "must not be empty",
+            Self::TooLong => "must be 60 characters or fewer",
+            Self::NotPlain => "must be one line of plain text",
+        }
+    }
+}
+
+/// The rule a token label breaks, or `None`: 1 to 60 characters of one line of
+/// plain text. A control character (a newline included), a line or paragraph
+/// separator and a character that reorders or hides text are refused, and a
+/// label of spaces alone is empty. The label is stored as typed in the access
+/// record and drawn back on the board's screens, so the one place that bounds it
+/// is the function that creates the token, not a form.
+pub fn token_label_rule(label: &str) -> Option<LabelRule> {
+    if label.trim().is_empty() {
+        return Some(LabelRule::Empty);
+    }
+    if label.chars().count() > MAX_LABEL_CHARS {
+        return Some(LabelRule::TooLong);
+    }
+    let plain = label.chars().all(|character| {
+        !character.is_control()
+            && !matches!(
+                character,
+                '\u{2028}' | '\u{2029}' | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}'
+                    | '\u{2066}'..='\u{2069}' | '\u{FEFF}'
+            )
+    });
+    if !plain {
+        return Some(LabelRule::NotPlain);
+    }
+    None
+}
 
 impl From<StoreError> for MemberError {
     fn from(error: StoreError) -> Self {
@@ -602,13 +688,18 @@ impl Store {
     }
 
     /// Mint a personal token for a live member. The value is returned once and
-    /// only its digest is stored. `None` when the member is not live.
+    /// only its digest is stored. `None` when the member is not live. A label
+    /// that breaks [`token_label_rule`] and a member already at
+    /// [`MAX_LIVE_TOKENS`] are refused before anything is written; the count and
+    /// the insert are one transaction, so two creates at once cannot pass the
+    /// limit. The value never reaches the access record or a log: the row holds
+    /// the label alone.
     pub fn member_token_issue(
         &self,
         member: &str,
         label: &str,
         now: i64,
-    ) -> Result<Option<IssuedCredential>> {
+    ) -> std::result::Result<Option<IssuedCredential>, TokenError> {
         self.member_token_issue_by(member, label, now, &AccessActor::owner())
     }
 
@@ -619,13 +710,27 @@ impl Store {
         label: &str,
         now: i64,
         by: &AccessActor,
-    ) -> Result<Option<IssuedCredential>> {
+    ) -> std::result::Result<Option<IssuedCredential>, TokenError> {
+        if let Some(rule) = token_label_rule(label) {
+            return Err(TokenError::Label(rule));
+        }
         let value = mint(TOKEN_PREFIX)?;
         let digest = credential_digest(&value);
         let stored = self.session_write(|connection| {
             let Some(id) = live_member_id(connection, member)? else {
-                return Ok(false);
+                return Ok(Ok(false));
             };
+            let live: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM member_tokens
+                     WHERE member_id = ?1 AND revoked_at IS NULL",
+                    [id],
+                    |row| row.get(0),
+                )
+                .map_err(|error| translate(error, connection))?;
+            if usize::try_from(live).unwrap_or(usize::MAX) >= MAX_LIVE_TOKENS {
+                return Ok(Err(TokenError::Limit));
+            }
             connection
                 .execute(
                     "INSERT INTO member_tokens (digest, member_id, label, created_at)
@@ -642,8 +747,8 @@ impl Store {
                 None,
                 now,
             )?;
-            Ok(true)
-        })?;
+            Ok(Ok(true))
+        })??;
         Ok(stored.then_some(IssuedCredential { value }))
     }
 

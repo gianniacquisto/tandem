@@ -1443,3 +1443,48 @@
   document.addEventListener('DOMContentLoaded', setUpTabs);
   document.addEventListener('htmx:afterSettle', setUpTabs);
 })();
+
+/*
+ * The Personal tokens screens (CUT-41): the Copy token button, and the focus a
+ * page names for itself. Without script the field is still selectable and the
+ * page still works; this only adds the copy and moves focus to the status line
+ * or the field a page marks.
+ */
+(function () {
+  function selectAll(field) {
+    field.focus();
+    field.select();
+    if (field.setSelectionRange) field.setSelectionRange(0, field.value.length);
+  }
+
+  function marked() {
+    var field = document.querySelector('[data-select-all]');
+    if (field) {
+      selectAll(field);
+      return;
+    }
+    var target = document.querySelector('[data-autofocus]');
+    if (target && document.activeElement !== target) target.focus();
+  }
+
+  document.addEventListener('DOMContentLoaded', marked);
+
+  document.addEventListener('click', function (event) {
+    var button = event.target.closest ? event.target.closest('[data-copy-token]') : null;
+    if (!button) return;
+    var field = document.getElementById(button.getAttribute('data-copy-token'));
+    var status = document.getElementById(button.getAttribute('data-copy-status'));
+    if (!field || !status) return;
+    selectAll(field);
+    function failed() {
+      status.textContent = 'Copy failed, select the text and copy it';
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(field.value).then(function () {
+        status.textContent = 'Copied.';
+      }, failed);
+    } else {
+      failed();
+    }
+  });
+})();

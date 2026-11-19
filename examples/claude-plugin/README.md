@@ -59,7 +59,7 @@ Read from the environment Claude Code starts in:
 - `TANDEM_AGENT`: the actor Claude's writes are recorded under (the `X-Tandem-Agent` header), default `claude`. Lowercase letters, digits and hyphens.
 - `TANDEM_NO_UPDATE_CHECK=1`: skip the release check.
 
-A token-guarded server (`TANDEM_TOKEN`) is not covered: the plugin sends no `Authorization` header. For that case, register the server by hand as in the top-level README and add the header there.
+A token-guarded server (`TANDEM_TOKEN`) is not covered: the plugin sends no `Authorization` header. For that case, register the server by hand as in the top-level README and add the header there. In a team workspace the header carries a personal token, which each member makes on the Personal tokens screen (see `docs/cli.md`).
 
 ## Notes
 

@@ -55,13 +55,15 @@ A team workspace knows its people ([ADR 0052](adr/0052-members-and-personal-toke
 
 A token or a key is 32 random bytes from the OS generator, base64url, behind its fixed prefix. Only the SHA-256 digest is stored, looked up by that indexed digest: the values are high-entropy random, so a plain hash is enough and no key-stretching buys anything. The value is shown once, when it is minted. Like a session row, a credential write (and a token's last-used time, rewritten at most once a day) never moves the revision or rolls the backup. Removing a member deletes their sessions, tokens and sign-in key in the same write, and the removal ends their open change streams. The archive carries `members` and empties both credential tables, as it empties `browser_sessions`.
 
+A personal token has a label, the name its member gave it (1 to 60 characters of one line of plain text: the store function that makes a token refuses an empty label, a longer one and one with a control character, a line or paragraph separator or a character that hides or reorders text, so a caller other than the form cannot store one). A member holds at most 20 live tokens, counted in the same write as the insert. The label is the only part of a token in the access record: the value and its digest never are. To connect an AI coding agent, a member makes a token on the Personal tokens screen and puts it in the tool's MCP settings as `Authorization: Bearer <token>`; the tool acts as that member and is limited as described in [the CLI guide](cli.md).
+
 ## The access record (schema v15)
 
 Who changed access to a team workspace, and who exported it, is a durable record an admin can read ([ADR 0052](adr/0052-members-and-personal-tokens.md), part 2). Schema v15 adds one table:
 
 | Table | Holds | In an export |
 | --- | --- | --- |
-| `access_record` | one row per event: `at`, the `actor` (a member name, `owner` or `operator`), the `credential` kind (`owner`, `member-session`, `member-token`, `operator`), the `event`, the `target` member, a short `detail` (a role, or a token's label) and, for an export, the `door` | carried |
+| `access_record` | one row per event: `at`, the `actor` (a member name, `owner` or `operator`), the `credential` kind (`owner`, `member-session`, `member-token`, `operator`), the `event`, the `target` member, a short `detail` (a role, or a token's label, at most 60 characters) and, for an export, the `door` | carried |
 
 The events are: member added, removed or given a new role (`member-added`, `member-removed`, `member-role-changed`), personal token created or revoked (`token-created`, `token-revoked`), sign-in key issued (`signin-key-issued`), an export through the board's door (`export`), and every act of the operator. A row is written in the same transaction as the act it records, so there is no change without a row and no row without a change. It never holds a token, a digest, a key, a header value, a note or a ticket body.
 

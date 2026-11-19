@@ -5104,6 +5104,10 @@ const ROUTE_TABLE: &[(&str, &str, &str)] = &[
     ("POST", "/tickets/{id}/label", "/tickets/abc/label"),
     ("POST", "/labels", "/labels"),
     ("POST", "/labels/{name}/rename", "/labels/x/rename"),
+    ("GET", "/tokens", "/tokens"),
+    ("POST", "/tokens", "/tokens"),
+    ("GET", "/tokens/{id}/revoke", "/tokens/1/revoke"),
+    ("POST", "/tokens/{id}/revoke", "/tokens/1/revoke"),
     ("GET", "/notes", "/notes"),
     ("GET", "/notes/view", "/notes/view"),
     ("GET", "/notes/edit", "/notes/edit"),
@@ -5300,13 +5304,22 @@ async fn a_revoked_an_unknown_a_removed_and_a_malformed_token_answer_alike() {
         kept.sort();
         answers.push((status, body, kept));
     }
+    // Every personal-token-shaped value, revoked, unknown, removed or short,
+    // gets one answer a tool can act on; the rest get the plain one.
     assert_eq!(answers[0].0, StatusCode::UNAUTHORIZED);
-    assert_eq!(answers[0].1, "unauthorized\n");
-    for answer in &answers[1..] {
+    assert_eq!(
+        answers[0].1, "This token has been revoked or does not exist.\n",
+        "one body a tool can act on"
+    );
+    for answer in &answers[1..4] {
         assert_eq!(
             answer, &answers[0],
             "one status, one body, one set of headers"
         );
+    }
+    assert_eq!(answers[4].1, "unauthorized\n");
+    for answer in &answers[5..] {
+        assert_eq!(answer, &answers[4], "the other refusals are one answer");
     }
     // On a page route the same credentials all meet the same redirect.
     let (status, _, _) = send(&app, bearer_get("/board", &team.bob_token)).await;
@@ -5484,6 +5497,11 @@ async fn the_owner_token_keeps_the_header_behaviour_and_every_route_it_reached_b
         if matches!(*uri, "/login" | "/logout") && *method == "POST" {
             continue;
         }
+        // The owner holds no personal tokens: its tokens writes are refused
+        // by name, and its tokens reads answer a page or a 404.
+        if uri.starts_with("/tokens") && *method == "POST" {
+            continue;
+        }
         let status = if *uri == "/events" {
             // The stream never ends: read the status and leave it.
             app.clone()
@@ -5588,15 +5606,18 @@ async fn solo_modes_with_no_members_are_unchanged() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(author_of_project(&store, "solo-refiner"), "refiner");
-    for presented in [
-        "wrong-token-wrong-token-wrong-tok".to_string(),
-        format!("tdm_{}", "A".repeat(43)),
+    for (presented, answer) in [
+        (
+            "wrong-token-wrong-token-wrong-tok".to_string(),
+            "unauthorized\n",
+        ),
+        (
+            format!("tdm_{}", "A".repeat(43)),
+            "This token has been revoked or does not exist.\n",
+        ),
     ] {
         let (status, _, body) = send(&solo, bearer_mcp(&presented, None, MCP_BODY)).await;
-        assert_eq!(
-            (status, body.as_str()),
-            (StatusCode::UNAUTHORIZED, "unauthorized\n")
-        );
+        assert_eq!((status, body.as_str()), (StatusCode::UNAUTHORIZED, answer));
     }
     assert!(!store.team_mode().unwrap());
     // The owner's browser sign-in is unchanged.
@@ -5644,7 +5665,10 @@ async fn team_mode_fails_closed_when_the_members_table_is_unreadable_and_the_own
     let (status, _, body) = send(&app, bearer_mcp(&team.alice_token, None, MCP_BODY)).await;
     assert_eq!(
         (status, body.as_str()),
-        (StatusCode::UNAUTHORIZED, "unauthorized\n")
+        (
+            StatusCode::UNAUTHORIZED,
+            "This token has been revoked or does not exist.\n"
+        )
     );
     let (status, _, _) = send(&app, remote_get("/board", Some(&cookie))).await;
     assert_eq!(
@@ -7028,4 +7052,785 @@ async fn the_operator_key_is_never_logged() {
         );
     }
     assert!(!text.to_lowercase().contains("bearer"), "{text}");
+}
+
+// MARK: - The Personal tokens screen (CUT-41)
+
+const LAPTOP: &str = "Claude Code on my laptop";
+
+/// A team home behind the owner token: `alice` (an admin) and `bob` (a member)
+/// with no tokens yet, and `bob` signed in.
+struct TokenScreen {
+    sandbox: Sandbox,
+    store: Store,
+    app: Router,
+    bob: String,
+    bob_key: String,
+}
+
+async fn token_screen(name: &str) -> TokenScreen {
+    let sandbox = Sandbox::new(name);
+    let store = sandbox.store();
+    store
+        .member_add("alice", crate::store::Role::Admin, NOW)
+        .unwrap();
+    store
+        .member_add("bob", crate::store::Role::Member, NOW)
+        .unwrap();
+    let app = remote_app(store.clone(), TOKEN);
+    let bob_key = issue_key(&store, "bob");
+    let bob = sign_in_with(&app, &bob_key).await;
+    TokenScreen {
+        sandbox,
+        store,
+        app,
+        bob,
+        bob_key,
+    }
+}
+
+/// A token for `member`, made straight through the store: its value.
+fn issued(store: &Store, member: &str, label: &str) -> String {
+    store
+        .member_token_issue(member, label, NOW)
+        .unwrap()
+        .unwrap()
+        .reveal()
+        .to_string()
+}
+
+fn token_post(uri: &str, fields: &[(&str, &str)], cookie: &str) -> Request<Body> {
+    let body = serde_urlencoded::to_string(fields).expect("the form encodes");
+    remote_form(uri, &body, Some(REMOTE_ORIGIN), Some(cookie))
+}
+
+fn create_form(key: &str, name: &str, cookie: &str) -> Request<Body> {
+    token_post("/tokens", &[("key", key), ("name", name)], cookie)
+}
+
+/// The idempotence key the page's form carries.
+fn form_key(page: &str) -> String {
+    let marker = "name=\"key\" value=\"";
+    let at = page.find(marker).expect("the form carries a key") + marker.len();
+    page[at..at + 32].to_string()
+}
+
+/// The token a show page holds.
+fn shown_token(page: &str) -> String {
+    let at = page.find("value=\"tdm_").expect("the page shows a token") + "value=\"".len();
+    page[at..at + 47].to_string()
+}
+
+/// The page inside the shell's `<main>`.
+fn main_of(page: &str) -> &str {
+    &page[page.find("<main").expect("the shell has a main")..]
+}
+
+fn token_count(store: &Store, member: &str) -> usize {
+    store
+        .member_tokens(member)
+        .unwrap()
+        .iter()
+        .filter(|token| token.revoked_at.is_none())
+        .count()
+}
+
+fn token_rows(store: &Store) -> Vec<crate::store::AccessRow> {
+    store
+        .access_record()
+        .unwrap()
+        .into_iter()
+        .filter(|row| row.event.starts_with("token-"))
+        .collect()
+}
+
+#[tokio::test]
+async fn creating_a_token_shows_it_once_with_no_store_and_a_later_list_never_shows_it() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let screen = token_screen("tokens-show-once").await;
+
+    let (status, headers, page) = send(&screen.app, cookie_get("/tokens", &screen.bob)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    let main = main_of(&page);
+    assert_eq!(main.matches("<h1").count(), 1, "one h1 in the page");
+    assert!(main.contains(">Personal tokens</h1>"));
+    assert!(main.contains("href=\"/board\""), "a link back to the board");
+    assert!(main.contains(
+        "A personal token lets a tool you run, such as Claude Code, work on the board as you. It cannot export the workspace or manage people."
+    ));
+    assert!(main.contains("If you lose a token, revoke it and make a new one."));
+    assert!(
+        main.contains("You have no personal tokens. Create one to let a tool work as you."),
+        "the empty state"
+    );
+    assert!(
+        main.contains("Claude Code on my laptop"),
+        "a visible example"
+    );
+    assert_eq!(
+        headers
+            .get(header::CACHE_CONTROL)
+            .map(|value| value.to_str().unwrap()),
+        Some("no-store")
+    );
+    let key = form_key(&page);
+
+    // The response to the create is the page that shows the value.
+    let (status, headers, shown) = send(&screen.app, create_form(&key, LAPTOP, &screen.bob)).await;
+    assert_eq!(status, StatusCode::OK, "not a redirect: {shown}");
+    assert_eq!(
+        headers
+            .get(header::CACHE_CONTROL)
+            .map(|value| value.to_str().unwrap()),
+        Some("no-store")
+    );
+    assert!(headers.get(header::LOCATION).is_none());
+    let token = shown_token(&shown);
+    assert!(shown.contains("readonly"), "a read-only selectable field");
+    assert!(shown.contains(">Copy token</button>"));
+    assert!(shown.contains("Copy it now. You will not see it again."));
+    assert!(shown.contains(LAPTOP));
+    assert_eq!(
+        shown.matches(&token).count(),
+        1,
+        "the value is in one place"
+    );
+    let made = screen.store.member_by_token(&token, NOW, false).unwrap();
+    assert_eq!(made.map(|member| member.name), Some("bob".to_string()));
+
+    // A reload of the list, and the list again, never carry it.
+    let (status, headers, list) = send(&screen.app, cookie_get("/tokens", &screen.bob)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(list.contains(LAPTOP));
+    assert!(!list.contains(&token) && !list.contains("tdm_"), "{list}");
+    assert_eq!(
+        headers
+            .get(header::CACHE_CONTROL)
+            .map(|value| value.to_str().unwrap()),
+        Some("no-store")
+    );
+    assert!(!list.contains("You have no personal tokens"));
+}
+
+#[tokio::test]
+async fn a_double_submit_makes_one_token() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let screen = token_screen("tokens-double").await;
+    let (_, _, page) = send(&screen.app, cookie_get("/tokens", &screen.bob)).await;
+    let key = form_key(&page);
+
+    let (first, _, shown) = send(&screen.app, create_form(&key, LAPTOP, &screen.bob)).await;
+    assert_eq!(first, StatusCode::OK);
+    assert!(shown.contains("tdm_"));
+    let (second, headers, body) = send(&screen.app, create_form(&key, LAPTOP, &screen.bob)).await;
+    assert_eq!(second, StatusCode::SEE_OTHER, "{body}");
+    assert!(!body.contains("tdm_"), "a second token is never shown");
+    assert_eq!(
+        headers
+            .get(header::LOCATION)
+            .map(|value| value.to_str().unwrap()),
+        Some("/tokens?notice=duplicate")
+    );
+    assert_eq!(token_count(&screen.store, "bob"), 1, "one token, not two");
+
+    let (_, _, list) = send(
+        &screen.app,
+        cookie_get("/tokens?notice=duplicate", &screen.bob),
+    )
+    .await;
+    assert!(list.contains("That token was already made."), "{list}");
+    assert_eq!(token_rows(&screen.store).len(), 1);
+}
+
+#[tokio::test]
+async fn a_failed_create_leaves_no_token() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let screen = token_screen("tokens-failed").await;
+    let (_, _, page) = send(&screen.app, cookie_get("/tokens", &screen.bob)).await;
+    let key = form_key(&page);
+    let database = screen.store.home().directory().join("tandem.db");
+
+    // The record cannot be written, so the act does not happen.
+    rusqlite::Connection::open(&database)
+        .unwrap()
+        .execute_batch(
+            "CREATE TRIGGER no_room BEFORE INSERT ON access_record
+             WHEN NEW.event = 'token-created'
+             BEGIN SELECT RAISE(ABORT, 'no room'); END;",
+        )
+        .unwrap();
+    let (status, _, body) = send(&screen.app, create_form(&key, LAPTOP, &screen.bob)).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{body}");
+    assert!(body.contains("Could not save. Nothing changed. Try again."));
+    assert!(!body.contains("tdm_"));
+    assert!(
+        body.contains(&format!("value=\"{LAPTOP}\"")),
+        "the input is kept"
+    );
+    assert_eq!(screen.store.member_tokens("bob").unwrap().len(), 0);
+
+    // The same form, submitted again, is not a duplicate: nothing was made.
+    rusqlite::Connection::open(&database)
+        .unwrap()
+        .execute_batch("DROP TRIGGER no_room")
+        .unwrap();
+    let (status, _, shown) = send(&screen.app, create_form(&key, LAPTOP, &screen.bob)).await;
+    assert_eq!(status, StatusCode::OK, "{shown}");
+    assert!(shown.contains("tdm_"));
+    assert_eq!(token_count(&screen.store, "bob"), 1);
+}
+
+#[tokio::test]
+async fn the_token_list_shows_name_created_and_last_used_and_never_a_value_or_digest() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let screen = token_screen("tokens-list").await;
+    let used = screen
+        .store
+        .member_token_issue("bob", "used one", NOW)
+        .unwrap()
+        .unwrap()
+        .reveal()
+        .to_string();
+    let unused = screen
+        .store
+        .member_token_issue("bob", "unused one", NOW)
+        .unwrap()
+        .unwrap()
+        .reveal()
+        .to_string();
+    // Touch the first: its last use is two days on.
+    assert!(
+        screen
+            .store
+            .member_by_token(&used, NOW + 2 * 86_400, true)
+            .unwrap()
+            .is_some()
+    );
+
+    let (_, _, page) = send(&screen.app, cookie_get("/tokens", &screen.bob)).await;
+    let main = main_of(&page);
+    assert!(main.contains("used one") && main.contains("unused one"));
+    assert!(main.contains("2027-01-15"), "created: {main}");
+    assert!(main.contains("2027-01-17"), "last used: {main}");
+    assert_eq!(main.matches("Never used").count(), 1);
+    assert_eq!(main.matches(">Revoke token<").count(), 2, "{main}");
+    for secret in [
+        used.as_str(),
+        unused.as_str(),
+        crate::store::credential_digest(&used).as_str(),
+        crate::store::credential_digest(&unused).as_str(),
+        "tdm_",
+    ] {
+        assert!(!page.contains(secret), "the list holds no {secret}");
+    }
+}
+
+#[tokio::test]
+async fn revoking_a_token_goes_through_a_confirm_page_and_the_old_token_then_gets_the_revoked_401()
+{
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let screen = token_screen("tokens-revoke").await;
+    let value = screen
+        .store
+        .member_token_issue("bob", LAPTOP, NOW)
+        .unwrap()
+        .unwrap()
+        .reveal()
+        .to_string();
+    let id = screen.store.member_tokens("bob").unwrap()[0].id;
+    let (status, _, _) = send(&screen.app, bearer_mcp(&value, None, MCP_BODY)).await;
+    assert_eq!(status, StatusCode::OK, "the tool works before");
+
+    // A link, not a bare POST: the confirm page names the token and its
+    // cancel is the default focus.
+    let (_, _, list) = send(&screen.app, cookie_get("/tokens", &screen.bob)).await;
+    assert!(
+        list.contains(&format!("href=\"/tokens/{id}/revoke\"")),
+        "{list}"
+    );
+    let (status, headers, confirm) = send(
+        &screen.app,
+        cookie_get(&format!("/tokens/{id}/revoke"), &screen.bob),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        headers
+            .get(header::CACHE_CONTROL)
+            .map(|value| value.to_str().unwrap()),
+        Some("no-store")
+    );
+    assert!(confirm.contains(
+        "Revoke 'Claude Code on my laptop'? Tools using it stop working at once. This cannot be undone."
+    ));
+    let cancel = confirm
+        .find("href=\"/tokens\" autofocus")
+        .expect("cancel is focused");
+    let submit = confirm
+        .find(">Revoke token</button>")
+        .expect("the revoke button");
+    assert!(cancel < submit, "cancel comes first and holds the focus");
+    assert_eq!(
+        token_count(&screen.store, "bob"),
+        1,
+        "a GET revokes nothing"
+    );
+
+    let (status, headers, _) = send(
+        &screen.app,
+        token_post(&format!("/tokens/{id}/revoke"), &[], &screen.bob),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(
+        headers
+            .get(header::LOCATION)
+            .map(|value| value.to_str().unwrap()),
+        Some("/tokens?notice=revoked")
+    );
+    let (_, _, after) = send(
+        &screen.app,
+        cookie_get("/tokens?notice=revoked", &screen.bob),
+    )
+    .await;
+    assert!(
+        after.contains("role=\"status\" aria-live=\"polite\" tabindex=\"-1\" autofocus data-autofocus>Token revoked.</p>"),
+        "the status line holds the focus: {after}"
+    );
+    assert!(after.contains("You have no personal tokens."));
+
+    let (status, _, body) = send(&screen.app, bearer_mcp(&value, None, MCP_BODY)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body, "This token has been revoked or does not exist.\n");
+}
+
+#[tokio::test]
+async fn a_stale_confirm_answers_the_end_state() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let screen = token_screen("tokens-stale").await;
+    screen
+        .store
+        .member_token_issue("bob", LAPTOP, NOW)
+        .unwrap()
+        .unwrap();
+    let id = screen.store.member_tokens("bob").unwrap()[0].id;
+    let uri = format!("/tokens/{id}/revoke");
+    assert!(screen.store.member_token_revoke("bob", id, NOW).unwrap());
+
+    let (status, _, page) = send(&screen.app, cookie_get(&uri, &screen.bob)).await;
+    assert_eq!(status, StatusCode::OK, "an end state, not an error page");
+    assert!(page.contains("Already revoked."), "{page}");
+    assert!(!page.contains(">Revoke token</button>"));
+
+    let (status, headers, _) = send(&screen.app, token_post(&uri, &[], &screen.bob)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(
+        headers
+            .get(header::LOCATION)
+            .map(|value| value.to_str().unwrap()),
+        Some("/tokens?notice=already-revoked")
+    );
+    let (_, _, list) = send(
+        &screen.app,
+        cookie_get("/tokens?notice=already-revoked", &screen.bob),
+    )
+    .await;
+    assert!(list.contains(">Already revoked.</p>"), "{list}");
+    // One row for the one revocation.
+    assert_eq!(
+        token_rows(&screen.store)
+            .iter()
+            .filter(|row| row.event == "token-revoked")
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn a_member_sees_and_revokes_only_their_own_tokens() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let screen = token_screen("tokens-own").await;
+    let alice_token = issued(&screen.store, "alice", "alice only");
+    issued(&screen.store, "bob", "bob only");
+    let alices = screen
+        .store
+        .member_tokens("alice")
+        .unwrap()
+        .iter()
+        .map(|token| token.id)
+        .collect::<Vec<_>>();
+
+    let (_, _, page) = send(&screen.app, cookie_get("/tokens", &screen.bob)).await;
+    assert!(
+        page.contains("bob only") && !page.contains("alice only"),
+        "{page}"
+    );
+    let alice = sign_in_with(&screen.app, &issue_key(&screen.store, "alice")).await;
+    let (_, _, page) = send(&screen.app, cookie_get("/tokens", &alice)).await;
+    assert!(
+        page.contains("alice only") && !page.contains("bob only"),
+        "{page}"
+    );
+
+    // Another member's token is not found, never revoked, by id.
+    for id in &alices {
+        let uri = format!("/tokens/{id}/revoke");
+        let (status, _, body) = send(&screen.app, cookie_get(&uri, &screen.bob)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+        let (status, _, _) = send(&screen.app, token_post(&uri, &[], &screen.bob)).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+    assert_eq!(
+        token_count(&screen.store, "alice"),
+        1,
+        "alice's are untouched"
+    );
+    let (status, _, _) = send(&screen.app, bearer_mcp(&alice_token, None, MCP_BODY)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = send(&screen.app, cookie_get("/tokens/abc/revoke", &screen.bob)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "a path that is no id");
+}
+
+#[tokio::test]
+async fn a_personal_token_cannot_create_or_revoke_tokens() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let screen = token_screen("tokens-by-token").await;
+    let bob_token = issued(&screen.store, "bob", "bob's tool");
+    let alice_token = issued(&screen.store, "alice", "alice's tool");
+    let id = screen.store.member_tokens("bob").unwrap()[0].id;
+    let before = screen.store.access_record().unwrap().len();
+
+    for (method, uri, body) in [
+        ("GET", "/tokens".to_string(), String::new()),
+        (
+            "POST",
+            "/tokens".to_string(),
+            format!("key={}&name=sneaky", "a".repeat(32)),
+        ),
+        ("GET", format!("/tokens/{id}/revoke"), String::new()),
+        ("POST", format!("/tokens/{id}/revoke"), String::new()),
+    ] {
+        for token in [&bob_token, &alice_token] {
+            let mut builder = Request::builder()
+                .method(method)
+                .uri(&uri)
+                .header(header::HOST, REMOTE_HOST)
+                .header(header::AUTHORIZATION, format!("Bearer {token}"));
+            if method == "POST" {
+                builder = builder.header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
+            }
+            let request = builder.body(Body::from(body.clone())).unwrap();
+            let (status, _, page) = send(&screen.app, request).await;
+            assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}: {page}");
+            assert!(!page.contains("tdm_"));
+        }
+    }
+    assert_eq!(
+        token_count(&screen.store, "bob"),
+        1,
+        "nothing was made or revoked"
+    );
+    assert_eq!(screen.store.access_record().unwrap().len(), before);
+}
+
+#[tokio::test]
+async fn the_twenty_first_token_is_refused_with_a_sentence() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let screen = token_screen("tokens-limit").await;
+    for index in 0..20 {
+        screen
+            .store
+            .member_token_issue("bob", &format!("token {index}"), NOW)
+            .unwrap()
+            .unwrap();
+    }
+    assert_eq!(token_count(&screen.store, "bob"), 20);
+
+    let sentence =
+        "You have 20 personal tokens, the most one member can hold. Revoke one to make another.";
+    let (_, _, page) = send(&screen.app, cookie_get("/tokens", &screen.bob)).await;
+    assert!(page.contains(sentence), "{page}");
+    assert!(!page.contains("action=\"/tokens\""), "no form at the limit");
+
+    let (status, _, body) = send(
+        &screen.app,
+        create_form(&"b".repeat(32), "one too many", &screen.bob),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(body.contains(sentence) && !body.contains("tdm_"), "{body}");
+    assert_eq!(token_count(&screen.store, "bob"), 20);
+}
+
+#[tokio::test]
+async fn an_empty_name_a_long_name_and_a_wrong_origin_are_refused_and_keep_the_input() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let screen = token_screen("tokens-names").await;
+    let (_, _, page) = send(&screen.app, cookie_get("/tokens", &screen.bob)).await;
+    let key = form_key(&page);
+
+    let long = "x".repeat(61);
+    for (name, sentence) in [
+        ("   ", "Enter a name for the token."),
+        (long.as_str(), "Use 60 characters or fewer."),
+        ("two\nlines", "Use one line of plain text."),
+    ] {
+        let (status, _, body) = send(&screen.app, create_form(&key, name, &screen.bob)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{name:?}: {body}");
+        assert!(body.contains(sentence), "{name:?}: {body}");
+        assert!(body.contains("aria-invalid=\"true\""), "tied to the field");
+        assert!(
+            body.contains(&format!("value=\"{name}\"")),
+            "the input is kept"
+        );
+        assert!(!body.contains("tdm_"));
+        assert_eq!(form_key(&body), key, "the key is not spent by a refusal");
+    }
+    // The sixty-character name passes: the bound is on both sides.
+    let (status, _, _) = send(&screen.app, create_form(&key, &"y".repeat(60), &screen.bob)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Another origin, and no origin on a cookie write, are refused outright.
+    let before = token_count(&screen.store, "bob");
+    let fresh = "c".repeat(32);
+    for origin in [Some("https://evil.example"), Some("null"), None] {
+        let body =
+            serde_urlencoded::to_string([("key", fresh.as_str()), ("name", LAPTOP)]).unwrap();
+        let (status, _, page) = send(
+            &screen.app,
+            remote_form("/tokens", &body, origin, Some(&screen.bob)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{origin:?}: {page}");
+        assert!(!page.contains("tdm_"));
+    }
+    assert_eq!(token_count(&screen.store, "bob"), before);
+}
+
+#[tokio::test]
+async fn token_create_and_revoke_each_write_an_access_record_row_and_no_secret() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let screen = token_screen("tokens-record").await;
+    let (_, _, page) = send(&screen.app, cookie_get("/tokens", &screen.bob)).await;
+    let before = token_rows(&screen.store).len();
+
+    let (_, _, shown) = send(
+        &screen.app,
+        create_form(&form_key(&page), LAPTOP, &screen.bob),
+    )
+    .await;
+    let token = shown_token(&shown);
+    let rows = token_rows(&screen.store);
+    assert_eq!(rows.len(), before + 1);
+    let created = rows.last().unwrap();
+    assert_eq!(
+        (
+            created.event.as_str(),
+            created.actor.as_str(),
+            created.credential.as_str(),
+            created.target.as_deref(),
+            created.detail.as_deref()
+        ),
+        (
+            "token-created",
+            "bob",
+            "member-session",
+            Some("bob"),
+            Some(LAPTOP)
+        )
+    );
+
+    let id = screen
+        .store
+        .member_tokens("bob")
+        .unwrap()
+        .last()
+        .unwrap()
+        .id;
+    send(
+        &screen.app,
+        token_post(&format!("/tokens/{id}/revoke"), &[], &screen.bob),
+    )
+    .await;
+    let rows = token_rows(&screen.store);
+    assert_eq!(rows.len(), before + 2);
+    let revoked = rows.last().unwrap();
+    assert_eq!(
+        (
+            revoked.event.as_str(),
+            revoked.actor.as_str(),
+            revoked.detail.as_deref()
+        ),
+        ("token-revoked", "bob", Some(LAPTOP))
+    );
+    for row in screen.store.access_record().unwrap() {
+        let text = format!("{row:?}");
+        assert!(!text.contains(&token), "{text}");
+        assert!(
+            !text.contains(&crate::store::credential_digest(&token)),
+            "{text}"
+        );
+        assert!(!text.contains("tdm_"), "{text}");
+    }
+    // The database file holds the label and the digest, never the value.
+    let bytes = std::fs::read(screen.store.home().directory().join("tandem.db")).unwrap();
+    assert!(
+        !bytes
+            .windows(token.len())
+            .any(|window| window == token.as_bytes()),
+        "the value is nowhere in the store"
+    );
+    drop(screen.sandbox);
+}
+
+/// The byte offset of `needle` in `page`, or a failure that names it.
+fn at(page: &str, needle: &str) -> usize {
+    page.find(needle)
+        .unwrap_or_else(|| panic!("{needle} is not in the page: {page}"))
+}
+
+#[tokio::test]
+async fn the_shell_shows_personal_tokens_per_mode() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let link = "<a class=\"menu__option\" href=\"/tokens\">Personal tokens</a>";
+
+    // Loopback with no members: no link, and the screen is not there.
+    let solo = Sandbox::new("tokens-shell-loopback");
+    let loopback = router(context(solo.store()));
+    for uri in ["/board", "/notes"] {
+        let (_, _, page) = get(&loopback, uri).await;
+        assert!(
+            !page.contains("href=\"/tokens\"") && !page.contains("Personal tokens"),
+            "{uri}"
+        );
+    }
+    assert_eq!(get(&loopback, "/tokens").await.0, StatusCode::NOT_FOUND);
+
+    // A single token and no members: the same.
+    let single = Sandbox::new("tokens-shell-single");
+    let app = remote_app(single.store(), TOKEN);
+    let cookie = sign_in(&app).await;
+    for uri in ["/board", "/notes"] {
+        let (_, _, page) = send(&app, remote_get(uri, Some(&cookie))).await;
+        assert!(
+            !page.contains("href=\"/tokens\"") && !page.contains("Personal tokens"),
+            "{uri}"
+        );
+    }
+    let (status, _, _) = send(&app, remote_get("/tokens", Some(&cookie))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _, _) = send(
+        &app,
+        remote_form(
+            "/tokens",
+            "key=x&name=y",
+            Some(REMOTE_ORIGIN),
+            Some(&cookie),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Team mode: every member and the owner session see it, in order.
+    let screen = token_screen("tokens-shell-team").await;
+    let alice = sign_in_with(&screen.app, &issue_key(&screen.store, "alice")).await;
+    let owner = sign_in(&screen.app).await;
+    for (who, cookie, exports) in [
+        ("an admin", &alice, true),
+        ("the owner", &owner, true),
+        ("a member", &screen.bob, false),
+    ] {
+        for uri in ["/board", "/notes", "/tokens"] {
+            let (_, _, page) = send(&screen.app, remote_get(uri, Some(cookie))).await;
+            assert!(page.contains(link), "{who} {uri}");
+            let appearance = at(&page, "data-theme-appearance=\"dark\"");
+            let tokens = at(&page, link);
+            let signout = at(&page, "action=\"/logout\"");
+            assert!(
+                appearance < tokens && tokens < signout,
+                "{who} {uri}: the order"
+            );
+            assert_eq!(page.contains("Export workspace"), exports, "{who} {uri}");
+            if exports {
+                assert!(tokens < at(&page, "Export workspace"), "{who} {uri}");
+            }
+        }
+    }
+    // The owner session has no tokens of its own, and says so.
+    let (status, _, page) = send(&screen.app, remote_get("/tokens", Some(&owner))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(page.contains("you have no personal tokens"), "{page}");
+    assert!(!page.contains("action=\"/tokens\""));
+    let (status, _, _) = send(
+        &screen.app,
+        remote_form("/tokens", "key=x&name=y", Some(REMOTE_ORIGIN), Some(&owner)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Loopback on a home that holds members: the owner sees the link.
+    let members = Sandbox::new("tokens-shell-loopback-team");
+    team(&members.store());
+    let app = router(context(members.store()));
+    let (_, _, page) = get(&app, "/board").await;
+    assert!(page.contains(link));
+}
+
+#[tokio::test]
+async fn the_tokens_screen_logs_no_token_and_no_cookie() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let screen = token_screen("tokens-logs").await;
+    let bob_token = issued(&screen.store, "bob", "bob's tool");
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    let (_, _, page) = send(&screen.app, cookie_get("/tokens", &screen.bob)).await;
+    let key = form_key(&page);
+    let (_, _, shown) = send(&screen.app, create_form(&key, LAPTOP, &screen.bob)).await;
+    let token = shown_token(&shown);
+    send(&screen.app, create_form(&key, LAPTOP, &screen.bob)).await;
+    send(&screen.app, create_form(&"d".repeat(32), "", &screen.bob)).await;
+    let (status, _, _) = send(&screen.app, bearer_get("/tokens", &bob_token)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let id = screen
+        .store
+        .member_tokens("bob")
+        .unwrap()
+        .last()
+        .unwrap()
+        .id;
+    send(
+        &screen.app,
+        cookie_get(&format!("/tokens/{id}/revoke"), &screen.bob),
+    )
+    .await;
+    send(
+        &screen.app,
+        token_post(&format!("/tokens/{id}/revoke"), &[], &screen.bob),
+    )
+    .await;
+    send(&screen.app, bearer_mcp(&token, None, MCP_BODY)).await;
+
+    let text = captured.text();
+    let cookie_value = screen
+        .bob
+        .split_once('=')
+        .map(|(_, value)| value)
+        .unwrap_or("");
+    assert!(!text.is_empty());
+    for secret in [
+        token.as_str(),
+        token.trim_start_matches("tdm_"),
+        bob_token.as_str(),
+        screen.bob_key.as_str(),
+        cookie_value,
+        TOKEN,
+        "tandem_session",
+    ] {
+        assert!(
+            !secret.is_empty() && !text.contains(secret),
+            "{secret}: {text}"
+        );
+    }
+    assert!(text.contains("/tokens"), "the route is logged: {text}");
 }

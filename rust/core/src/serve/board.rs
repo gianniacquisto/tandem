@@ -477,6 +477,7 @@ pub(super) fn board_with_sheet(
         stream: false,
         sign_out: context.access.is_token(),
         export: context.may_export(),
+        tokens: context.shows_tokens(),
     })
     .render()
     {
@@ -528,6 +529,7 @@ fn render_response(
         stream: true,
         sign_out: context.access.is_token(),
         export: context.may_export(),
+        tokens: context.shows_tokens(),
     })
     .render()
     {

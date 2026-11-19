@@ -421,6 +421,7 @@ fn notes_response(
         stream: true,
         sign_out: context.access.is_token(),
         export: context.may_export(),
+        tokens: context.shows_tokens(),
     })
     .render()
     {
