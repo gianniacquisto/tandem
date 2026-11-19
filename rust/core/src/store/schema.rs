@@ -25,7 +25,7 @@ use super::{Actor, Result, StoreError, now, translate};
 
 /// The version this build writes and reads. Always the last version applied, so
 /// the constant is the migration count.
-pub const CURRENT_VERSION: i64 = 13;
+pub const CURRENT_VERSION: i64 = 14;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -101,6 +101,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: BROWSER_SESSIONS_VERSION,
         name: "the browser sessions",
         apply: version_thirteen,
+    },
+    Migration {
+        version: MEMBERS_VERSION,
+        name: "the members and their credentials",
+        apply: version_fourteen,
     },
 ];
 
@@ -592,6 +597,15 @@ pub(crate) const BROWSER_SESSIONS_VERSION: i64 = 13;
 /// two timestamps. Not `sessions`: that name was a retired table, dropped at v11.
 fn version_thirteen(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(super::browser_sessions::VERSION_THIRTEEN)
+}
+
+/// The version that adds the members, personal tokens and sign-in keys (CUT-36,
+/// ADR 0052) and the member a browser session names.
+pub(crate) const MEMBERS_VERSION: i64 = 14;
+
+/// Version 14: three tables and the nullable `browser_sessions.member_id`.
+fn version_fourteen(connection: &Connection) -> rusqlite::Result<()> {
+    connection.execute_batch(super::members::VERSION_FOURTEEN)
 }
 
 fn version_seven(connection: &Connection) -> rusqlite::Result<()> {

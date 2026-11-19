@@ -35,11 +35,25 @@ mv ~/.tandem/tandem.db.bak ~/.tandem/tandem.db
 
 **Quit the server first.** `tandem serve` holds `tandem.db` open for as long as it runs. On macOS and Linux the rename over the held file is allowed, and the running server notices the replacement and re-attaches to the restored store by itself. Windows does not allow it: SQLite opens the database without `FILE_SHARE_DELETE`, so the `rm` and the `mv` over it fail with *The process cannot access the file because it is being used by another process.* Close `tandem serve`, and any process holding the store open, before the two commands, then start them again: the next open attaches to the restored file, and its first write switches it back to WAL.
 
-The backup is a whole-file copy, so it also carries the `browser_sessions` rows (below), which hold only keyed digests. See [ADR 0018](adr/0018-rolling-store-backup.md).
+The backup is a whole-file copy, so it also carries the `browser_sessions` rows and the member tables (below): keyed session digests, member names and roles, and the SHA-256 digests of personal tokens and sign-in keys. It is a copy of the home and is kept as private as the home. See [ADR 0018](adr/0018-rolling-store-backup.md).
 
 ## Browser sessions
 
 A token-mode `tandem serve` signs a browser in with a cookie. Each session is one row of `browser_sessions` (schema v13): a keyed digest of the session id, when it was created and when it was last used. The id is never stored, the digest is keyed with the token's digest (so changing `TANDEM_TOKEN` signs every browser out), and a session is dropped after 30 days without use. These rows are not board data: writing one never moves the revision or rolls the backup, they are outside the MCP tools, and the export leaves them out. See [ADR 0049](adr/0049-a-browser-signs-in-to-a-token-guarded-serve.md).
+
+## Members and credentials (schema v14)
+
+A team workspace knows its people ([ADR 0052](adr/0052-members-and-personal-tokens.md)). Schema v14 adds:
+
+| Table | Holds | In an export |
+| --- | --- | --- |
+| `members` | `id`, a unique `name`, a `role` (`admin` or `member`), `created_at`, and `removed_at`, a tombstone: a removed name is never reused | carried |
+| `member_tokens` | the SHA-256 digest of each personal token (`tdm_`), its member, a label, `created_at`, `last_used_at` and `revoked_at` | emptied |
+| `member_signin_keys` | the digest of a member's sign-in key (`tdk_`), one live key per member | emptied |
+
+`browser_sessions` also gains a nullable `member_id`: a session row with none is an owner session, so a migrated serve signs nobody out. Team mode is one row of `store_meta` (`team_mode`), written when the first member is added and never unset.
+
+A token or a key is 32 random bytes from the OS generator, base64url, behind its fixed prefix. Only the SHA-256 digest is stored, looked up by that indexed digest: the values are high-entropy random, so a plain hash is enough and no key-stretching buys anything. The value is shown once, when it is minted. Like a session row, a credential write (and a token's last-used time, rewritten at most once a day) never moves the revision or rolls the backup. Removing a member deletes their sessions, tokens and sign-in key in the same write, and the removal ends their open change streams. The archive carries `members` and empties both credential tables, as it empties `browser_sessions`.
 
 ## Moving and restoring a home
 

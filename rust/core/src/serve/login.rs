@@ -9,7 +9,9 @@ use tokio::sync::Semaphore;
 
 use super::guard::{self, Session};
 use super::*;
-use crate::store::{SESSION_IDLE_SECONDS, unix_now};
+use crate::store::{
+    CredentialKind, Member, SESSION_IDLE_SECONDS, Store, credential_kind, unix_now,
+};
 
 /// How long a wrong token waits before it is answered.
 #[cfg(not(test))]
@@ -34,6 +36,18 @@ pub(super) struct LoginThrottle(Arc<Semaphore>);
 impl LoginThrottle {
     pub(super) fn new() -> Self {
         Self(Arc::new(Semaphore::new(WRONG_TOKENS_AT_ONCE)))
+    }
+
+    /// A wrong credential waits its turn: `true` once it has waited, `false`
+    /// when too many already wait and it is turned away at once. A right one
+    /// never comes here, so it is never delayed.
+    pub(super) async fn wrong_attempt(&self) -> bool {
+        let Ok(permit) = self.0.clone().try_acquire_owned() else {
+            return false;
+        };
+        tokio::time::sleep(WRONG_TOKEN_DELAY).await;
+        drop(permit);
+        true
     }
 }
 
@@ -111,43 +125,40 @@ pub(super) async fn login_post(
         return login_page("/", Some(WRONG_TOKEN), None, StatusCode::BAD_REQUEST);
     };
     let next = field(&params, "next").to_string();
-    // The token is trimmed: a paste from a phone carries a trailing space.
+    // The credential is trimmed: a paste from a phone carries a trailing space.
     let presented = field(&params, "password").trim();
-    if !access.token_matches(presented) {
-        // A wrong token waits, a few at a time; a right one never does.
-        let Ok(permit) = throttle.0.clone().try_acquire_owned() else {
-            tracing::warn!("login refused: too many wrong tokens waiting");
-            return login_page(&next, Some(TRY_AGAIN), None, StatusCode::TOO_MANY_REQUESTS);
-        };
-        tokio::time::sleep(WRONG_TOKEN_DELAY).await;
-        drop(permit);
-        tracing::warn!("login refused: the token was not accepted");
-        return login_page(&next, Some(WRONG_TOKEN), None, StatusCode::UNAUTHORIZED);
-    }
-
-    let mut id = [0u8; 32];
-    if getrandom::fill(&mut id).is_err() {
-        tracing::error!("login failed: the system random source is unavailable");
-        return login_page(
-            &next,
-            Some(SIGN_IN_FAILED),
-            None,
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
-    }
-    let Some(digest) = access.session_digest(&id) else {
-        return StatusCode::NOT_FOUND.into_response();
+    // The owner token, or a member's sign-in key. Never a personal token: it is
+    // a different kind and has no way into a browser session.
+    let member = if access.token_matches(presented) {
+        None
+    } else {
+        match sign_in_key_member(&context.store, presented).await {
+            Some(member) => Some(member),
+            None => {
+                // A wrong credential waits, a few at a time; a right one never does.
+                if !throttle.wrong_attempt().await {
+                    tracing::warn!("login refused: too many wrong credentials waiting");
+                    return login_page(&next, Some(TRY_AGAIN), None, StatusCode::TOO_MANY_REQUESTS);
+                }
+                tracing::warn!("login refused: the credential was not accepted");
+                return login_page(&next, Some(WRONG_TOKEN), None, StatusCode::UNAUTHORIZED);
+            }
+        }
     };
+
     let replacing = session.map(|Extension(session)| session.digest);
-    let store = context.store.clone();
-    let stored = tokio::task::spawn_blocking(move || {
-        store.browser_session_open(&digest, replacing.as_deref(), unix_now())
-    })
-    .await;
-    match stored {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => {
-            tracing::error!(error = ?error, "login failed: the session could not be stored");
+    let id = match open_session(&context.store, &access, member.as_ref(), replacing).await {
+        Ok(Some(id)) => id,
+        // The member was removed between the key check and the write: signed in
+        // as nobody, the same answer as a wrong key.
+        Ok(None) => {
+            if !throttle.wrong_attempt().await {
+                return login_page(&next, Some(TRY_AGAIN), None, StatusCode::TOO_MANY_REQUESTS);
+            }
+            return login_page(&next, Some(WRONG_TOKEN), None, StatusCode::UNAUTHORIZED);
+        }
+        Err(SignInFailure::NotTokenMode) => return StatusCode::NOT_FOUND.into_response(),
+        Err(SignInFailure::Server) => {
             return login_page(
                 &next,
                 Some(SIGN_IN_FAILED),
@@ -155,15 +166,7 @@ pub(super) async fn login_post(
                 StatusCode::INTERNAL_SERVER_ERROR,
             );
         }
-        Err(_) => {
-            return login_page(
-                &next,
-                Some(SIGN_IN_FAILED),
-                None,
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
-    }
+    };
     tracing::info!("login accepted");
     let mut response = see_other(&guard::return_target(&next));
     response.headers_mut().append(
@@ -171,6 +174,66 @@ pub(super) async fn login_post(
         guard::session_cookie(&guard::hex(&id), SESSION_IDLE_SECONDS),
     );
     response
+}
+
+/// The member a sign-in key belongs to, when the value is one that is live.
+async fn sign_in_key_member(store: &Store, presented: &str) -> Option<Member> {
+    if credential_kind(presented) != Some(CredentialKind::SigninKey) {
+        return None;
+    }
+    let store = store.clone();
+    let value = presented.to_string();
+    match tokio::task::spawn_blocking(move || store.member_by_signin_key(&value)).await {
+        Ok(Ok(member)) => member,
+        Ok(Err(error)) => {
+            tracing::warn!(error = ?error, "the sign-in key lookup failed; the key is refused");
+            None
+        }
+        Err(_) => None,
+    }
+}
+
+/// Why a session could not be opened.
+pub(crate) enum SignInFailure {
+    /// Sessions exist in token mode only.
+    NotTokenMode,
+    /// The random source or the store failed.
+    Server,
+}
+
+/// Open a browser session and return the id the cookie carries. `member` is the
+/// member it belongs to, or `None` for the owner. `Ok(None)` means the member is
+/// not live. The one function that creates a session, so the sign-in a hosted
+/// assertion will do (HOS-16) is this call and nothing here verifies it.
+pub(crate) async fn open_session(
+    store: &Store,
+    access: &Access,
+    member: Option<&Member>,
+    replacing: Option<String>,
+) -> Result<Option<[u8; 32]>, SignInFailure> {
+    let mut id = [0u8; 32];
+    if getrandom::fill(&mut id).is_err() {
+        tracing::error!("login failed: the system random source is unavailable");
+        return Err(SignInFailure::Server);
+    }
+    let Some(digest) = access.session_digest(&id) else {
+        return Err(SignInFailure::NotTokenMode);
+    };
+    let store = store.clone();
+    let name = member.map(|member| member.name.clone());
+    let stored = tokio::task::spawn_blocking(move || {
+        store.browser_session_open_for(&digest, replacing.as_deref(), unix_now(), name.as_deref())
+    })
+    .await;
+    match stored {
+        Ok(Ok(true)) => Ok(Some(id)),
+        Ok(Ok(false)) => Ok(None),
+        Ok(Err(error)) => {
+            tracing::error!(error = ?error, "login failed: the session could not be stored");
+            Err(SignInFailure::Server)
+        }
+        Err(_) => Err(SignInFailure::Server),
+    }
 }
 
 pub(super) async fn logout_post(

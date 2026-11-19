@@ -28,12 +28,12 @@
         "ok": true
       },
       {
-        "detail": "27 page(s) of 4096 bytes, 10 free; WAL 0 bytes; over 20 percent of the file is free pages, which `sqlite3 tandem.db VACUUM` reclaims while `tandem serve` is stopped",
+        "detail": "27 page(s) of 4096 bytes, 3 free; WAL 0 bytes",
         "name": "space",
         "ok": true
       },
       {
-        "detail": "binary 2.0.0; this build writes schema v13; store schema v13",
+        "detail": "binary 2.0.0; this build writes schema v14; store schema v14",
         "name": "versions",
         "ok": true
       },

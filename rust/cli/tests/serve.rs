@@ -1103,3 +1103,54 @@ fn a_configured_origin_passes_a_form_write_and_mcp_that_it_refuses_unconfigured(
         }
     }
 }
+
+#[test]
+fn serve_in_open_mode_refuses_to_start_when_the_home_holds_members() {
+    use tandem_core::store::{Home, Role, Store};
+
+    let sandbox = Sandbox::new("members-open");
+    // Open mode over a home with no members starts, as before.
+    {
+        let server =
+            Server::start_with(&sandbox, &["--host", "0.0.0.0", "--allow-unauthenticated"]);
+        assert_eq!(get(server.port, "/").status, 200);
+    }
+
+    let home = Home::resolve(Some(&sandbox.home()), None, &sandbox.root.join("user"));
+    Store::new(home)
+        .member_add("alice", Role::Admin, 1_800_000_000)
+        .expect("a member is added through the store");
+
+    let output = sandbox
+        .command()
+        .args([
+            "serve",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "0",
+            "--allow-unauthenticated",
+        ])
+        .env_remove("TANDEM_TOKEN")
+        .stdin(Stdio::null())
+        .output()
+        .expect("the binary runs");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "open mode over members is a usage refusal: {stderr}"
+    );
+    assert!(
+        stderr.contains("holds members") && stderr.contains("TANDEM_TOKEN"),
+        "the refusal names the cause and the way out: {stderr}"
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "nothing is bound or printed before the refusal"
+    );
+
+    // Loopback with members still starts: the local principal is the owner.
+    let server = Server::start(&sandbox);
+    assert_eq!(get(server.port, "/").status, 200);
+}

@@ -1173,6 +1173,34 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
             }
         }
     };
+    // Open mode checks no credential, so it would silently ignore the members of
+    // a team workspace and every role. A home that holds members refuses to
+    // start there (ADR 0052); one that cannot be read refuses too.
+    if token.is_none() && !host.is_loopback() {
+        match Store::new(home.clone()).team_mode() {
+            Ok(false) => {}
+            Ok(true) => {
+                return Err(Failure {
+                    message: format!(
+                        "tandem serve: this home holds members, and --allow-unauthenticated \
+                         checks no credential, so it would ignore them. Set {TOKEN_VARIABLE} \
+                         (at least {MIN_TOKEN_LENGTH} characters) and put a TLS terminator in \
+                         front instead."
+                    ),
+                    exit: 2,
+                });
+            }
+            Err(error) => {
+                return Err(Failure {
+                    message: format!(
+                        "tandem serve: the home's members could not be read ({error}), so \
+                         --allow-unauthenticated is refused."
+                    ),
+                    exit: 2,
+                });
+            }
+        }
+    }
     // Installed after the host checks, before any event can fire: the listening
     // line below is still the first stdout line, because nothing logs before it.
     let invalid_filter = install_log("info", io::stdout, io::stdout().is_terminal());

@@ -1,10 +1,12 @@
 # Tandem serve is the single door: MCP over HTTP, one process
 
-> **Status:** In force, amended (CUT-37). See [the index](README.md).
+> **Status:** In force, amended (CUT-37, CUT-36). See [the index](README.md).
 
 Every agent session spawned its own `tandem mcp` child over stdio, each opening `tandem.db`, so the human saw a row of `tandem` processes and no single entry point, and no agent could reach a board on another machine. One long-lived `tandem serve` now answers the browser, the agents and a remote CLI over one protocol.
 
 Decided 2026-11-15 (CUT-29, which absorbed CUT-20).
+
+> **Amended by [ADR 0052](0052-members-and-personal-tokens.md):** "the header is attribution, not authorization" is now true only for the owner credential, and "One token is one trust domain" holds for `TANDEM_TOKEN` only: a personal token or a member session names its own member as the actor.
 
 > **Amended by [ADR 0049](0049-a-browser-signs-in-to-a-token-guarded-serve.md):** the browser-login half of the off-loopback bullet is superseded. A token-mode browser signs in with a session cookie; `/mcp` stays bearer only.
 
