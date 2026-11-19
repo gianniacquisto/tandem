@@ -6745,6 +6745,7 @@ async fn reserved_and_duplicate_and_malformed_names_are_refused() {
     let add = |name: &str, role: &str| format!(r#"{{"name":"{name}","role":"{role}"}}"#);
 
     for name in [
+        "count",
         "operator",
         "human",
         "owner",
@@ -6762,6 +6763,10 @@ async fn reserved_and_duplicate_and_malformed_names_are_refused() {
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST, "{name:?}: {body}");
     }
+    assert!(
+        store.members().unwrap().is_empty(),
+        "a refused name, `count` included, writes no row"
+    );
     let (status, _) = operator_send(
         &app,
         "POST",

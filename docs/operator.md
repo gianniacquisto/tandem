@@ -1,6 +1,6 @@
 # The operator interface
 
-`/operator/v1` is the narrow door a hosting control plane (or a self-hoster's own script) uses to add, change the role of, remove and count the members of one instance. It is the only way to manage people with a key that is not a member's. It manages people and counts seats, and nothing else: it never reads a ticket, a note or a comment and never acts as a member. See [ADR 0052](adr/0052-members-and-personal-tokens.md) for members and roles.
+`/operator/v1` is the narrow door a hosting service (or a self-hoster's own script) uses to add, change the role of, remove and count the members of one instance. It is the only way to manage people with a key that is not a member's. It manages people and counts seats, and nothing else: it never reads a ticket, a note or a comment and never acts as a member. See [ADR 0052](adr/0052-members-and-personal-tokens.md) for members and roles.
 
 The interface is versioned by its path. A change that breaks a shape or a status code is a new prefix, `/operator/v2`.
 
@@ -15,7 +15,7 @@ The operator key is a credential of its own, held in the serve process's environ
 
 Never a flag value (a flag shows in a process listing), never stored, never in a file the instance exports. Only a SHA-256 digest is held in memory, compared in constant time. The key is never `TANDEM_TOKEN` (the server refuses to start if they match) and never a member's credential. An empty variable is unset.
 
-**Rotation without downtime.** Set both variables (the old key as `TANDEM_OPERATOR_KEY`, the new one as `TANDEM_OPERATOR_KEY_NEXT`), restart, move the control plane to the new key, then at the next restart set the new key as `TANDEM_OPERATOR_KEY` and drop `_NEXT`.
+**Rotation without downtime.** Set both variables (the old key as `TANDEM_OPERATOR_KEY`, the new one as `TANDEM_OPERATOR_KEY_NEXT`), restart, move the hosting service to the new key, then at the next restart set the new key as `TANDEM_OPERATOR_KEY` and drop `_NEXT`.
 
 With no operator key set the whole family answers `404`.
 
@@ -39,7 +39,7 @@ Every answer is JSON. An error is `{"error": "<short reason>"}` and never carrie
 | `PATCH /operator/v1/members/{name}` | `{"role"}` | `200 {"name", "role"}`; `404` for no such member. |
 | `DELETE /operator/v1/members/{name}` | none | `200 {"name", "removed": true}`; `404` for no such member. The member's sessions, personal tokens and sign-in key end in the same write. The name is never reused. |
 
-Status codes for refusals: `400` for a name that breaks the rules (1 to 64 lowercase letters, digits or hyphens; `operator`, `human` and `owner` are reserved), an unknown role, or a body that is not exactly the documented object; `409` for a name that is taken (now, or before a removal), for the last admin (see below) and for a first member who is not an admin; `404` for an unknown member; `401`, `403`, `415` as above.
+Status codes for refusals: `400` for a name that breaks the rules (1 to 64 lowercase letters, digits or hyphens; `count`, `human`, `operator` and `owner` are reserved; `count` would shadow the `members/count` route), an unknown role, or a body that is not exactly the documented object; `409` for a name that is taken (now, or before a removal), for the last admin (see below) and for a first member who is not an admin; `404` for an unknown member; `401`, `403`, `415` as above.
 
 A new member signs in by an admin issuing a sign-in key (the People screen), or, on a hosted workspace, by a signed assertion. The operator interface issues neither.
 

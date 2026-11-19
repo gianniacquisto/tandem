@@ -776,7 +776,7 @@ pub const SERVE: &str = concat!(
     "\n",
     "TANDEM_OPERATOR_KEY (at least 32 characters; TANDEM_OPERATOR_KEY_NEXT beside it",
     "\n",
-    "for rotation) opens /operator/v1 for the hosting control plane: add, change the",
+    "for rotation) opens /operator/v1 for the hosting service: add, change the",
     "\n",
     "role of, remove and count members, and nothing else (docs/operator.md). Unset,",
     "\n",

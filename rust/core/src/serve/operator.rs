@@ -1,5 +1,5 @@
 //! The instance's operator interface (CUT-40): `/operator/v1`, the hosting
-//! control plane's narrow door. It adds, changes the role of, removes and counts
+//! service's narrow door. It adds, changes the role of, removes and counts
 //! members, and nothing else. Every handler calls the same store member
 //! functions every other door calls, as [`AccessActor::operator`], so there is
 //! one writer, one last-admin rule and one access-record row per act, written in
