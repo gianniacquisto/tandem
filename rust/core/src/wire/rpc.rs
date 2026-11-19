@@ -380,7 +380,7 @@ impl TicketListParams {
                 (
                     "limit",
                     integer(
-                        "at most this many rows from the top; total reports the matches when cut",
+                        "at most this many rows from the top; total reports the matches when cut; 0 returns no rows and the total",
                     ),
                 ),
             ],

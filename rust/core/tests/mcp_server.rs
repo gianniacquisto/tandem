@@ -713,11 +713,17 @@ fn result_of(store: &tandem_core::store::Store, name: &str, arguments: Value) ->
     (text, value)
 }
 
+/// The same call asking for the lean shape, which is opt-in.
+fn lean_of(store: &tandem_core::store::Store, name: &str, mut arguments: Value) -> (String, Value) {
+    arguments["detail"] = json!("lean");
+    result_of(store, name, arguments)
+}
+
 const SECRET_BRIEF: &str = "BRIEF-SENTINEL-the-description-an-agent-already-holds";
 
 /// The ticket a write answered, with a description the agent sent.
 fn filed(store: &tandem_core::store::Store) -> String {
-    let (_, added) = result_of(
+    let (_, added) = lean_of(
         store,
         "ticket_add",
         json!({"title": "Carries a brief", "description": SECRET_BRIEF}),
@@ -729,8 +735,8 @@ fn filed(store: &tandem_core::store::Store) -> String {
 fn no_write_tool_echoes_the_description_it_was_sent_and_a_comment_does_not_echo_its_body() {
     let sandbox = Sandbox::new("mcp-lean-writes");
     let store = sandbox.store();
-    result_of(&store, "label_add", json!({"name": "epic"}));
-    let other = result_of(&store, "ticket_add", json!({"title": "Other"})).1["ticket"]["id"]
+    lean_of(&store, "label_add", json!({"name": "epic"}));
+    let other = lean_of(&store, "ticket_add", json!({"title": "Other"})).1["ticket"]["id"]
         .as_str()
         .expect("an id")
         .to_string();
@@ -752,7 +758,7 @@ fn no_write_tool_echoes_the_description_it_was_sent_and_a_comment_does_not_echo_
         ("ticket_archive", json!({"id": id})),
     ];
     for (name, arguments) in calls {
-        let (text, value) = result_of(&store, name, arguments);
+        let (text, value) = lean_of(&store, name, arguments);
         assert!(
             !text.contains(SECRET_BRIEF),
             "{name} echoed the description: {text}"
@@ -770,7 +776,7 @@ fn no_write_tool_echoes_the_description_it_was_sent_and_a_comment_does_not_echo_
     }
 
     let id = filed(&store);
-    let (text, comment) = result_of(
+    let (text, comment) = lean_of(
         &store,
         "ticket_comment_add",
         json!({"id": id, "author": "builder", "body": "COMMENT-SENTINEL"}),
@@ -790,12 +796,12 @@ fn no_write_tool_echoes_the_description_it_was_sent_and_a_comment_does_not_echo_
 fn a_receipt_names_the_title_only_when_the_write_could_have_changed_it() {
     let sandbox = Sandbox::new("mcp-lean-title");
     let store = sandbox.store();
-    let (_, added) = result_of(&store, "ticket_add", json!({"title": "  Trim me  "}));
+    let (_, added) = lean_of(&store, "ticket_add", json!({"title": "  Trim me  "}));
     assert_eq!(added["ticket"]["title"], "Trim me", "the stored title");
     let id = added["ticket"]["id"].as_str().expect("an id").to_string();
-    let (_, moved) = result_of(&store, "ticket_set", json!({"id": id, "status": "ready"}));
+    let (_, moved) = lean_of(&store, "ticket_set", json!({"id": id, "status": "ready"}));
     assert!(moved["ticket"].get("title").is_none());
-    let (_, renamed) = result_of(&store, "ticket_set", json!({"id": id, "title": "New"}));
+    let (_, renamed) = lean_of(&store, "ticket_set", json!({"id": id, "title": "New"}));
     assert_eq!(renamed["ticket"]["title"], "New");
 }
 
@@ -803,12 +809,12 @@ fn a_receipt_names_the_title_only_when_the_write_could_have_changed_it() {
 fn a_default_open_row_drops_its_defaults_and_a_busy_row_keeps_its_own() {
     let sandbox = Sandbox::new("mcp-lean-rows");
     let store = sandbox.store();
-    result_of(&store, "ticket_add", json!({"title": "Plain"}));
-    let plain = result_of(&store, "ticket_add", json!({"title": "Blocker"})).1["ticket"]["id"]
+    lean_of(&store, "ticket_add", json!({"title": "Plain"}));
+    let plain = lean_of(&store, "ticket_add", json!({"title": "Blocker"})).1["ticket"]["id"]
         .as_str()
         .expect("an id")
         .to_string();
-    let busy = result_of(
+    let busy = lean_of(
         &store,
         "ticket_add",
         json!({"title": "Busy", "assignee": "builder", "status": "ready"}),
@@ -817,13 +823,13 @@ fn a_default_open_row_drops_its_defaults_and_a_busy_row_keeps_its_own() {
         .as_str()
         .expect("an id")
         .to_string();
-    result_of(&store, "ticket_block", json!({"id": busy, "on": plain}));
+    lean_of(&store, "ticket_block", json!({"id": busy, "on": plain}));
     sandbox
         .board()
         .set_link(&busy, Some("notes/busy.md"))
         .expect("the link is set");
 
-    let (_, listed) = result_of(&store, "ticket_list", json!({}));
+    let (_, listed) = lean_of(&store, "ticket_list", json!({}));
     let rows = listed["tickets"].as_array().expect("rows");
     let row = |title: &str| {
         rows.iter()
@@ -881,6 +887,36 @@ fn limit_cuts_the_list_and_total_says_how_many_matched() {
         whole.get("total").is_none(),
         "an uncut list reports no total"
     );
+}
+
+#[test]
+fn limit_zero_returns_no_rows_and_the_total() {
+    let sandbox = Sandbox::new("mcp-limit-zero");
+    let store = sandbox.store();
+    for title in ["A", "B"] {
+        result_of(&store, "ticket_add", json!({"title": title}));
+    }
+    let (_, none) = result_of(&store, "ticket_list", json!({"limit": 0}));
+    assert_eq!(none["tickets"].as_array().map(Vec::len), Some(0));
+    assert_eq!(none["total"], 2);
+}
+
+#[test]
+fn an_absent_detail_answers_full_and_lean_is_opt_in() {
+    let sandbox = Sandbox::new("mcp-default-full");
+    let store = sandbox.store();
+    let (_, added) = result_of(
+        &store,
+        "ticket_add",
+        json!({"title": "T", "description": SECRET_BRIEF}),
+    );
+    assert_eq!(added["ticket"]["description"], SECRET_BRIEF);
+    let id = added["ticket"]["id"].as_str().expect("an id").to_string();
+    let (absent, _) = result_of(&store, "ticket_show", json!({"id": id}));
+    let (full, _) = result_of(&store, "ticket_show", json!({"id": id, "detail": "full"}));
+    assert_eq!(absent, full, "absent is full, byte for byte");
+    let (lean, _) = lean_of(&store, "ticket_show", json!({"id": id}));
+    assert_ne!(lean, full);
 }
 
 #[test]

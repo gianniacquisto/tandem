@@ -370,10 +370,10 @@ fn call_frame(
 
 // MARK: - Lean and full answers
 
-/// How much of a reply the caller asked for. An agent that names nothing gets
-/// [`Detail::Lean`]; the remote CLI always names `"full"`, because it rebuilds
-/// the local verb's stdout from the result and that must not change with the
-/// door.
+/// How much of a reply the caller asked for. A call that names nothing gets
+/// [`Detail::Full`], the answer the door has always given; `"lean"` is opt-in.
+/// The remote CLI still names `"full"`, so its stdout never depends on the
+/// default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Detail {
     Lean,
@@ -388,7 +388,7 @@ impl Detail {
             return Ok(Self::Full);
         }
         match arguments.get("detail") {
-            None | Some(Value::Null) => Ok(Self::Lean),
+            None | Some(Value::Null) => Ok(Self::Full),
             Some(Value::String(word)) if word == "lean" => Ok(Self::Lean),
             Some(Value::String(word)) if word == "full" => Ok(Self::Full),
             Some(_) => Err(format!(
@@ -409,7 +409,7 @@ fn one_of_detail() -> Value {
     json!({
         "type": "string",
         "enum": ["lean", "full"],
-        "description": "lean (default) omits what you already hold and empty fields; full returns the whole ticket, every field",
+        "description": "full (default) returns the whole ticket, every field; lean omits what you already hold and empty fields",
     })
 }
 
@@ -650,7 +650,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_list",
             method_tag: "ticket.list",
-            description: "List the tickets in view, in stored order. Every filter is optional and they combine. A row omits null, false and empty fields; detail \"full\" returns every field.",
+            description: "List the tickets in view, in stored order. Every filter is optional and they combine. Rows carry every field; detail \"lean\" omits null, false and empty fields.",
             input_schema: with_detail(TicketListParams::schema()),
             annotations: Annotations::READ,
             method: Method::TicketList(TicketListParams::default()),
@@ -658,7 +658,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_show",
             method_tag: "ticket.show",
-            description: "Read one ticket whole: the only read that carries the description. Null, false and empty fields are omitted; detail \"full\" returns every field.",
+            description: "Read one ticket whole: the only read that carries the description. Answers every field; detail \"lean\" omits null, false and empty fields.",
             input_schema: with_detail(TicketIdParams::schema()),
             annotations: Annotations::READ,
             method: Method::TicketShow(TicketIdParams::default()),
@@ -666,7 +666,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_add",
             method_tag: "ticket.add",
-            description: "File a ticket. A title alone lands backlog, unowned, on top of the default area. Answers a short receipt without the description; detail \"full\" returns the whole ticket.",
+            description: "File a ticket. A title alone lands backlog, unowned, on top of the default area. Answers the whole ticket; detail \"lean\" answers a short receipt without the description.",
             input_schema: with_detail(TicketAddParams::schema()),
             annotations: Annotations::WRITE,
             method: Method::TicketAdd(TicketAddParams::default()),
@@ -674,7 +674,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_set",
             method_tag: "ticket.set",
-            description: "Change the fields named in one write; everything unnamed is left alone. Answers a short receipt without the description; detail \"full\" returns the whole ticket.",
+            description: "Change the fields named in one write; everything unnamed is left alone. Answers the whole ticket; detail \"lean\" answers a short receipt without the description.",
             input_schema: with_detail(TicketSetParams::schema()),
             annotations: Annotations::WRITE.idempotent(),
             method: Method::TicketSet(TicketSetParams::default()),
@@ -682,7 +682,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_move",
             method_tag: "ticket.move",
-            description: "Move between labels and/or within one. Omit the index to append. Answers a short receipt; detail \"full\" returns the whole ticket.",
+            description: "Move between labels and/or within one. Omit the index to append. Answers the whole ticket; detail \"lean\" answers a short receipt.",
             input_schema: with_detail(TicketMoveParams::schema()),
             annotations: Annotations::WRITE,
             method: Method::TicketMove(TicketMoveParams::default()),
@@ -690,7 +690,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_block",
             method_tag: "ticket.block",
-            description: "Record that one ticket waits on another, as an edge in the store. Answers a short receipt; detail \"full\" returns the whole ticket.",
+            description: "Record that one ticket waits on another, as an edge in the store. Answers the whole ticket; detail \"lean\" answers a short receipt.",
             input_schema: with_detail(TicketBlockParams::schema()),
             annotations: Annotations::WRITE.idempotent(),
             method: Method::TicketBlock(TicketBlockParams::default()),
@@ -698,7 +698,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_unblock",
             method_tag: "ticket.unblock",
-            description: "Remove one edge, or every edge the ticket has when `on` is absent. Answers a short receipt; detail \"full\" returns the whole ticket.",
+            description: "Remove one edge, or every edge the ticket has when `on` is absent. Answers the whole ticket; detail \"lean\" answers a short receipt.",
             input_schema: with_detail(TicketUnblockParams::schema()),
             annotations: Annotations::DESTRUCTIVE,
             method: Method::TicketUnblock(TicketUnblockParams::default()),
@@ -706,7 +706,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_complete",
             method_tag: "ticket.complete",
-            description: "The short path to done: idempotent, no reopen verb. Answers a short receipt; detail \"full\" returns the whole ticket.",
+            description: "The short path to done: idempotent, no reopen verb. Answers the whole ticket; detail \"lean\" answers a short receipt.",
             input_schema: with_detail(TicketIdParams::schema()),
             annotations: Annotations::WRITE.idempotent(),
             method: Method::TicketComplete(TicketIdParams::default()),
@@ -714,7 +714,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_archive",
             method_tag: "ticket.archive",
-            description: "Archive one ticket, or every done ticket when `id` is absent. One ticket answers a short receipt; detail \"full\" returns the whole ticket.",
+            description: "Archive one ticket, or every done ticket when `id` is absent. One ticket answers the whole ticket; detail \"lean\" answers a short receipt.",
             input_schema: with_detail(TicketArchiveParams::schema()),
             annotations: Annotations::DESTRUCTIVE,
             method: Method::TicketArchive(TicketArchiveParams::default()),
@@ -722,7 +722,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_comment_add",
             method_tag: "ticket.comment.add",
-            description: "Append to the ticket's discussion log. Write the role out as the author. Answers the time and author, not the body; detail \"full\" echoes the comment.",
+            description: "Append to the ticket's discussion log. Write the role out as the author. Echoes the comment; detail \"lean\" answers the time and author, not the body.",
             input_schema: with_detail(CommentAddParams::schema()),
             annotations: Annotations::WRITE,
             method: Method::TicketCommentAdd(CommentAddParams::default()),
