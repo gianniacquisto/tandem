@@ -31,8 +31,7 @@ use axum::response::{IntoResponse, Response};
 use sha2::{Digest, Sha256};
 
 use crate::store::{
-    CredentialKind, Member, SESSION_IDLE_SECONDS, SessionCheck, SessionLookup, Store,
-    credential_kind, unix_now,
+    Member, SESSION_IDLE_SECONDS, SessionCheck, SessionLookup, Store, credential_kind, unix_now,
 };
 
 use super::login::LoginThrottle;
@@ -519,7 +518,7 @@ pub(super) async fn access_guard(mut request: Request, next: Next) -> Response {
         let bearer = access.authorized(request.headers());
         if !bearer
             && let Some(presented) = Access::bearer(request.headers())
-            && credential_kind(presented) == Some(CredentialKind::Token)
+            && credential_kind(presented).is_some()
         {
             let store = request.extensions().get::<Store>().cloned();
             let throttle = request.extensions().get::<LoginThrottle>().cloned();

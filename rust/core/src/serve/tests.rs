@@ -5778,6 +5778,40 @@ async fn failed_member_credentials_are_throttled_like_login_and_a_right_one_is_n
 }
 
 #[tokio::test]
+async fn a_wrong_sign_in_key_as_a_bearer_waits_on_the_same_throttle() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("key-bearer-throttle");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store, TOKEN);
+
+    let wrong_key = |n: usize| {
+        let app = app.clone();
+        async move {
+            let presented = format!("tdk_{:0>43}", n);
+            send(&app, bearer_mcp(&presented, None, MCP_BODY)).await.0
+        }
+    };
+    let flood: Vec<_> = (0..12).map(|n| tokio::spawn(wrong_key(n))).collect();
+    let mut statuses = Vec::new();
+    for task in flood {
+        statuses.push(task.await.expect("joins"));
+    }
+    assert!(
+        statuses.contains(&StatusCode::TOO_MANY_REQUESTS),
+        "a wrong sign-in key as a bearer is throttled too: {statuses:?}"
+    );
+    assert!(
+        statuses
+            .iter()
+            .all(|s| *s == StatusCode::UNAUTHORIZED || *s == StatusCode::TOO_MANY_REQUESTS),
+        "a sign-in key is never admitted as a bearer: {statuses:?}"
+    );
+    let (status, _, _) = send(&app, bearer_mcp(&team.alice_token, None, MCP_BODY)).await;
+    assert_eq!(status, StatusCode::OK, "a right token still passes");
+}
+
+#[tokio::test]
 async fn token_and_key_use_logs_no_credential_header_or_digest() {
     let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("member-logs");
