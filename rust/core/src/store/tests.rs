@@ -2767,7 +2767,7 @@ mod members {
             "a name is never reused, even after removal"
         );
         assert!(store.member_find("alice").unwrap().is_none());
-        for reserved in ["human", "operator", "owner"] {
+        for reserved in ["count", "human", "operator", "owner"] {
             assert!(
                 matches!(
                     store.member_add(reserved, Role::Member, NOW),

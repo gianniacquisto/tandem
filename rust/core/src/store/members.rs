@@ -37,8 +37,8 @@ pub const SIGNIN_KEY_PREFIX: &str = "tdk_";
 /// 32 bytes, base64url without padding.
 const BODY_LENGTH: usize = 43;
 
-/// Names no member may take, besides `human`: the owner's and operator's words.
-const RESERVED_NAMES: [&str; 3] = ["human", "operator", "owner"];
+/// Names no member may take: the owner's and operator's words, and `count`, which the operator route `/members/count` already answers.
+const RESERVED_NAMES: [&str; 4] = ["count", "human", "operator", "owner"];
 
 /// A token's last use is rewritten at most this often.
 const TOKEN_TOUCH_SECONDS: i64 = 24 * 60 * 60;
@@ -187,7 +187,7 @@ impl From<StoreError> for MemberError {
 }
 
 /// The rule a member name breaks, or `None`: the actor rule (1 to 64 lowercase
-/// letters, digits and hyphens), and never `human`, `operator` or `owner`.
+/// letters, digits and hyphens), and never `count`, `human`, `operator` or `owner`.
 pub fn member_name_rule(name: &str) -> Option<&'static str> {
     if !(1..=64).contains(&name.len())
         || !name
