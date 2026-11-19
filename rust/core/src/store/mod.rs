@@ -68,8 +68,9 @@ pub(crate) use export::inspect_with;
 pub use export::{ExportCopy, Inspection, Refusal, inspect_unpacked};
 pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
 pub use members::{
-    CredentialKind, IssuedCredential, Member, MemberError, Role, SIGNIN_KEY_PREFIX, TOKEN_PREFIX,
-    TokenInfo, credential_digest, credential_kind, credentials_changed, member_name_rule,
+    CredentialKind, IssuedCredential, LabelRule, MAX_LABEL_CHARS, MAX_LIVE_TOKENS, Member,
+    MemberError, Role, SIGNIN_KEY_PREFIX, TOKEN_PREFIX, TokenError, TokenInfo, credential_digest,
+    credential_kind, credentials_changed, member_name_rule, token_label_rule,
 };
 pub use schema::CURRENT_VERSION;
 pub use write::{NewComment, NewDependency, NewLabel, NewProject, NewTicket, Write};

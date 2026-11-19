@@ -1,0 +1,59 @@
+<section class="tokens">
+  <p class="tokens__back"><a class="tokens__link" href="/board">Back to the board</a></p>
+  <h1 class="tokens__title">Personal tokens</h1>
+  <p class="tokens__status" id="tokens-status" role="status" aria-live="polite"
+    {%- if notice.is_some() %} tabindex="-1" autofocus data-autofocus{% endif %}>
+    {%- if let Some(notice) = notice %}{{ notice }}{% endif -%}
+  </p>
+  <p class="tokens__lead">A personal token lets a tool you run, such as Claude Code, work on the board as you. It cannot export the workspace or manage people.</p>
+  <p class="tokens__lead">If you lose a token, revoke it and make a new one.</p>
+  {%- if owner %}
+  <p class="tokens__empty">You are signed in with the workspace token, not as a member, so you have no personal tokens. Members make their own here.</p>
+  {%- else %}
+  {%- if tokens.is_empty() %}
+  <p class="tokens__empty">You have no personal tokens. Create one to let a tool work as you.</p>
+  {%- else %}
+  <table class="tokens__table">
+    <caption class="tokens__caption">Your personal tokens</caption>
+    <thead>
+      <tr>
+        <th scope="col">Name</th>
+        <th scope="col">Created</th>
+        <th scope="col">Last used</th>
+        <th scope="col"><span class="tokens__hidden">Action</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for token in tokens %}
+      <tr>
+        <th scope="row" class="tokens__name">{{ token.label }}</th>
+        <td>{{ token.created }}</td>
+        <td>{{ token.last_used }}</td>
+        <td class="tokens__action"><a class="tokens__button tokens__button--danger" href="/tokens/{{ token.id }}/revoke">Revoke token<span class="tokens__hidden"> {{ token.label }}</span></a></td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- endif %}
+  {%- if at_limit %}
+  <p class="tokens__limit">You have {{ limit }} personal tokens, the most one member can hold. Revoke one to make another.</p>
+  {%- else %}
+  <form class="tokens__form" method="post" action="/tokens">
+    <h2 class="tokens__subtitle">Make a personal token</h2>
+    <input type="hidden" name="key" value="{{ key }}">
+    <label class="tokens__label" for="token-name">Name</label>
+    <p class="tokens__hint" id="token-name-hint">What the tool is, for example Claude Code on my laptop. Up to 60 characters.</p>
+    <input class="tokens__input" id="token-name" type="text" name="name" value="{{ name }}" required autocomplete="off"
+      placeholder="Claude Code on my laptop"
+      {%- if field_error.is_some() %} autofocus aria-invalid="true" aria-describedby="token-name-hint token-name-error"{% else %} aria-describedby="token-name-hint"{% endif %}>
+    {%- if let Some(error) = field_error %}
+    <p class="tokens__error" id="token-name-error">{{ error }}</p>
+    {%- endif %}
+    {%- if let Some(error) = form_error %}
+    <p class="tokens__error" role="alert" tabindex="-1" autofocus data-autofocus>{{ error }}</p>
+    {%- endif %}
+    <button class="tokens__button tokens__button--primary" type="submit">Create token</button>
+  </form>
+  {%- endif %}
+  {%- endif %}
+</section>

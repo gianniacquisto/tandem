@@ -3372,6 +3372,116 @@ mod access {
     }
 
     #[test]
+    fn a_token_label_is_bounded_in_the_store_and_a_refused_one_writes_nothing() {
+        let sandbox = Sandbox::new("token-label-bound");
+        let store = sandbox.store();
+        store.member_add("alice", Role::Admin, NOW).unwrap();
+        let rows = store.access_record().unwrap().len();
+
+        let sixty = "a".repeat(60);
+        let accents = "é".repeat(60);
+        for label in [sixty.as_str(), accents.as_str(), "Claude Code on my laptop"] {
+            assert!(
+                store
+                    .member_token_issue("alice", label, NOW)
+                    .unwrap()
+                    .is_some(),
+                "{label}"
+            );
+        }
+        let too_long = "a".repeat(61);
+        for label in [
+            "",
+            "   ",
+            too_long.as_str(),
+            "two\nlines",
+            "carriage\rreturn",
+            "tab\there",
+            "bell\u{7}",
+            "nul\u{0}byte",
+            "separator\u{2028}here",
+            "flip\u{202E}this",
+            "hidden\u{200B}space",
+        ] {
+            assert!(
+                matches!(
+                    store.member_token_issue("alice", label, NOW),
+                    Err(TokenError::Label(_))
+                ),
+                "{label:?}"
+            );
+        }
+        // A refusal writes no token and no row.
+        assert_eq!(count(&sandbox, "SELECT COUNT(*) FROM member_tokens"), 3);
+        assert_eq!(store.access_record().unwrap().len(), rows + 3);
+        // A label is stored as given: the rule refuses, it does not rewrite.
+        let labels: Vec<String> = store
+            .member_tokens("alice")
+            .unwrap()
+            .into_iter()
+            .map(|token| token.label)
+            .collect();
+        assert_eq!(labels, [sixty, accents, "Claude Code on my laptop".into()]);
+    }
+
+    #[test]
+    fn a_member_holds_at_most_twenty_live_tokens_and_a_revoked_one_frees_a_place() {
+        let sandbox = Sandbox::new("token-limit");
+        let store = sandbox.store();
+        store.member_add("alice", Role::Admin, NOW).unwrap();
+        store.member_add("bob", Role::Member, NOW).unwrap();
+        for index in 0..MAX_LIVE_TOKENS {
+            store
+                .member_token_issue("alice", &format!("token {index}"), NOW)
+                .unwrap()
+                .unwrap();
+        }
+        assert!(matches!(
+            store.member_token_issue("alice", "one too many", NOW),
+            Err(TokenError::Limit)
+        ));
+        assert_eq!(count(&sandbox, "SELECT COUNT(*) FROM member_tokens"), 20);
+        // The limit is per member.
+        assert!(
+            store
+                .member_token_issue("bob", "bob's", NOW)
+                .unwrap()
+                .is_some()
+        );
+        let first = store.member_tokens("alice").unwrap()[0].id;
+        assert!(store.member_token_revoke("alice", first, NOW).unwrap());
+        assert!(
+            store
+                .member_token_issue("alice", "the twenty-first", NOW)
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn the_token_value_and_its_digest_never_reach_the_access_record() {
+        let sandbox = Sandbox::new("token-not-in-record");
+        let store = sandbox.store();
+        store.member_add("alice", Role::Admin, NOW).unwrap();
+        let issued = store
+            .member_token_issue("alice", "laptop", NOW)
+            .unwrap()
+            .unwrap();
+        let value = issued.reveal().to_string();
+        let digest = credential_digest(&value);
+        let id = store.member_tokens("alice").unwrap()[0].id;
+        store.member_token_revoke("alice", id, NOW + 1).unwrap();
+        let body = value.trim_start_matches(TOKEN_PREFIX);
+        for row in store.access_record().unwrap() {
+            let text = format!("{row:?}");
+            assert!(!text.contains(&value), "{text}");
+            assert!(!text.contains(&digest), "{text}");
+            assert!(!text.contains(body), "{text}");
+        }
+        assert!(!format!("{issued:?}").contains(&value));
+    }
+
+    #[test]
     fn the_access_record_holds_no_secret_and_has_no_update_or_delete_path() {
         let sandbox = Sandbox::new("access-secrets");
         let store = sandbox.store();

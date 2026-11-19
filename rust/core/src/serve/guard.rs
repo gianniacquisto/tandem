@@ -421,6 +421,11 @@ pub(super) const ROUTE_NEEDS: &[(&str, Need)] = &[
     ("/tickets/{id}/status", Need::Permit(Permission::Board)),
     ("/tickets/{id}/comments", Need::Permit(Permission::Board)),
     ("/tickets/{id}/label", Need::Permit(Permission::Board)),
+    ("/tokens", Need::Permit(Permission::ManageOwnTokens)),
+    (
+        "/tokens/{id}/revoke",
+        Need::Permit(Permission::ManageOwnTokens),
+    ),
     ("/labels", Need::Permit(Permission::Board)),
     ("/labels/{name}/rename", Need::Permit(Permission::Board)),
     ("/notes", Need::Permit(Permission::Board)),
@@ -491,6 +496,9 @@ pub(super) fn authorize(principal: &Principal, route: &str, matched: bool) -> Op
 
 /// The body of a refused page: the `ux` wording, and a way back.
 const ACCESS_REFUSED_PAGE: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>No access</title></head><body><h1>You do not have access to this page</h1><p>Only admins can manage people. Ask an admin if you need a change.</p><p><a href=\"/\">Back to the board</a></p></body></html>\n";
+
+/// The `401` body a tool gets for a bearer the server does not accept.
+pub(super) const TOKEN_REFUSED: &str = "This token has been revoked or does not exist.";
 
 /// What a refused `/mcp` call answers, as a JSON-RPC error.
 pub(super) const ACCESS_REFUSED_MCP: &str =
@@ -924,9 +932,21 @@ fn signed_out(route: &str, method: &Method, request: &Request) -> Response {
         && route != MCP_ROUTE
         && request.headers().get("hx-request").is_none();
     if !page {
+        // A tool that presented a personal token on /mcp is told what to do:
+        // one body for a revoked, a removed, an unknown and a malformed one, so
+        // the answer says nothing about which it was. The prefix is public, so
+        // reading it tells nothing; every other refusal keeps the plain body.
+        let body = if route == MCP_ROUTE
+            && Access::bearer(request.headers())
+                .is_some_and(|presented| presented.starts_with(crate::store::TOKEN_PREFIX))
+        {
+            TOKEN_REFUSED
+        } else {
+            "unauthorized"
+        };
         return refuse(
             StatusCode::UNAUTHORIZED,
-            "unauthorized",
+            body,
             "the token is missing or refused",
         );
     }

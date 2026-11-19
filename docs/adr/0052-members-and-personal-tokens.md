@@ -38,6 +38,15 @@ Decided 2026-11-16 (CUT-39, part 2 of CUT-36), built on the part 1 shape above; 
 
 Part 2 supersedes by quotation, in the same change: [ADR 0050](0050-the-home-leaves-and-arrives-as-one-archive.md), "It allows every principal that exists today (the operator at the home, loopback, `--allow-unauthenticated`, the token holder), because no members exist and whoever reaches the home is its owner" (now bound to the admin role for members, and still free for every owner credential); and "There is no store row" with "A durable, in-board audit trail is CUT-36's" (the board door writes a row, beside its log line; the CLI door does not).
 
+## Part 4: the Personal tokens screen (CUT-41)
+
+Built on parts 1 to 3; where this section and an earlier line differ, this section wins.
+
+- **The screen.** `GET /tokens` lists a member's live tokens (name, created, last used or "Never used") and carries the create form; `POST /tokens` makes a token and answers the page that shows it, `Cache-Control: no-store`, never a redirect; `GET` and `POST /tokens/{id}/revoke` are the confirm page and the act. The routes need `manage-own-tokens`, so a personal token and the operator key never reach them, and outside team mode they answer `404`. The pages call the store's token functions and hold no SQL. A member sees and revokes only their own tokens (another member's id answers "not found"); the owner session sees the page and no form, because the owner is not a member.
+- **Made and shown in one step.** The create form carries a random idempotence key the server claims (in memory, per member) before it creates, so a double submit makes and shows one token and a second answers `303` to the list with a sentence. A create that fails releases the key, so the same form can be sent again, and nothing is left made and unseen: if the page that shows the value cannot be drawn, the token is revoked at once.
+- **The label is bounded where the token is made.** `member_token_issue_by` refuses a label that is empty, longer than 60 characters, or holds a control character, a line or paragraph separator or a character that hides or reorders text, and a member already holding 20 live tokens, before it writes anything; the form's sentences are a face over those refusals. The label is stored as given, in the token row and in the access record's `detail`; the value and its digest are in neither.
+- **One `401` for a revoked token.** A request to `/mcp` whose bearer starts with `tdm_` and is not accepted (revoked, removed, unknown or malformed) answers `401` with one body, "This token has been revoked or does not exist.", so a tool user knows what to do and the body does not say which of the four it was. Any other refused bearer, and a request with none, keep the plain body. This replaces part 1's "one `401` body" for the personal-token shape only.
+
 ## Supersedes
 
 By quotation, in the same change, with the text checked against the files:

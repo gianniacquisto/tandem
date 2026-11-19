@@ -37,6 +37,10 @@
           <button type="button" class="menu__option" data-theme-appearance="system" aria-pressed="true">System</button>
           <button type="button" class="menu__option" data-theme-appearance="light" aria-pressed="false">Light</button>
           <button type="button" class="menu__option" data-theme-appearance="dark" aria-pressed="false">Dark</button>
+          {%- if tokens %}
+          <p class="menu__title">Account</p>
+          <a class="menu__option" href="/tokens">Personal tokens</a>
+          {%- endif %}
           {%- if export %}
           <p class="menu__title">Workspace</p>
           <a class="menu__option" href="/export" download>Export workspace</a>

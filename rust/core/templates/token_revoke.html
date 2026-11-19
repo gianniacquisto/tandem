@@ -1,0 +1,8 @@
+<section class="tokens">
+  <h1 class="tokens__title">Revoke token</h1>
+  <p class="tokens__lead">Revoke '{{ label }}'? Tools using it stop working at once. This cannot be undone.</p>
+  <form class="tokens__row" method="post" action="/tokens/{{ id }}/revoke">
+    <a class="tokens__button" href="/tokens" autofocus data-autofocus>Cancel</a>
+    <button class="tokens__button tokens__button--danger" type="submit">Revoke token</button>
+  </form>
+</section>
