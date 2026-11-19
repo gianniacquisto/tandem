@@ -147,7 +147,7 @@ fn initialize_carries_a_small_health_block() {
         "the health block names the version: {health}"
     );
     assert_eq!(
-        health["tools"], 28,
+        health["tools"], 31,
         "the health block names the tool count: {health}"
     );
 }
@@ -197,7 +197,7 @@ fn a_notification_is_answered_with_silence() {
 }
 
 #[test]
-fn tools_list_names_the_28_tools_with_object_schemas() {
+fn tools_list_names_the_31_tools_with_object_schemas() {
     let sandbox = Sandbox::new("mcp-tools-list");
     let store = sandbox.store();
 
@@ -205,7 +205,7 @@ fn tools_list_names_the_28_tools_with_object_schemas() {
     let tools = listed["result"]["tools"]
         .as_array()
         .expect("tools is an array");
-    assert_eq!(tools.len(), 28);
+    assert_eq!(tools.len(), 31);
     for tool in tools {
         let name = tool["name"].as_str().unwrap_or("");
         assert!(
@@ -1199,4 +1199,143 @@ fn note_write_with_the_hash_it_read_lands_and_a_stale_hash_is_refused_in_words()
         json!({"path": "Plan.md", "text": "v4"}),
     );
     assert_eq!(forced["write"]["path"], "Plan.md", "{forced}");
+}
+
+// MARK: - note_search, note_backlinks and note_edit (MCP-6)
+
+fn seed(store: &tandem_core::store::Store, path: &str, text: &str) {
+    result_of(store, "note_write", json!({"path": path, "text": text}));
+}
+
+#[test]
+fn note_search_answers_a_hit_with_a_snippet_an_empty_query_with_no_rows_and_cuts_at_limit() {
+    let sandbox = Sandbox::new("mcp-note-search");
+    let store = sandbox.store();
+    seed(
+        &store,
+        "Plan.md",
+        "Title\nWe decided to ship the Gizmo on Friday.",
+    );
+    seed(&store, "Other.md", "Gizmo Title\nbody");
+    seed(&store, "Third.md", "Title\nnothing here");
+
+    let (_, hit) = result_of(&store, "note_search", json!({"query": "gizmo"}));
+    let hits = hit["hits"].as_array().expect("rows");
+    assert_eq!(hits.len(), 2, "{hit}");
+    assert_eq!(hits[0]["path"], "Other.md");
+    assert_eq!(hits[0]["display"], "Gizmo Title");
+    assert_eq!(hits[1]["path"], "Plan.md");
+    assert!(
+        hits[1]["display"]
+            .as_str()
+            .unwrap()
+            .contains("Gizmo on Friday")
+    );
+    assert!(hit.get("total").is_none(), "total only when cut: {hit}");
+
+    let (_, empty) = result_of(&store, "note_search", json!({"query": ""}));
+    assert_eq!(empty["hits"], json!([]), "{empty}");
+
+    let (_, cut) = result_of(&store, "note_search", json!({"query": "gizmo", "limit": 1}));
+    assert_eq!(cut["hits"].as_array().unwrap().len(), 1, "{cut}");
+    assert_eq!(cut["total"], 2);
+
+    let answer = call(&store, &tool_call(2, "note_search", json!({}))).unwrap();
+    assert_eq!(
+        answer["result"]["isError"], true,
+        "a missing query is refused"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn note_search_does_not_follow_a_link_out_of_the_vault() {
+    let sandbox = Sandbox::new("mcp-note-search-link");
+    let store = sandbox.store();
+    seed(&store, "Inside.md", "Title\nbody");
+    let outside = sandbox.root().join("outside");
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(outside.join("Secret.md"), "Title\nneedle-outside").unwrap();
+    let vault = sandbox.home().directory().join("bikeshed");
+    std::os::unix::fs::symlink(&outside, vault.join("link")).unwrap();
+    let (_, found) = result_of(&store, "note_search", json!({"query": "needle-outside"}));
+    assert_eq!(found["hits"], json!([]), "{found}");
+}
+
+#[test]
+fn note_backlinks_answers_a_row_per_linking_note() {
+    let sandbox = Sandbox::new("mcp-note-backlinks");
+    let store = sandbox.store();
+    seed(&store, "Target.md", "Target\n");
+    seed(&store, "Source.md", "Source\nsee [[Target]] here");
+    let (_, back) = result_of(&store, "note_backlinks", json!({"path": "Target.md"}));
+    assert_eq!(back["path"], "Target.md");
+    assert_eq!(back["backlinks"][0]["path"], "Source.md", "{back}");
+    assert!(
+        back["backlinks"][0]["line"]
+            .as_str()
+            .unwrap()
+            .contains("[[Target]]")
+    );
+}
+
+#[test]
+fn note_edit_replaces_one_match_and_answers_the_path_and_hash_only() {
+    let sandbox = Sandbox::new("mcp-note-edit");
+    let store = sandbox.store();
+    seed(&store, "Plan.md", "Title\nstatus: draft\nowner: ann\n");
+    let (text, edited) = result_of(
+        &store,
+        "note_edit",
+        json!({"path": "Plan.md", "oldText": "status: draft", "newText": "status: final-sentinel"}),
+    );
+    assert_eq!(edited["write"]["path"], "Plan.md", "{edited}");
+    assert!(
+        !text.contains("final-sentinel"),
+        "no echo of the text: {text}"
+    );
+    let (_, read) = result_of(&store, "note_read", json!({"path": "Plan.md"}));
+    assert_eq!(
+        read["note"]["text"],
+        "Title\nstatus: final-sentinel\nowner: ann\n"
+    );
+    assert_eq!(read["note"]["hash"], edited["write"]["hash"]);
+
+    let (_, appended) = result_of(
+        &store,
+        "note_edit",
+        json!({"path": "Plan.md", "oldText": "", "newText": "- added\n"}),
+    );
+    let (_, read) = result_of(&store, "note_read", json!({"path": "Plan.md"}));
+    assert!(
+        read["note"]["text"]
+            .as_str()
+            .unwrap()
+            .ends_with("owner: ann\n- added\n")
+    );
+    assert_eq!(read["note"]["hash"], appended["write"]["hash"]);
+}
+
+#[test]
+fn note_edit_refuses_zero_and_two_matches_and_leaves_the_bytes_alone() {
+    let sandbox = Sandbox::new("mcp-note-edit-refuse");
+    let store = sandbox.store();
+    seed(&store, "Plan.md", "Title\ntodo\ntodo\n");
+    let on_disk = sandbox.home().directory().join("bikeshed").join("Plan.md");
+    let before = std::fs::read(&on_disk).unwrap();
+    for (old, word) in [("absent", "not in"), ("todo", "2 times")] {
+        let answer = call(
+            &store,
+            &tool_call(
+                2,
+                "note_edit",
+                json!({"path": "Plan.md", "oldText": old, "newText": "done"}),
+            ),
+        )
+        .expect("the call answers");
+        assert_eq!(answer["result"]["isError"], true, "{answer}");
+        let words = answer["result"]["content"][0]["text"].as_str().unwrap();
+        assert!(words.contains(word), "{words}");
+        assert_eq!(std::fs::read(&on_disk).unwrap(), before, "bytes unchanged");
+    }
 }

@@ -108,6 +108,9 @@ fn tools_list_is_pinned_flag_by_flag_and_field_by_field() {
         "note_tree R-I -",
         "note_read R-I path",
         "note_write -D- path,text",
+        "note_edit -D- path,oldText,newText",
+        "note_search R-I query",
+        "note_backlinks R-I path",
         "note_create --- path",
         "note_create_folder --- path",
         "note_move -D- path,into",
@@ -120,7 +123,7 @@ fn tools_list_is_pinned_flag_by_flag_and_field_by_field() {
 fn a_tool_is_read_only_only_when_its_wire_method_takes_no_write() {
     // The reads, by wire method. Anything not named here is a write, and a
     // write marked read-only is an approval bypass.
-    const READS: [&str; 9] = [
+    const READS: [&str; 11] = [
         "ticket.list",
         "ticket.show",
         "ticket.comment.list",
@@ -130,6 +133,8 @@ fn a_tool_is_read_only_only_when_its_wire_method_takes_no_write() {
         "note.tree",
         "note.read",
         "note.health",
+        "note.search",
+        "note.backlinks",
     ];
     for tool in mcp::tools() {
         assert_eq!(

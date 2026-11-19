@@ -387,6 +387,23 @@ impl NoteMoveView {
     }
 }
 
+/// One search row: the note, and its title or the snippet around the match.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchHitView {
+    pub path: String,
+    pub display: String,
+}
+
+impl SearchHitView {
+    pub fn new(hit: &crate::bikeshed::SearchHit) -> Self {
+        Self {
+            path: hit.path.clone(),
+            display: hit.display.clone(),
+        }
+    }
+}
+
 /// One backlink row: the note that links here, and the line of its first link.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
