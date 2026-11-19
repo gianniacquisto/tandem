@@ -60,6 +60,12 @@ const STATIC_ROUTE: &str = "/static/{*path}";
 /// The change stream: a refused one answers 401, never a redirect.
 const EVENTS_ROUTE: &str = "/events";
 
+/// The operator interface's prefix (CUT-40): the version is in the path.
+pub(super) const OPERATOR_PREFIX: &str = "/operator/v1/";
+pub(super) const OPERATOR_COUNT_ROUTE: &str = "/operator/v1/members/count";
+pub(super) const OPERATOR_MEMBERS_ROUTE: &str = "/operator/v1/members";
+pub(super) const OPERATOR_MEMBER_ROUTE: &str = "/operator/v1/members/{name}";
+
 /// The session cookie. The `__Host-` prefix is the browser's own promise that
 /// it is `Secure`, has `Path=/` and names no `Domain`.
 pub(super) const SESSION_COOKIE: &str = "__Host-tandem_session";
@@ -88,6 +94,9 @@ pub struct Access {
     /// server sits behind a TLS proxy on a public name. `None` leaves every
     /// check exactly as it is without the setting.
     public_origin: Option<String>,
+    /// The hosting provider's operator keys (CUT-40): the current one and the
+    /// next, held as digests only. Empty leaves `/operator/v1` answering `404`.
+    operator_keys: Vec<TokenDigest>,
 }
 
 /// How the bind lets a request in.
@@ -110,6 +119,7 @@ impl Access {
             port,
             mode: Mode::Loopback,
             public_origin: None,
+            operator_keys: Vec::new(),
         }
     }
 
@@ -120,6 +130,7 @@ impl Access {
             port,
             mode: Mode::Open,
             public_origin: None,
+            operator_keys: Vec::new(),
         }
     }
 
@@ -131,7 +142,43 @@ impl Access {
             port,
             mode: Mode::Token(TokenDigest(digest)),
             public_origin: None,
+            operator_keys: Vec::new(),
         }
+    }
+
+    /// Hold the operator key, and the next one beside it so a key rotates
+    /// without downtime (CUT-40). Only digests are kept. The caller has checked
+    /// the length and that neither is the owner token.
+    pub fn with_operator_keys(mut self, current: &str, next: Option<&str>) -> Self {
+        self.operator_keys = std::iter::once(current)
+            .chain(next)
+            .map(|key| TokenDigest(Sha256::digest(key.as_bytes()).into()))
+            .collect();
+        self
+    }
+
+    /// Whether an operator key is configured: without one the whole
+    /// `/operator/v1` family answers `404`.
+    fn has_operator_keys(&self) -> bool {
+        !self.operator_keys.is_empty()
+    }
+
+    /// Whether `presented` is the operator key or the next one: fixed-length
+    /// digests, every key compared with no early exit.
+    fn operator_matches(&self, presented: Option<&str>) -> bool {
+        let Some(presented) = presented else {
+            return false;
+        };
+        let digest: [u8; 32] = Sha256::digest(presented.as_bytes()).into();
+        let mut matched = false;
+        for expected in &self.operator_keys {
+            let mut difference = 0u8;
+            for (left, right) in digest.iter().zip(expected.0.iter()) {
+                difference |= left ^ right;
+            }
+            matched |= difference == 0;
+        }
+        matched
     }
 
     /// Name the one public origin this server answers for behind a TLS proxy.
@@ -326,9 +373,8 @@ pub(super) enum Principal {
     MemberSession(Member),
     /// A personal token: acts as its member, on `/mcp` only.
     MemberToken(Member),
-    /// The hosting provider's narrow key (CUT-40). Nothing resolves to it
-    /// yet; it never acts as a member.
-    #[allow(dead_code)]
+    /// The hosting provider's narrow key (CUT-40): it opens `/operator/v1`
+    /// and nothing else, and never acts as a member.
     Operator,
 }
 
@@ -352,6 +398,9 @@ pub(super) enum Need {
     Public,
     /// The caller must hold this permission.
     Permit(Permission),
+    /// The operator key only (CUT-40): the `/operator/v1` family. No other
+    /// credential holds it, and the operator holds nothing else.
+    Operator,
 }
 
 /// Every route and the permission it needs: the one map (CUT-39). The guard
@@ -387,6 +436,9 @@ pub(super) const ROUTE_NEEDS: &[(&str, Need)] = &[
     ("/notes/rename", Need::Permit(Permission::Board)),
     ("/notes/delete", Need::Permit(Permission::Board)),
     ("/notes/restore", Need::Permit(Permission::Board)),
+    (OPERATOR_COUNT_ROUTE, Need::Operator),
+    (OPERATOR_MEMBERS_ROUTE, Need::Operator),
+    (OPERATOR_MEMBER_ROUTE, Need::Operator),
 ];
 
 /// The need a route has, or `None` for a route the table does not name.
@@ -413,6 +465,13 @@ pub(super) fn authorize(principal: &Principal, route: &str, matched: bool) -> Op
         None if !matched => None,
         None => Some(refuse_access(route, "the route has no permission mapped")),
         Some(Need::Public) => None,
+        Some(Need::Operator) => {
+            if matches!(principal, Principal::Operator) {
+                None
+            } else {
+                Some(refuse_access(route, "the route needs the operator key"))
+            }
+        }
         Some(Need::Permit(permission)) => {
             if permits(principal.kind(), permission) {
                 None
@@ -656,6 +715,29 @@ pub(super) async fn access_guard(mut request: Request, next: Next) -> Response {
         .unwrap_or_else(|| request.uri().path().to_string());
     let method = request.method().clone();
 
+    // The operator key (CUT-40) is a credential of its own: it is looked for
+    // first, opens `/operator/v1` and nothing else (`admit` refuses it
+    // elsewhere), and the family opens to no other credential.
+    let family = route.starts_with(OPERATOR_PREFIX);
+    if family && !access.has_operator_keys() {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    if access.operator_matches(Access::bearer(request.headers())) {
+        let principal = Principal::Operator;
+        if family && let Some(denied) = authorize(&principal, &route, matched) {
+            return denied;
+        }
+        request.extensions_mut().insert(principal);
+        return finish(access, route, method, request, next, false, None).await;
+    }
+    if family {
+        return refuse_json(
+            StatusCode::UNAUTHORIZED,
+            "unauthorized",
+            "the operator key is missing or refused",
+        );
+    }
+
     // Who is this request, in token mode: the owner's bearer, a personal token,
     // a live session cookie, or a route that is exempt by name.
     let mut cookie_authenticated = false;
@@ -802,7 +884,18 @@ async fn finish(
     refreshed: Option<String>,
 ) -> Response {
     let require_origin = cookie_authenticated || (access.is_token() && route == LOGIN_ROUTE);
-    if let Some(denied) = admit(&access, &route, &method, request.headers(), require_origin) {
+    let operator = matches!(
+        request.extensions().get::<Principal>(),
+        Some(Principal::Operator)
+    );
+    if let Some(denied) = admit(
+        &access,
+        &route,
+        &method,
+        request.headers(),
+        require_origin,
+        operator,
+    ) {
         return denied;
     }
     let mut response = next.run(request).await;
@@ -866,6 +959,7 @@ fn admit(
     method: &Method,
     headers: &HeaderMap,
     require_origin: bool,
+    operator: bool,
 ) -> Option<Response> {
     if matches!(access.mode, Mode::Loopback) {
         let host = headers
@@ -880,6 +974,18 @@ fn admit(
             ));
         }
     }
+    // Default deny: the operator key admits the family's names and no other
+    // route, so a later route cannot inherit it.
+    if operator && !route.starts_with(OPERATOR_PREFIX) {
+        return Some(refuse_json(
+            StatusCode::UNAUTHORIZED,
+            "unauthorized",
+            "the operator key admits only /operator/v1",
+        ));
+    }
+    if route.starts_with(OPERATOR_PREFIX) {
+        return operator_policy(method, headers);
+    }
     if route == HEALTH_ROUTE {
         return None;
     }
@@ -888,6 +994,28 @@ fn admit(
     } else {
         form_policy(access, method, headers, require_origin)
     }
+}
+
+/// `/operator/v1` (CUT-40): not a browser door. An `Origin` header of any
+/// value is refused, a body is JSON, and no CORS header is ever answered.
+fn operator_policy(method: &Method, headers: &HeaderMap) -> Option<Response> {
+    if headers.contains_key(header::ORIGIN) {
+        return Some(refuse_json(
+            StatusCode::FORBIDDEN,
+            "the operator interface is not a browser door",
+            "an operator request carried an Origin header",
+        ));
+    }
+    if matches!(*method, Method::POST | Method::PATCH)
+        && !media_type_is(headers, "application/json")
+    {
+        return Some(refuse_json(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "the request must be application/json",
+            "the content type is not json",
+        ));
+    }
+    None
 }
 
 /// `/mcp`: a loopback or absent `Origin` and, for the one method it answers, a
@@ -975,6 +1103,18 @@ fn refuse_origin(access: &Access, reason: &str) -> Response {
     (
         StatusCode::FORBIDDEN,
         "the request came from another origin\n",
+    )
+        .into_response()
+}
+
+/// One refusal as JSON, for the operator interface: the status, a short reason
+/// the client may read, and a log line that names no value.
+pub(super) fn refuse_json(status: StatusCode, body: &str, reason: &str) -> Response {
+    tracing::warn!(reason, "request refused");
+    (
+        status,
+        [(header::CONTENT_TYPE, "application/json")],
+        serde_json::json!({ "error": body }).to_string(),
     )
         .into_response()
 }

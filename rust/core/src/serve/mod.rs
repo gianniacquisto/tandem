@@ -56,6 +56,7 @@ mod login;
 mod markdown;
 mod mcp;
 mod notes;
+mod operator;
 mod sheet;
 
 /// How often the watch stats the store's files. Short enough that a face
@@ -341,6 +342,12 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/tickets/{id}/label", post(sheet::move_to_label))
         .route("/labels", post(board::add_label))
         .route("/labels/{name}/rename", post(board::rename_label))
+        .route("/operator/v1/members/count", get(operator::count))
+        .route("/operator/v1/members", post(operator::add))
+        .route(
+            "/operator/v1/members/{name}",
+            axum::routing::patch(operator::set_role).delete(operator::remove),
+        )
         .route("/notes", get(notes::notes_page))
         .route("/notes/view", get(notes::note_view))
         .route("/notes/edit", get(notes::note_edit))

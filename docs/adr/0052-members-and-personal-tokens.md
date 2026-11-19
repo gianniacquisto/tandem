@@ -69,4 +69,5 @@ By quotation, in the same change, with the text checked against the files:
 - The owner credential is a standing all-powers credential held by whoever runs the process. That cost is accepted and stated here.
 - A migrated store is refused by an older binary, as with every migration.
 - A member's browser session export is bound to the admin role by CUT-39 (part 2 above); a personal token never reaches it.
+- The operator interface (CUT-40) is built: see [operator.md](../operator.md) for its routes, key, rotation and what the key can and cannot reach.
 - Part 2 to part 5 (CUT-39 to CUT-42) add the permission function, the operator interface, the personal tokens screen and the People screen.

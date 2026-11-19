@@ -1080,6 +1080,51 @@ where
 /// off loopback and for the remote CLI. Never a flag value, never stored.
 const TOKEN_VARIABLE: &str = "TANDEM_TOKEN";
 
+/// The environment variables that carry the operator key and the next one
+/// (CUT-40). Never flag values, never stored.
+const OPERATOR_KEY_VARIABLE: &str = "TANDEM_OPERATOR_KEY";
+const OPERATOR_KEY_NEXT_VARIABLE: &str = "TANDEM_OPERATOR_KEY_NEXT";
+
+/// The operator key and its rotation partner from the environment: each at least
+/// [`MIN_TOKEN_LENGTH`] characters, never the owner token, and the next only
+/// beside a current one. An empty variable is unset. A refusal names the
+/// variable and the rule, never a value.
+fn resolve_operator_keys(
+    key: Option<String>,
+    next: Option<String>,
+    owner_token: Option<&str>,
+) -> Result<Option<(String, Option<String>)>, Failure> {
+    let refuse = |message: String| Failure {
+        message: format!("tandem serve: {message}"),
+        exit: 2,
+    };
+    let key = key.filter(|value| !value.is_empty());
+    let next = next.filter(|value| !value.is_empty());
+    for (name, value) in [
+        (OPERATOR_KEY_VARIABLE, &key),
+        (OPERATOR_KEY_NEXT_VARIABLE, &next),
+    ] {
+        let Some(value) = value else { continue };
+        if value.chars().count() < MIN_TOKEN_LENGTH {
+            return Err(refuse(format!(
+                "{name} must be at least {MIN_TOKEN_LENGTH} characters."
+            )));
+        }
+        if owner_token == Some(value.as_str()) {
+            return Err(refuse(format!(
+                "{name} must not be {TOKEN_VARIABLE}: the operator key is its own credential."
+            )));
+        }
+    }
+    match (key, next) {
+        (None, None) => Ok(None),
+        (None, Some(_)) => Err(refuse(format!(
+            "{OPERATOR_KEY_NEXT_VARIABLE} is set without {OPERATOR_KEY_VARIABLE}."
+        ))),
+        (Some(key), next) => Ok(Some((key, next))),
+    }
+}
+
 /// The environment variable that carries the public origin when no flag does.
 const PUBLIC_ORIGIN_VARIABLE: &str = "TANDEM_PUBLIC_ORIGIN";
 
@@ -1173,6 +1218,11 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
             }
         }
     };
+    let operator_keys = resolve_operator_keys(
+        env::var(OPERATOR_KEY_VARIABLE).ok(),
+        env::var(OPERATOR_KEY_NEXT_VARIABLE).ok(),
+        env::var(TOKEN_VARIABLE).ok().as_deref(),
+    )?;
     // Open mode checks no credential, so it would silently ignore the members of
     // a team workspace and every role. A home that holds members refuses to
     // start there (ADR 0052); one that cannot be read refuses too.
@@ -1242,6 +1292,9 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
             None if host.is_loopback() => tandem_core::serve::Access::loopback(address.port()),
             None => tandem_core::serve::Access::open(address.port()),
         };
+        if let Some((key, next)) = &operator_keys {
+            access = access.with_operator_keys(key, next.as_deref());
+        }
         if let Some(origin) = &public_origin {
             access = access.with_public_origin(origin).map_err(|reason| {
                 Failure::message(format!("tandem serve: the public origin {reason}"))

@@ -5156,6 +5156,8 @@ async fn a_personal_token_is_refused_403_on_every_route_but_mcp_and_health() {
         .skip(1)
         .filter_map(|rest| rest.trim_start().strip_prefix('"')?.split('"').next())
         .collect();
+    // The operator family is not a member's to reach: its own tests walk it.
+    declared.retain(|route| !route.starts_with(guard::OPERATOR_PREFIX));
     declared.sort_unstable();
     declared.dedup();
     let mut covered: Vec<&str> = ROUTE_TABLE
@@ -6322,4 +6324,703 @@ async fn a_refused_act_logs_its_reason_and_no_value_and_writes_no_row() {
         before,
         "a refused attempt writes no row"
     );
+}
+
+// MARK: - The operator interface (CUT-40)
+
+const OPERATOR_KEY: &str = "operator-key-operator-key-operator-key-0001";
+const OPERATOR_NEXT: &str = "operator-next-operator-next-operator-next-02";
+
+fn operator_app(store: Store, key: &str, next: Option<&str>) -> Router {
+    router(SessionContext {
+        access: Access::token(7700, TOKEN).with_operator_keys(key, next),
+        ..context(store)
+    })
+}
+
+fn operator_request(
+    method: &str,
+    uri: &str,
+    key: Option<&str>,
+    body: Option<&str>,
+) -> Request<Body> {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::HOST, REMOTE_HOST);
+    if let Some(key) = key {
+        builder = builder.header(header::AUTHORIZATION, format!("Bearer {key}"));
+    }
+    match body {
+        Some(body) => builder
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(body.to_string())),
+        None => builder.body(Body::empty()),
+    }
+    .expect("the request builds")
+}
+
+async fn operator_send(
+    app: &Router,
+    method: &str,
+    uri: &str,
+    body: Option<&str>,
+) -> (StatusCode, serde_json::Value) {
+    let (status, _, text) =
+        send(app, operator_request(method, uri, Some(OPERATOR_KEY), body)).await;
+    let value = serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
+    (status, value)
+}
+
+fn operator_rows(store: &Store) -> Vec<crate::store::AccessRow> {
+    store
+        .access_record()
+        .unwrap()
+        .into_iter()
+        .filter(|row| row.actor == "operator")
+        .collect()
+}
+
+#[tokio::test]
+async fn the_operator_key_adds_changes_the_role_of_removes_and_counts_members() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("operator-acts");
+    let store = sandbox.store();
+    let app = operator_app(store.clone(), OPERATOR_KEY, None);
+
+    let (status, body) = operator_send(&app, "GET", "/operator/v1/members/count", None).await;
+    assert_eq!(
+        (status, body),
+        (StatusCode::OK, serde_json::json!({"members": 0}))
+    );
+
+    let (status, body) = operator_send(
+        &app,
+        "POST",
+        "/operator/v1/members",
+        Some(r#"{"name":"ada","role":"admin"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(body["name"], "ada");
+    assert_eq!(body["role"], "admin");
+    let (status, _) = operator_send(
+        &app,
+        "POST",
+        "/operator/v1/members",
+        Some(r#"{"name":"bo","role":"member"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (_, body) = operator_send(&app, "GET", "/operator/v1/members/count", None).await;
+    assert_eq!(body, serde_json::json!({"members": 2}));
+
+    let (status, body) = operator_send(
+        &app,
+        "PATCH",
+        "/operator/v1/members/bo",
+        Some(r#"{"role":"admin"}"#),
+    )
+    .await;
+    assert_eq!(
+        (status, &body["role"]),
+        (StatusCode::OK, &serde_json::json!("admin"))
+    );
+    assert_eq!(
+        store.member_find("bo").unwrap().map(|member| member.role),
+        Some(crate::store::Role::Admin)
+    );
+    let (status, _) = operator_send(
+        &app,
+        "PATCH",
+        "/operator/v1/members/nobody",
+        Some(r#"{"role":"member"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    let (status, body) = operator_send(&app, "DELETE", "/operator/v1/members/bo", None).await;
+    assert_eq!(
+        (status, &body["removed"]),
+        (StatusCode::OK, &serde_json::json!(true))
+    );
+    assert_eq!(store.member_find("bo").unwrap(), None);
+    let (status, _) = operator_send(&app, "DELETE", "/operator/v1/members/bo", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "a removed member is gone");
+    let (_, body) = operator_send(&app, "GET", "/operator/v1/members/count", None).await;
+    assert_eq!(body, serde_json::json!({"members": 1}));
+}
+
+#[tokio::test]
+async fn the_count_is_a_number_and_nothing_else() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("operator-count");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = operator_app(store.clone(), OPERATOR_KEY, None);
+    let before = store.access_record().unwrap();
+
+    let (status, headers, body) = send(
+        &app,
+        operator_request(
+            "GET",
+            "/operator/v1/members/count",
+            Some(OPERATOR_KEY),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, r#"{"members":2}"#, "a number and nothing else");
+    assert!(
+        !body.contains("alice") && !body.contains(&team.alice_token),
+        "{body}"
+    );
+    assert!(
+        !headers.contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN),
+        "no CORS header"
+    );
+    assert_eq!(
+        store.access_record().unwrap(),
+        before,
+        "a count is read-only and writes no row"
+    );
+}
+
+#[tokio::test]
+async fn the_add_response_carries_no_secret() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("operator-no-secret");
+    let store = sandbox.store();
+    let app = operator_app(store.clone(), OPERATOR_KEY, None);
+
+    let (status, headers, body) = send(
+        &app,
+        operator_request(
+            "POST",
+            "/operator/v1/members",
+            Some(OPERATOR_KEY),
+            Some(r#"{"name":"ada","role":"admin"}"#),
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let value: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let mut keys: Vec<&str> = value
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["id", "name", "role"], "{body}");
+    for needle in ["tdm_", "tdk_", "token", "key", OPERATOR_KEY] {
+        assert!(!body.contains(needle), "{needle}: {body}");
+    }
+    assert!(
+        headers.get(header::SET_COOKIE).is_none(),
+        "no session is opened for the new member"
+    );
+    assert!(
+        store.member_tokens("ada").unwrap().is_empty(),
+        "no credential was issued"
+    );
+}
+
+#[tokio::test]
+async fn the_operator_key_is_refused_on_every_board_events_static_export_and_mcp_route() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("operator-deny");
+    let store = sandbox.store();
+    let app = operator_app(store.clone(), OPERATOR_KEY, None);
+
+    let mut checked = 0;
+    for (route, need) in guard::ROUTE_NEEDS {
+        let in_family = route.starts_with(guard::OPERATOR_PREFIX);
+        assert_eq!(
+            *need == guard::Need::Operator,
+            in_family,
+            "{route}: only the family takes the operator key, and the whole family does"
+        );
+        if in_family {
+            continue;
+        }
+        let path = route
+            .replace("{id}", "x")
+            .replace("{name}", "x")
+            .replace("{*path}", "x.css");
+        for method in ["GET", "POST", "DELETE"] {
+            let body = (method == "POST").then_some("{}");
+            let (status, _, text) = send(
+                &app,
+                operator_request(method, &path, Some(OPERATOR_KEY), body),
+            )
+            .await;
+            assert_eq!(
+                status,
+                StatusCode::UNAUTHORIZED,
+                "{method} {path} is not the operator's: {text}"
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 60, "the table was walked: {checked}");
+    assert_eq!(
+        operator_send(&app, "GET", "/nowhere", None).await.0,
+        StatusCode::UNAUTHORIZED,
+        "a path no route names is refused too"
+    );
+    assert!(store.access_record().unwrap().is_empty(), "no row");
+}
+
+#[tokio::test]
+async fn a_member_token_a_member_session_and_the_owner_token_never_open_the_operator_routes() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("operator-others");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = operator_app(store.clone(), OPERATOR_KEY, None);
+    let cookie = sign_in_with(&app, &team.alice_key).await;
+    let before = store.access_record().unwrap();
+
+    let routes = [
+        ("GET", "/operator/v1/members/count", None),
+        (
+            "POST",
+            "/operator/v1/members",
+            Some(r#"{"name":"eve","role":"admin"}"#),
+        ),
+        (
+            "PATCH",
+            "/operator/v1/members/bob",
+            Some(r#"{"role":"admin"}"#),
+        ),
+        ("DELETE", "/operator/v1/members/bob", None),
+    ];
+    for (method, uri, body) in routes {
+        for credential in [
+            Some(team.alice_token.as_str()),
+            Some(team.bob_token.as_str()),
+            Some(team.alice_key.as_str()),
+            Some(TOKEN),
+            None,
+        ] {
+            let (status, _, text) =
+                send(&app, operator_request(method, uri, credential, body)).await;
+            assert_eq!(status, StatusCode::UNAUTHORIZED, "{method} {uri}: {text}");
+        }
+        let mut request = operator_request(method, uri, None, body);
+        request
+            .headers_mut()
+            .insert(header::COOKIE, cookie.parse().unwrap());
+        let (status, _, text) = send(&app, request).await;
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "a session: {method} {uri}: {text}"
+        );
+    }
+    assert_eq!(store.members().unwrap().len(), 2, "nothing changed");
+    assert_eq!(store.access_record().unwrap(), before);
+}
+
+#[tokio::test]
+async fn the_operator_cannot_remove_or_demote_the_last_admin() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("operator-last-admin");
+    let store = sandbox.store();
+    let _team = team(&store);
+    let app = operator_app(store.clone(), OPERATOR_KEY, None);
+    let before = store.access_record().unwrap();
+
+    let (status, body) = operator_send(&app, "DELETE", "/operator/v1/members/alice", None).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(body["error"].as_str().unwrap().contains("last admin"));
+    let (status, _) = operator_send(
+        &app,
+        "PATCH",
+        "/operator/v1/members/alice",
+        Some(r#"{"role":"member"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(
+        store
+            .member_find("alice")
+            .unwrap()
+            .map(|member| member.role),
+        Some(crate::store::Role::Admin)
+    );
+    assert_eq!(
+        store.access_record().unwrap(),
+        before,
+        "a refusal writes no row"
+    );
+
+    // With a second admin the first may go.
+    let (status, _) = operator_send(
+        &app,
+        "PATCH",
+        "/operator/v1/members/bob",
+        Some(r#"{"role":"admin"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = operator_send(&app, "DELETE", "/operator/v1/members/alice", None).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn every_operator_act_writes_one_access_record_row_as_operator_in_the_same_transaction() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("operator-rows");
+    let store = sandbox.store();
+    let app = operator_app(store.clone(), OPERATOR_KEY, None);
+
+    let acts: [(&str, &str, Option<&str>, &str, &str); 3] = [
+        (
+            "POST",
+            "/operator/v1/members",
+            Some(r#"{"name":"ada","role":"admin"}"#),
+            "member-added",
+            "ada",
+        ),
+        (
+            "PATCH",
+            "/operator/v1/members/ada",
+            Some(r#"{"role":"member"}"#),
+            "member-role-changed",
+            "ada",
+        ),
+        (
+            "DELETE",
+            "/operator/v1/members/ada",
+            None,
+            "member-removed",
+            "ada",
+        ),
+    ];
+    // A second admin so the first can be demoted and removed.
+    store
+        .member_add("zed", crate::store::Role::Admin, NOW)
+        .unwrap();
+    let mut seen = 0;
+    for (method, uri, body, event, target) in acts {
+        let (status, _) = operator_send(&app, method, uri, body).await;
+        assert!(status.is_success(), "{method} {uri}: {status}");
+        let rows = operator_rows(&store);
+        assert_eq!(rows.len(), seen + 1, "one row per act: {rows:?}");
+        let row = rows.last().unwrap();
+        assert_eq!(row.actor, "operator");
+        assert_eq!(row.credential, "operator");
+        assert_eq!(row.event, event);
+        assert_eq!(row.target.as_deref(), Some(target));
+        seen += 1;
+    }
+    // The change and its row are one write: a refused act leaves neither.
+    let (status, _) = operator_send(&app, "DELETE", "/operator/v1/members/zed", None).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(operator_rows(&store).len(), seen);
+    assert!(store.member_find("zed").unwrap().is_some());
+    // A rejected request writes no row.
+    send(
+        &app,
+        operator_request(
+            "DELETE",
+            "/operator/v1/members/zed",
+            Some("wrong-key"),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(operator_rows(&store).len(), seen);
+}
+
+#[tokio::test]
+async fn reserved_and_duplicate_and_malformed_names_are_refused() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("operator-names");
+    let store = sandbox.store();
+    let app = operator_app(store.clone(), OPERATOR_KEY, None);
+    let add = |name: &str, role: &str| format!(r#"{{"name":"{name}","role":"{role}"}}"#);
+
+    for name in [
+        "operator",
+        "human",
+        "owner",
+        "Ada",
+        "has space",
+        "",
+        &"a".repeat(65),
+    ] {
+        let (status, body) = operator_send(
+            &app,
+            "POST",
+            "/operator/v1/members",
+            Some(&add(name, "admin")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{name:?}: {body}");
+    }
+    let (status, _) = operator_send(
+        &app,
+        "POST",
+        "/operator/v1/members",
+        Some(&add("ada", "admin")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, _) = operator_send(
+        &app,
+        "POST",
+        "/operator/v1/members",
+        Some(&add("ada", "admin")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "a duplicate name");
+    store
+        .member_add("zed", crate::store::Role::Admin, NOW)
+        .unwrap();
+    operator_send(&app, "DELETE", "/operator/v1/members/ada", None).await;
+    let (status, _) = operator_send(
+        &app,
+        "POST",
+        "/operator/v1/members",
+        Some(&add("ada", "member")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "a name is never reused");
+
+    for body in [
+        "not json",
+        r#"{"name":"cy"}"#,
+        r#"{"name":"cy","role":"owner"}"#,
+        r#"{"name":"cy","role":"member","extra":1}"#,
+        r#"{"name":7,"role":"member"}"#,
+    ] {
+        let (status, _) = operator_send(&app, "POST", "/operator/v1/members", Some(body)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    }
+    let (status, _, _) = send(
+        &app,
+        Request::builder()
+            .method("POST")
+            .uri("/operator/v1/members")
+            .header(header::HOST, REMOTE_HOST)
+            .header(header::AUTHORIZATION, format!("Bearer {OPERATOR_KEY}"))
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from("name=cy&role=member"))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(store.members().unwrap().len(), 1, "only zed is a member");
+}
+
+#[tokio::test]
+async fn the_operators_first_member_must_be_an_admin() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("operator-first-admin");
+    let store = sandbox.store();
+    let app = operator_app(store.clone(), OPERATOR_KEY, None);
+
+    let (status, body) = operator_send(
+        &app,
+        "POST",
+        "/operator/v1/members",
+        Some(r#"{"name":"bo","role":"member"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("first member must be an admin")
+    );
+    assert!(store.members().unwrap().is_empty());
+    assert!(
+        store.access_record().unwrap().is_empty(),
+        "a refusal writes no row"
+    );
+    assert!(
+        !store.team_mode().unwrap(),
+        "the home stays out of team mode"
+    );
+
+    let (status, _) = operator_send(
+        &app,
+        "POST",
+        "/operator/v1/members",
+        Some(r#"{"name":"ada","role":"admin"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (status, _) = operator_send(
+        &app,
+        "POST",
+        "/operator/v1/members",
+        Some(r#"{"name":"bo","role":"member"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "a member may follow an admin");
+}
+
+#[tokio::test]
+async fn without_an_operator_key_the_family_answers_404() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("operator-off");
+    let store = sandbox.store();
+    let app = remote_app(store.clone(), TOKEN);
+
+    for (method, uri) in [
+        ("GET", "/operator/v1/members/count"),
+        ("POST", "/operator/v1/members"),
+        ("PATCH", "/operator/v1/members/ada"),
+        ("DELETE", "/operator/v1/members/ada"),
+    ] {
+        for credential in [None, Some(OPERATOR_KEY), Some(TOKEN)] {
+            let body = (method != "GET" && method != "DELETE").then_some(r#"{"role":"admin"}"#);
+            let (status, _, _) = send(&app, operator_request(method, uri, credential, body)).await;
+            assert_eq!(status, StatusCode::NOT_FOUND, "{method} {uri}");
+        }
+    }
+    let loopback = router(context(sandbox.store()));
+    let (status, _, _) = send(
+        &loopback,
+        Request::builder()
+            .uri("/operator/v1/members/count")
+            .header(header::HOST, "127.0.0.1:7700")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn the_next_key_is_accepted_beside_the_current_one() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("operator-next");
+    let store = sandbox.store();
+    let app = operator_app(store, OPERATOR_KEY, Some(OPERATOR_NEXT));
+
+    for key in [OPERATOR_KEY, OPERATOR_NEXT] {
+        let (status, _, body) = send(
+            &app,
+            operator_request("GET", "/operator/v1/members/count", Some(key), None),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+    let (status, _, _) = send(
+        &app,
+        operator_request(
+            "GET",
+            "/operator/v1/members/count",
+            Some("a-third-key"),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    // The next key is the operator's too, so it opens nothing else.
+    let (status, _, _) = send(&app, bearer_get("/board", OPERATOR_NEXT)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn an_operator_request_with_an_origin_header_or_an_agent_header_is_refused_or_ignored() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("operator-headers");
+    let store = sandbox.store();
+    let app = operator_app(store.clone(), OPERATOR_KEY, None);
+
+    for origin in [REMOTE_ORIGIN, "null", "http://127.0.0.1:7700"] {
+        let mut request = operator_request(
+            "POST",
+            "/operator/v1/members",
+            Some(OPERATOR_KEY),
+            Some(r#"{"name":"ada","role":"admin"}"#),
+        );
+        request
+            .headers_mut()
+            .insert(header::ORIGIN, origin.parse().unwrap());
+        let (status, headers, _) = send(&app, request).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{origin}");
+        assert!(!headers.contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN));
+    }
+    assert!(store.members().unwrap().is_empty(), "nothing was added");
+
+    // The agent header is ignored, valid or not: the actor stays the operator.
+    for agent in ["bob", "human", "NOT VALID!"] {
+        let mut request = operator_request(
+            "POST",
+            "/operator/v1/members",
+            Some(OPERATOR_KEY),
+            Some(&format!(r#"{{"name":"m-{}","role":"admin"}}"#, agent.len())),
+        );
+        request
+            .headers_mut()
+            .insert("x-tandem-agent", agent.parse().unwrap());
+        let (status, _, body) = send(&app, request).await;
+        assert_eq!(status, StatusCode::CREATED, "{agent}: {body}");
+    }
+    let rows = operator_rows(&store);
+    assert_eq!(rows.len(), 3);
+    assert!(rows.iter().all(|row| row.actor == "operator"));
+}
+
+#[tokio::test]
+async fn the_operator_key_is_never_logged() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("operator-log");
+    let store = sandbox.store();
+    let app = operator_app(store, OPERATOR_KEY, Some(OPERATOR_NEXT));
+    let captured = Captured::default();
+    let _guard = captured.install();
+    let wrong = "wrong-operator-key-wrong-operator-key";
+
+    for key in [OPERATOR_KEY, OPERATOR_NEXT, wrong] {
+        send(
+            &app,
+            operator_request(
+                "POST",
+                "/operator/v1/members",
+                Some(key),
+                Some(r#"{"name":"ada","role":"admin"}"#),
+            ),
+        )
+        .await;
+        send(&app, bearer_get("/board", key)).await;
+        send(
+            &app,
+            operator_request("GET", "/operator/v1/members/count", Some(key), None),
+        )
+        .await;
+    }
+    let mut origin = operator_request(
+        "GET",
+        "/operator/v1/members/count",
+        Some(OPERATOR_KEY),
+        None,
+    );
+    origin
+        .headers_mut()
+        .insert(header::ORIGIN, "https://evil.example".parse().unwrap());
+    send(&app, origin).await;
+
+    let text = captured.text();
+    assert!(
+        text.contains("operator"),
+        "the refusals log a reason: {text}"
+    );
+    for secret in [OPERATOR_KEY, OPERATOR_NEXT, wrong, "evil.example"] {
+        assert!(!text.contains(secret), "{secret}: {text}");
+        assert!(
+            !text.contains(&crate::store::credential_digest(secret)),
+            "digest"
+        );
+    }
+    assert!(!text.to_lowercase().contains("bearer"), "{text}");
 }

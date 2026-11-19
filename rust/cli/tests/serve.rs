@@ -342,6 +342,53 @@ fn serve_refuses_a_non_loopback_host_without_a_token_or_the_flag() {
 }
 
 #[test]
+fn the_operator_key_below_32_characters_refuses_to_start() {
+    let sandbox = Sandbox::new("short-operator-key");
+    let short = "k".repeat(31);
+    for (variable, extra) in [
+        ("TANDEM_OPERATOR_KEY", None),
+        (
+            "TANDEM_OPERATOR_KEY_NEXT",
+            Some(("TANDEM_OPERATOR_KEY", "c".repeat(32))),
+        ),
+    ] {
+        let mut command = sandbox.command();
+        command
+            .args(["serve", "--port", "0"])
+            .env_remove("TANDEM_TOKEN")
+            .env(variable, &short)
+            .stdin(Stdio::null());
+        if let Some((name, value)) = &extra {
+            command.env(name, value);
+        }
+        let output = command.output().expect("the binary runs");
+        assert_eq!(
+            output.status.code(),
+            Some(2),
+            "{variable}: a 31-character key is refused before binding"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains(variable) && stderr.contains("at least 32"),
+            "the refusal names the variable and the rule: {stderr}"
+        );
+        assert!(!stderr.contains(&short), "the key is not echoed: {stderr}");
+    }
+    // The owner token is never the operator key.
+    let same = "s".repeat(32);
+    let output = sandbox
+        .command()
+        .args(["serve", "--port", "0"])
+        .env("TANDEM_TOKEN", &same)
+        .env("TANDEM_OPERATOR_KEY", &same)
+        .stdin(Stdio::null())
+        .output()
+        .expect("the binary runs");
+    assert_eq!(output.status.code(), Some(2));
+    assert!(!String::from_utf8_lossy(&output.stderr).contains(&same));
+}
+
+#[test]
 fn serve_refuses_a_non_loopback_host_with_a_short_token() {
     let sandbox = Sandbox::new("short-token");
     let short = "x".repeat(31);
