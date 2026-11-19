@@ -38,6 +38,7 @@ mod browser_sessions;
 mod diagnostics;
 mod export;
 mod home;
+mod members;
 // Reachable from the schema suite, which builds a v2 home to prove a read of
 // an older file never fails on a column a later migration adds.
 pub(crate) mod schema;
@@ -56,12 +57,18 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
 
-pub use browser_sessions::{SESSION_IDLE_SECONDS, SESSION_TOUCH_SECONDS, SessionCheck};
+pub use browser_sessions::{
+    SESSION_IDLE_SECONDS, SESSION_TOUCH_SECONDS, SessionCheck, SessionLookup,
+};
 pub use diagnostics::{BackupHealth, Health, Pages, References, StoreInspection};
 #[cfg(test)]
 pub(crate) use export::inspect_with;
 pub use export::{ExportCopy, Inspection, Refusal, inspect_unpacked};
 pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
+pub use members::{
+    CredentialKind, IssuedCredential, Member, MemberError, Role, SIGNIN_KEY_PREFIX, TOKEN_PREFIX,
+    TokenInfo, credential_digest, credential_kind, credentials_changed, member_name_rule,
+};
 pub use schema::CURRENT_VERSION;
 pub use write::{NewComment, NewDependency, NewLabel, NewProject, NewTicket, Write};
 

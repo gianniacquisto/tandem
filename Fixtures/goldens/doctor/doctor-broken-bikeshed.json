@@ -35,7 +35,7 @@
         "ok": true
       },
       {
-        "detail": "binary 2.0.0; this build writes schema v13; no store yet",
+        "detail": "binary 2.0.0; this build writes schema v14; no store yet",
         "name": "versions",
         "ok": true
       },

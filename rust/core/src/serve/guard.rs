@@ -14,6 +14,11 @@
 //!   into a session cookie, and the guard accepts that cookie where it accepts
 //!   the bearer header, except on `/mcp`. The login routes and `GET /static/*`
 //!   are exempt from the token by name, like `/health`.
+//! - **Who the request is, decided once** (ADR 0052): the guard resolves every
+//!   request into one [`Principal`] and leaves it in the request's extensions.
+//!   `ResolveContext::resolve` only reads it. A personal token (`tdm_`) is
+//!   admitted on `/mcp` and `/health` only; a sign-in key (`tdk_`) is accepted
+//!   at `POST /login` and never as a bearer; `TANDEM_TOKEN` is the owner.
 //! - **The route decides the shape.** `/mcp` takes JSON from no foreign origin;
 //!   every other write takes a same-origin form.
 //!
@@ -25,7 +30,11 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use sha2::{Digest, Sha256};
 
-use crate::store::{SESSION_IDLE_SECONDS, SessionCheck, Store, unix_now};
+use crate::store::{
+    Member, SESSION_IDLE_SECONDS, SessionCheck, SessionLookup, Store, credential_kind, unix_now,
+};
+
+use super::login::LoginThrottle;
 
 /// The route that carries the MCP transport.
 pub(super) const MCP_ROUTE: &str = "/mcp";
@@ -234,6 +243,14 @@ impl Access {
         self.digest_matches(presented)
     }
 
+    /// The bearer value the request presents, whatever it is.
+    fn bearer(headers: &HeaderMap) -> Option<&str> {
+        headers
+            .get(header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.strip_prefix("Bearer "))
+    }
+
     fn digest_matches(&self, presented: Option<&str>) -> bool {
         let Mode::Token(expected) = &self.mode else {
             return true;
@@ -292,6 +309,24 @@ pub(super) struct Session {
     pub(super) digest: String,
 }
 
+/// Who a request is. The one closed kind the guard resolves and everything
+/// after reads (ADR 0052): no handler or tool looks at `Authorization` or the
+/// cookie.
+#[derive(Debug, Clone)]
+pub(super) enum Principal {
+    /// Whoever holds the server: loopback, `--allow-unauthenticated`, the
+    /// `TANDEM_TOKEN` holder, and an owner browser session.
+    Owner,
+    /// A browser session that belongs to a member.
+    MemberSession(Member),
+    /// A personal token: acts as its member, on `/mcp` only.
+    MemberToken(Member),
+    /// The hosting provider's narrow key (CUT-40). Nothing resolves to it
+    /// yet; it never acts as a member.
+    #[allow(dead_code)]
+    Operator,
+}
+
 /// A same-origin path to return to after sign-in, else `/`: one leading `/`, a
 /// second character that is neither `/` nor a backslash, no control character.
 pub(super) fn return_target(raw: &str) -> String {
@@ -312,25 +347,29 @@ pub(super) fn return_target(raw: &str) -> String {
 
 /// Look a cookie's session up: fail closed, so a locked store, a missing table
 /// or a join error is a signed-out request.
-async fn lookup(access: &Access, store: &Store, cookie: &str, touch: bool) -> SessionCheck {
+async fn lookup(access: &Access, store: &Store, cookie: &str, touch: bool) -> SessionLookup {
+    let missing = SessionLookup {
+        check: SessionCheck::Missing,
+        member: None,
+    };
     let Some(id) = decode_session_id(cookie) else {
-        return SessionCheck::Missing;
+        return missing;
     };
     let Some(digest) = access.session_digest(&id) else {
-        return SessionCheck::Missing;
+        return missing;
     };
     let store = store.clone();
     match tokio::task::spawn_blocking(move || {
-        store.browser_session_check(&digest, unix_now(), touch)
+        store.browser_session_lookup(&digest, unix_now(), touch)
     })
     .await
     {
-        Ok(Ok(check)) => check,
+        Ok(Ok(found)) => found,
         Ok(Err(error)) => {
             tracing::warn!(error = ?error, "the session lookup failed; the request is signed out");
-            SessionCheck::Missing
+            missing
         }
-        Err(_) => SessionCheck::Missing,
+        Err(_) => missing,
     }
 }
 
@@ -470,12 +509,45 @@ pub(super) async fn access_guard(mut request: Request, next: Next) -> Response {
         .unwrap_or_else(|| request.uri().path().to_string());
     let method = request.method().clone();
 
-    // Who is this request, in token mode: a bearer, a live session cookie, or a
-    // route that is exempt by name.
+    // Who is this request, in token mode: the owner's bearer, a personal token,
+    // a live session cookie, or a route that is exempt by name.
     let mut cookie_authenticated = false;
     let mut refreshed: Option<String> = None;
+    let mut principal = Principal::Owner;
     if access.is_token() && route != HEALTH_ROUTE {
         let bearer = access.authorized(request.headers());
+        if !bearer
+            && let Some(presented) = Access::bearer(request.headers())
+            && credential_kind(presented).is_some()
+        {
+            let store = request.extensions().get::<Store>().cloned();
+            let throttle = request.extensions().get::<LoginThrottle>().cloned();
+            match member_token(store, throttle, presented.to_string()).await {
+                TokenCheck::Member(member) => {
+                    if route != MCP_ROUTE {
+                        return refuse(
+                            StatusCode::FORBIDDEN,
+                            "forbidden",
+                            "a personal token reaches /mcp and /health only",
+                        );
+                    }
+                    request
+                        .extensions_mut()
+                        .insert(Principal::MemberToken(member));
+                    return finish(access, route, method, request, next, false, None).await;
+                }
+                TokenCheck::TooMany => {
+                    return refuse(
+                        StatusCode::TOO_MANY_REQUESTS,
+                        "too many attempts",
+                        "too many wrong member credentials waiting",
+                    );
+                }
+                // Unknown, revoked, removed or unreadable: one path, the same
+                // answer as no credential at all.
+                TokenCheck::Refused => {}
+            }
+        }
         let login_route = route == LOGIN_ROUTE || route == LOGOUT_ROUTE;
         let static_asset = route == STATIC_ROUTE && method == Method::GET;
         let cookie = if route == MCP_ROUTE || static_asset {
@@ -487,13 +559,16 @@ pub(super) async fn access_guard(mut request: Request, next: Next) -> Response {
         if let Some(cookie) = cookie.filter(|_| !bearer || login_route)
             && let Some(store) = request.extensions().get::<Store>().cloned()
         {
-            let check = lookup(&access, &store, &cookie, true).await;
-            if check != SessionCheck::Missing
+            let found = lookup(&access, &store, &cookie, true).await;
+            if found.check != SessionCheck::Missing
                 && let Some(id) = decode_session_id(&cookie)
                 && let Some(digest) = access.session_digest(&id)
             {
                 session = Some(Session { digest });
-                if check == SessionCheck::Refreshed {
+                if !bearer && let Some(member) = found.member {
+                    principal = Principal::MemberSession(member);
+                }
+                if found.check == SessionCheck::Refreshed {
                     refreshed = Some(cookie);
                 }
             }
@@ -507,7 +582,71 @@ pub(super) async fn access_guard(mut request: Request, next: Next) -> Response {
             return signed_out(&route, &method, &request);
         }
     }
+    request.extensions_mut().insert(principal);
+    finish(
+        access,
+        route,
+        method,
+        request,
+        next,
+        cookie_authenticated,
+        refreshed,
+    )
+    .await
+}
 
+/// The outcome of presenting a member-shaped bearer.
+enum TokenCheck {
+    Member(Member),
+    Refused,
+    TooMany,
+}
+
+/// Look a well-formed personal token up. A wrong one waits on the same
+/// throttle as a wrong login and is then refused like any other credential; a
+/// right one is never delayed. A store that cannot be read refuses (fail closed).
+async fn member_token(
+    store: Option<Store>,
+    throttle: Option<LoginThrottle>,
+    value: String,
+) -> TokenCheck {
+    let Some(store) = store else {
+        return TokenCheck::Refused;
+    };
+    let found =
+        tokio::task::spawn_blocking(move || store.member_by_token(&value, unix_now(), true)).await;
+    match found {
+        Ok(Ok(Some(member))) => TokenCheck::Member(member),
+        Ok(Ok(None)) => {
+            let Some(throttle) = throttle else {
+                return TokenCheck::Refused;
+            };
+            if throttle.wrong_attempt().await {
+                tracing::warn!("a member credential was not accepted");
+                TokenCheck::Refused
+            } else {
+                TokenCheck::TooMany
+            }
+        }
+        Ok(Err(error)) => {
+            tracing::warn!(error = ?error, "the member lookup failed; the request is refused");
+            TokenCheck::Refused
+        }
+        Err(_) => TokenCheck::Refused,
+    }
+}
+
+/// The bind's host check and the route's shape, then the handler, then the
+/// response's own headers.
+async fn finish(
+    access: Access,
+    route: String,
+    method: Method,
+    request: Request,
+    next: Next,
+    cookie_authenticated: bool,
+    refreshed: Option<String>,
+) -> Response {
     let require_origin = cookie_authenticated || (access.is_token() && route == LOGIN_ROUTE);
     if let Some(denied) = admit(&access, &route, &method, request.headers(), require_origin) {
         return denied;

@@ -31,6 +31,8 @@ enum Step {
 enum Wake {
     Revision(Option<i64>),
     Recheck,
+    /// A credential changed in this process: a removal or a revocation.
+    Credentials,
 }
 
 pub(super) async fn events(
@@ -66,8 +68,13 @@ pub(super) async fn events(
     });
     let ticks = tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(SESSION_RECHECK))
         .map(|_| Wake::Recheck);
+    // A removal or a revocation in this process closes a stream at once; one
+    // made by another process (a local CLI) is caught by the next re-check.
+    let credentials =
+        BroadcastStream::new(crate::store::credentials_changed()).map(|_| Wake::Credentials);
     let updates = revisions
         .merge(ticks)
+        .merge(credentials)
         .then(move |wake| {
             let digest = digest.clone();
             let store = store.clone();
@@ -79,7 +86,7 @@ pub(super) async fn events(
                     return Step::End;
                 }
                 match wake {
-                    Wake::Recheck => Step::Skip,
+                    Wake::Recheck | Wake::Credentials => Step::Skip,
                     Wake::Revision(Some(revision)) => Step::Send(
                         SseEvent::default()
                             .event("changed")

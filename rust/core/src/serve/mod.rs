@@ -151,28 +151,69 @@ pub trait ResolveContext {
 
 #[allow(clippy::result_large_err)]
 impl ResolveContext for Arc<SessionContext> {
-    /// The server's own context, or the same one with the actor the request
-    /// names in `X-Tandem-Agent` (ADR 0047). The header is validated here, once,
-    /// and reaches nothing but the actor: never the environment, so a request
-    /// cannot move `TANDEM_HOME`.
+    /// The context for the principal the guard resolved (ADR 0052). It reads
+    /// that principal and builds the actor; it never re-derives the principal
+    /// and never reads the store.
+    ///
+    /// The owner gets the server's own context, or the same one with the actor
+    /// `X-Tandem-Agent` names (ADR 0047). A member, by session or by personal
+    /// token, is its own actor: the header may be absent or name that member,
+    /// and nothing else. The header is validated here, once, and reaches nothing
+    /// but the actor: never the environment, so a request cannot move
+    /// `TANDEM_HOME`.
     fn resolve(&self, parts: &Parts) -> Result<Context, Response> {
-        let Some(value) = parts.headers.get(ACTOR_HEADER) else {
-            return Ok(Context(Arc::clone(self)));
+        let Some(principal) = parts.extensions.get::<guard::Principal>() else {
+            // The guard layer covers every route; reaching a handler without a
+            // principal is a wiring fault, never a request to serve.
+            tracing::error!("request refused: no principal was resolved");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR.into_response());
         };
-        let Some(name) = value.to_str().ok().filter(|name| valid_actor_name(name)) else {
-            return Err(bad_request(
-                "X-Tandem-Agent must be 1 to 64 lowercase letters, digits or hyphens",
-            ));
+        let named = match parts.headers.get(ACTOR_HEADER) {
+            None => None,
+            Some(value) => match value.to_str().ok().filter(|name| valid_actor_name(name)) {
+                Some(name) => Some(name),
+                None => {
+                    return Err(bad_request(
+                        "X-Tandem-Agent must be 1 to 64 lowercase letters, digits or hyphens",
+                    ));
+                }
+            },
         };
-        let actor = if name == "human" {
-            Actor::Human
-        } else {
-            Actor::parse(Some(name))
-        };
-        Ok(Context(Arc::new(SessionContext {
-            actor,
-            ..(**self).clone()
-        })))
+        match principal {
+            guard::Principal::Owner => {
+                let Some(name) = named else {
+                    return Ok(Context(Arc::clone(self)));
+                };
+                let actor = if name == "human" {
+                    Actor::Human
+                } else {
+                    Actor::parse(Some(name))
+                };
+                Ok(Context(Arc::new(SessionContext {
+                    actor,
+                    ..(**self).clone()
+                })))
+            }
+            guard::Principal::MemberSession(member) | guard::Principal::MemberToken(member) => {
+                if named.is_some_and(|name| name != member.name) {
+                    return Err(guard::refuse(
+                        StatusCode::FORBIDDEN,
+                        "the actor header does not name this credential's member",
+                        "the actor header names someone other than the credential's member",
+                    ));
+                }
+                Ok(Context(Arc::new(SessionContext {
+                    actor: Actor::Agent(member.name.clone()),
+                    ..(**self).clone()
+                })))
+            }
+            // The operator never acts as a member and never opens the board.
+            guard::Principal::Operator => Err(guard::refuse(
+                StatusCode::FORBIDDEN,
+                "forbidden",
+                "the operator key does not open the board",
+            )),
+        }
     }
 }
 

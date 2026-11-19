@@ -4949,3 +4949,928 @@ async fn an_export_moves_neither_the_revision_nor_the_events_stream() {
     assert_eq!(store.revision().expect("the revision reads"), before);
     assert!(events.is_empty(), "the stream stayed quiet: {events:?}");
 }
+
+// MARK: - Members and personal tokens (CUT-36, ADR 0052)
+
+const NOW: i64 = 1_800_000_000;
+
+/// A team home: two members, a token each, and a sign-in key for the first.
+struct Team {
+    alice_token: String,
+    bob_token: String,
+    alice_key: String,
+}
+
+fn team(store: &Store) -> Team {
+    store
+        .member_add("alice", crate::store::Role::Admin, NOW)
+        .unwrap();
+    store
+        .member_add("bob", crate::store::Role::Member, NOW)
+        .unwrap();
+    let issue = |name: &str| {
+        store
+            .member_token_issue(name, "an agent", NOW)
+            .unwrap()
+            .unwrap()
+            .reveal()
+            .to_string()
+    };
+    Team {
+        alice_token: issue("alice"),
+        bob_token: issue("bob"),
+        alice_key: store
+            .member_signin_key_issue("alice", NOW)
+            .unwrap()
+            .unwrap()
+            .reveal()
+            .to_string(),
+    }
+}
+
+fn bearer_mcp(token: &str, agent: Option<&str>, body: &str) -> Request<Body> {
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri("/mcp")
+        .header(header::HOST, REMOTE_HOST)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::AUTHORIZATION, format!("Bearer {token}"));
+    if let Some(agent) = agent {
+        builder = builder.header("x-tandem-agent", agent);
+    }
+    builder
+        .body(Body::from(body.to_string()))
+        .expect("the request builds")
+}
+
+fn bearer_get(uri: &str, token: &str) -> Request<Body> {
+    Request::builder()
+        .uri(uri)
+        .header(header::HOST, REMOTE_HOST)
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .expect("the request builds")
+}
+
+fn project_call(name: &str) -> String {
+    tool_call_body("project_add", serde_json::json!({ "name": name }))
+}
+
+fn label_author(store: &Store, name: &str) -> Option<String> {
+    let connection = rusqlite::Connection::open(store.home().directory().join("tandem.db"))
+        .expect("the store opens");
+    connection
+        .query_row("SELECT author FROM labels WHERE name = ?1", [name], |row| {
+            row.get::<_, String>(0)
+        })
+        .ok()
+}
+
+/// Sign in at `/login` with a sign-in key or the owner token: the cookie pair.
+async fn sign_in_with(app: &Router, secret: &str) -> String {
+    let (status, headers, _) = send(
+        app,
+        remote_form(
+            "/login",
+            &login_body(secret, "/board"),
+            Some(REMOTE_ORIGIN),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    session_cookie_pair(&headers).expect("a right credential sets the cookie")
+}
+
+fn add_label_form(name: &str, cookie: &str) -> Request<Body> {
+    remote_form(
+        "/labels",
+        &format!("name={name}"),
+        Some(REMOTE_ORIGIN),
+        Some(cookie),
+    )
+}
+
+fn is_ok_frame(body: &str) -> bool {
+    !body.contains("isError")
+}
+
+#[tokio::test]
+async fn a_personal_token_reaches_mcp_and_records_its_member_as_the_actor() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-mcp");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store.clone(), TOKEN);
+
+    let (status, _, body) = send(
+        &app,
+        bearer_mcp(&team.alice_token, None, &project_call("by-alice")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(is_ok_frame(&body), "the write succeeds: {body}");
+    assert_eq!(author_of_project(&store, "by-alice"), "alice");
+
+    let (status, _, body) = send(
+        &app,
+        bearer_mcp(&team.bob_token, None, &project_call("by-bob")),
+    )
+    .await;
+    assert_eq!((status, is_ok_frame(&body)), (StatusCode::OK, true));
+    assert_eq!(author_of_project(&store, "by-bob"), "bob");
+
+    let (status, _, _) = send(&app, bearer_get("/health", &team.alice_token)).await;
+    assert_eq!(status, StatusCode::OK, "a token reaches /health");
+}
+
+/// Every route of `routes()`, with a concrete path for each template.
+const ROUTE_TABLE: &[(&str, &str, &str)] = &[
+    ("GET", "/", "/"),
+    ("GET", "/board", "/board"),
+    ("GET", "/events", "/events"),
+    ("GET", "/export", "/export"),
+    ("GET", "/health", "/health"),
+    ("GET", "/login", "/login"),
+    ("POST", "/login", "/login"),
+    ("POST", "/logout", "/logout"),
+    ("POST", "/mcp", "/mcp"),
+    ("GET", "/static/{*path}", "/static/tandem.css"),
+    ("POST", "/tickets", "/tickets"),
+    ("GET", "/tickets/{id}", "/tickets/abc"),
+    ("POST", "/tickets/{id}", "/tickets/abc"),
+    ("POST", "/tickets/{id}/status", "/tickets/abc/status"),
+    ("POST", "/tickets/{id}/comments", "/tickets/abc/comments"),
+    ("POST", "/tickets/{id}/label", "/tickets/abc/label"),
+    ("POST", "/labels", "/labels"),
+    ("POST", "/labels/{name}/rename", "/labels/x/rename"),
+    ("GET", "/notes", "/notes"),
+    ("GET", "/notes/view", "/notes/view"),
+    ("GET", "/notes/edit", "/notes/edit"),
+    ("POST", "/notes/preview", "/notes/preview"),
+    ("POST", "/notes/save", "/notes/save"),
+    ("POST", "/notes/create", "/notes/create"),
+    ("POST", "/notes/create-folder", "/notes/create-folder"),
+    ("POST", "/notes/daily", "/notes/daily"),
+    ("POST", "/notes/new", "/notes/new"),
+    ("POST", "/notes/move", "/notes/move"),
+    ("POST", "/notes/rename", "/notes/rename"),
+    ("POST", "/notes/delete", "/notes/delete"),
+    ("POST", "/notes/restore", "/notes/restore"),
+];
+
+fn table_request(method: &str, uri: &str, token: &str) -> Request<Body> {
+    let mut builder = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::HOST, REMOTE_HOST)
+        .header(header::AUTHORIZATION, format!("Bearer {token}"));
+    builder = match uri {
+        "/mcp" => builder.header(header::CONTENT_TYPE, "application/json"),
+        _ if method == "POST" => {
+            builder.header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        }
+        _ => builder,
+    };
+    let body = if uri == "/mcp" { MCP_BODY } else { "" };
+    builder
+        .body(Body::from(body.to_string()))
+        .expect("the request builds")
+}
+
+#[tokio::test]
+async fn a_personal_token_is_refused_403_on_every_route_but_mcp_and_health() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-routes");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store, TOKEN);
+
+    // The table covers the whole route table: a route added later fails here
+    // until it is placed.
+    let source = include_str!("mod.rs");
+    let routes_fn = &source[source.find("fn routes()").expect("routes()")
+        ..source.find("fn layered(").expect("layered()")];
+    let mut declared: Vec<&str> = routes_fn
+        .split(".route(")
+        .skip(1)
+        .filter_map(|rest| rest.trim_start().strip_prefix('"')?.split('"').next())
+        .collect();
+    declared.sort_unstable();
+    declared.dedup();
+    let mut covered: Vec<&str> = ROUTE_TABLE
+        .iter()
+        .map(|(_, template, _)| *template)
+        .collect();
+    covered.sort_unstable();
+    covered.dedup();
+    assert_eq!(declared, covered, "the table names every route");
+
+    let captured = Captured::default();
+    let _guard = captured.install();
+    for (method, _, uri) in ROUTE_TABLE {
+        let (status, _, body) = send(&app, table_request(method, uri, &team.alice_token)).await;
+        let admitted = matches!(*uri, "/mcp" | "/health");
+        if admitted {
+            assert_eq!(status, StatusCode::OK, "{method} {uri}: {body}");
+        } else {
+            assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}");
+            assert!(
+                !body.contains(&team.alice_token),
+                "the refusal never echoes the credential"
+            );
+        }
+    }
+    let text = captured.text();
+    assert!(
+        text.contains("a personal token reaches /mcp and /health only"),
+        "the reason is in the log: {text}"
+    );
+    assert!(!text.contains(&team.alice_token), "{text}");
+}
+
+#[tokio::test]
+async fn the_agent_header_cannot_name_another_member_or_human() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-header");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store.clone(), TOKEN);
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    // Absent and the member's own name are accepted, and record the member.
+    for (index, agent) in [None, Some("alice")].into_iter().enumerate() {
+        let name = format!("ok-{index}");
+        let (status, _, body) = send(
+            &app,
+            bearer_mcp(&team.alice_token, agent, &project_call(&name)),
+        )
+        .await;
+        assert_eq!(
+            (status, is_ok_frame(&body)),
+            (StatusCode::OK, true),
+            "{agent:?}"
+        );
+        assert_eq!(author_of_project(&store, &name), "alice");
+    }
+    // Anyone else, `human` included, is refused 403 and writes nothing.
+    for (index, agent) in ["bob", "human", "builder"].into_iter().enumerate() {
+        let name = format!("refused-{index}");
+        let (status, _, body) = send(
+            &app,
+            bearer_mcp(&team.alice_token, Some(agent), &project_call(&name)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{agent}");
+        assert!(!body.contains(agent), "the value is not echoed: {body}");
+        assert!(
+            store
+                .read(|connection| connection
+                    .query_row(
+                        "SELECT 1 FROM projects WHERE name = ?1",
+                        [&name],
+                        |_| Ok(())
+                    )
+                    .map_err(|error| crate::store::translate(error, connection)))
+                .map(|row| row.is_none())
+                .unwrap_or(true),
+            "{agent} wrote nothing"
+        );
+    }
+    // A syntax error stays a 400, as for the owner.
+    let (status, _, _) = send(
+        &app,
+        bearer_mcp(&team.alice_token, Some("Not A Name"), MCP_BODY),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // A member's browser session holds to the same rule.
+    let cookie = sign_in_with(&app, &team.alice_key).await;
+    let mut named = add_label_form("by-session", &cookie);
+    named
+        .headers_mut()
+        .insert("x-tandem-agent", "bob".parse().unwrap());
+    assert_eq!(send(&app, named).await.0, StatusCode::FORBIDDEN);
+    assert_eq!(label_author(&store, "by-session"), None);
+
+    let text = captured.text();
+    assert!(
+        text.contains("names someone other than the credential's member"),
+        "the reason is logged: {text}"
+    );
+    assert!(!text.contains("builder"), "no value is logged: {text}");
+}
+
+#[tokio::test]
+async fn a_revoked_an_unknown_a_removed_and_a_malformed_token_answer_alike() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-alike");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store.clone(), TOKEN);
+
+    let revoked = store
+        .member_token_issue("alice", "to revoke", NOW)
+        .unwrap()
+        .unwrap();
+    let id = store.member_tokens("alice").unwrap().last().unwrap().id;
+    assert!(store.member_token_revoke("alice", id, NOW).unwrap());
+    store.member_remove("bob", NOW).unwrap();
+    let unknown = format!("tdm_{}", "B".repeat(43));
+
+    let mut answers = Vec::new();
+    for presented in [
+        revoked.reveal().to_string(),
+        unknown,
+        team.bob_token.clone(),
+        "tdm_short".to_string(),
+        format!("tdk_{}", "C".repeat(43)),
+        "nonsense".to_string(),
+        "wrong-token-wrong-token-wrong-tok".to_string(),
+    ] {
+        let (status, headers, body) = send(&app, bearer_mcp(&presented, None, MCP_BODY)).await;
+        let mut kept: Vec<(String, String)> = headers
+            .iter()
+            .map(|(name, value)| (name.to_string(), value.to_str().unwrap_or("").to_string()))
+            .collect();
+        kept.sort();
+        answers.push((status, body, kept));
+    }
+    assert_eq!(answers[0].0, StatusCode::UNAUTHORIZED);
+    assert_eq!(answers[0].1, "unauthorized\n");
+    for answer in &answers[1..] {
+        assert_eq!(
+            answer, &answers[0],
+            "one status, one body, one set of headers"
+        );
+    }
+    // On a page route the same credentials all meet the same redirect.
+    let (status, _, _) = send(&app, bearer_get("/board", &team.bob_token)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+}
+
+#[tokio::test]
+async fn a_sign_in_key_at_login_mints_a_session_that_belongs_to_its_member_and_never_works_as_a_bearer()
+ {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-login");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store.clone(), TOKEN);
+
+    let cookie = sign_in_with(&app, &team.alice_key).await;
+    let (status, _, _) = send(&app, remote_get("/board", Some(&cookie))).await;
+    assert_eq!(status, StatusCode::OK, "the session opens the board");
+    let member_ids: Vec<Option<i64>> = {
+        let connection = rusqlite::Connection::open(store.home().directory().join("tandem.db"))
+            .expect("the store opens");
+        let mut statement = connection
+            .prepare("SELECT member_id FROM browser_sessions")
+            .unwrap();
+        statement
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect()
+    };
+    let alice = store.member_find("alice").unwrap().unwrap();
+    assert_eq!(
+        member_ids,
+        vec![Some(alice.id)],
+        "the session names its member"
+    );
+
+    // A key is never a bearer: not on /mcp, not on a page.
+    let (status, _, body) = send(&app, bearer_mcp(&team.alice_key, None, MCP_BODY)).await;
+    assert_eq!(
+        (status, body.as_str()),
+        (StatusCode::UNAUTHORIZED, "unauthorized\n")
+    );
+    let (status, _, _) = send(&app, bearer_get("/board", &team.alice_key)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    // A personal token is another kind: it never signs a browser in.
+    let (status, headers, _) = send(
+        &app,
+        remote_form(
+            "/login",
+            &login_body(&team.alice_token, "/"),
+            Some(REMOTE_ORIGIN),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(session_cookie_pair(&headers).is_none());
+
+    // The owner token still signs in, to an owner session with no member.
+    let owner = sign_in_with(&app, TOKEN).await;
+    assert_eq!(
+        send(&app, remote_get("/board", Some(&owner))).await.0,
+        StatusCode::OK
+    );
+    let nulls: i64 = rusqlite::Connection::open(store.home().directory().join("tandem.db"))
+        .unwrap()
+        .query_row(
+            "SELECT COUNT(*) FROM browser_sessions WHERE member_id IS NULL",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(nulls, 1);
+}
+
+#[tokio::test]
+async fn a_member_browser_write_records_the_member_and_an_owner_write_records_the_server_actor() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-browser-write");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = router(SessionContext {
+        access: Access::token(7700, TOKEN),
+        actor: Actor::Agent("serve-runner".to_string()),
+        ..context(store.clone())
+    });
+
+    let member = sign_in_with(&app, &team.alice_key).await;
+    let owner = sign_in_with(&app, TOKEN).await;
+    assert_eq!(
+        send(&app, add_label_form("by-member", &member)).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        send(&app, add_label_form("by-owner", &owner)).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(label_author(&store, "by-member").as_deref(), Some("alice"));
+    assert_eq!(
+        label_author(&store, "by-owner").as_deref(),
+        Some("serve-runner")
+    );
+}
+
+#[tokio::test]
+async fn a_token_or_key_below_the_length_or_without_the_prefix_is_refused_before_lookup() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-shape");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store, TOKEN);
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    let body = "A".repeat(43);
+    let malformed = [
+        format!("tdm_{}", "A".repeat(42)),
+        format!("tdm_{}", "A".repeat(44)),
+        format!("tdx_{body}"),
+        format!("TDM_{body}"),
+        format!("tdm_{}!", "A".repeat(42)),
+        body.clone(),
+        "tdm_".to_string(),
+    ];
+    for presented in &malformed {
+        let started = Instant::now();
+        let (status, _, _) = send(&app, bearer_mcp(presented, None, MCP_BODY)).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{presented}");
+        assert!(
+            started.elapsed() < Duration::from_millis(400),
+            "{presented} is refused at once, not after a lookup's wait"
+        );
+    }
+    let (status, _, _) = send(
+        &app,
+        remote_form(
+            "/login",
+            &login_body(&format!("tdk_{}", "A".repeat(42)), "/"),
+            Some(REMOTE_ORIGIN),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert!(
+        !captured
+            .text()
+            .contains("a member credential was not accepted"),
+        "no lookup ran for a malformed bearer: {}",
+        captured.text()
+    );
+    // A well-formed unknown one does reach the lookup.
+    let _ = &team;
+    send(&app, bearer_mcp(&format!("tdm_{body}"), None, MCP_BODY)).await;
+    assert!(
+        captured
+            .text()
+            .contains("a member credential was not accepted")
+    );
+}
+
+#[tokio::test]
+async fn the_owner_token_keeps_the_header_behaviour_and_every_route_it_reached_before() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-owner");
+    let store = sandbox.store();
+    team(&store);
+    let app = remote_app(store.clone(), TOKEN);
+
+    // Every route the owner reached before is still reachable: none answers it
+    // 401 or 403.
+    for (method, _, uri) in ROUTE_TABLE {
+        if matches!(*uri, "/login" | "/logout") && *method == "POST" {
+            continue;
+        }
+        let status = if *uri == "/events" {
+            // The stream never ends: read the status and leave it.
+            app.clone()
+                .oneshot(table_request(method, uri, TOKEN))
+                .await
+                .expect("the router answers")
+                .status()
+        } else {
+            send(&app, table_request(method, uri, TOKEN)).await.0
+        };
+        assert!(
+            status != StatusCode::UNAUTHORIZED && status != StatusCode::FORBIDDEN,
+            "{method} {uri}: {status}"
+        );
+    }
+    // The header keeps ADR 0047's behaviour byte for byte, a member's name and
+    // `human` included.
+    for (agent, name) in [
+        ("builder", "owner-builder"),
+        ("human", "owner-human"),
+        ("alice", "owner-as-alice"),
+    ] {
+        let (status, _, body) =
+            send(&app, bearer_mcp(TOKEN, Some(agent), &project_call(name))).await;
+        assert_eq!(
+            (status, is_ok_frame(&body)),
+            (StatusCode::OK, true),
+            "{agent}"
+        );
+        assert_eq!(author_of_project(&store, name), agent);
+    }
+    let (status, _, _) = send(&app, bearer_mcp(TOKEN, Some("Bad Name"), MCP_BODY)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn solo_modes_with_no_members_are_unchanged() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-solo");
+    let store = sandbox.store();
+
+    // Loopback: the header names the actor; a bearer is not looked at.
+    let loopback = router(context(store.clone()));
+    let (status, _, _) = send(
+        &loopback,
+        mcp_builder()
+            .header("x-tandem-agent", "builder")
+            .header(
+                header::AUTHORIZATION,
+                format!("Bearer tdm_{}", "A".repeat(43)),
+            )
+            .body(Body::from(project_call("loop-builder")))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(author_of_project(&store, "loop-builder"), "builder");
+    let (status, _, _) = send(
+        &loopback,
+        mcp_builder()
+            .header("x-tandem-agent", "human")
+            .body(Body::from(project_call("loop-human")))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(author_of_project(&store, "loop-human"), "human");
+    assert_eq!(
+        send(&loopback, get_with_host("/board", "evil.example:7700"))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+
+    // Open: no credential, the header names the actor, a member-shaped bearer is ignored.
+    let open = router(SessionContext {
+        access: Access::open(7700),
+        ..context(store.clone())
+    });
+    let (status, _, _) = send(
+        &open,
+        Request::builder()
+            .method("POST")
+            .uri("/mcp")
+            .header(header::HOST, "machine.tailnet.ts.net:7700")
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("x-tandem-agent", "reviewer")
+            .body(Body::from(project_call("open-reviewer")))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(author_of_project(&store, "open-reviewer"), "reviewer");
+
+    // A lone TANDEM_TOKEN: the owner bearer and header as before; anything else
+    // is the one 401; a member-shaped value finds no members.
+    let solo = remote_app(store.clone(), TOKEN);
+    let (status, _, _) = send(
+        &solo,
+        bearer_mcp(TOKEN, Some("refiner"), &project_call("solo-refiner")),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(author_of_project(&store, "solo-refiner"), "refiner");
+    for presented in [
+        "wrong-token-wrong-token-wrong-tok".to_string(),
+        format!("tdm_{}", "A".repeat(43)),
+    ] {
+        let (status, _, body) = send(&solo, bearer_mcp(&presented, None, MCP_BODY)).await;
+        assert_eq!(
+            (status, body.as_str()),
+            (StatusCode::UNAUTHORIZED, "unauthorized\n")
+        );
+    }
+    assert!(!store.team_mode().unwrap());
+    // The owner's browser sign-in is unchanged.
+    let cookie = sign_in_with(&solo, TOKEN).await;
+    assert_eq!(
+        send(&solo, remote_get("/board", Some(&cookie))).await.0,
+        StatusCode::OK
+    );
+}
+
+fn get_with_host(uri: &str, host: &str) -> Request<Body> {
+    Request::builder()
+        .uri(uri)
+        .header(header::HOST, host)
+        .body(Body::empty())
+        .expect("the request builds")
+}
+
+#[tokio::test]
+async fn team_mode_fails_closed_when_the_members_table_is_unreadable_and_the_owner_token_still_admits()
+ {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-fail-closed");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store.clone(), TOKEN);
+    let cookie = sign_in_with(&app, &team.alice_key).await;
+    assert_eq!(
+        send(&app, remote_get("/board", Some(&cookie))).await.0,
+        StatusCode::OK
+    );
+    assert!(store.team_mode().unwrap());
+
+    // The members table goes missing: team mode stays on, and no member
+    // credential admits anything.
+    rusqlite::Connection::open(store.home().directory().join("tandem.db"))
+        .unwrap()
+        .execute_batch("DROP TABLE members")
+        .unwrap();
+    assert!(
+        store.team_mode().unwrap(),
+        "the persisted flag is not unset"
+    );
+
+    let (status, _, body) = send(&app, bearer_mcp(&team.alice_token, None, MCP_BODY)).await;
+    assert_eq!(
+        (status, body.as_str()),
+        (StatusCode::UNAUTHORIZED, "unauthorized\n")
+    );
+    let (status, _, _) = send(&app, remote_get("/board", Some(&cookie))).await;
+    assert_eq!(
+        status,
+        StatusCode::SEE_OTHER,
+        "a member session is signed out"
+    );
+    let (status, _, _) = send(
+        &app,
+        remote_form(
+            "/login",
+            &login_body(&team.alice_key, "/"),
+            Some(REMOTE_ORIGIN),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // The owner is never locked out.
+    let (status, _, _) = send(&app, bearer_get("/board", TOKEN)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, body) = send(&app, bearer_mcp(TOKEN, None, &project_call("owner-still"))).await;
+    assert_eq!((status, is_ok_frame(&body)), (StatusCode::OK, true));
+    let owner = sign_in_with(&app, TOKEN).await;
+    assert_eq!(
+        send(&app, remote_get("/board", Some(&owner))).await.0,
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn a_removed_members_session_and_open_events_stream_stop() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-removal");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store.clone(), TOKEN);
+    let cookie = sign_in_with(&app, &team.alice_key).await;
+
+    let response = app
+        .clone()
+        .oneshot(remote_get("/events", Some(&cookie)))
+        .await
+        .expect("the router answers");
+    assert_eq!(response.status(), StatusCode::OK);
+    let mut stream = response.into_body();
+    stream
+        .frame()
+        .await
+        .expect("the first frame")
+        .expect("readable");
+
+    assert!(store.member_remove("alice", NOW + 1).unwrap());
+    // A board change after the removal must not reach the stream.
+    let board = Board::with_actor(store.clone(), Actor::Human);
+    board
+        .add("After the removal", AddTicket::default())
+        .expect("the board changes");
+
+    let mut seen = String::new();
+    let ended = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(frame) = stream.frame().await {
+            match frame {
+                Ok(frame) => {
+                    if let Some(data) = frame.data_ref() {
+                        seen.push_str(&String::from_utf8_lossy(data));
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    })
+    .await;
+    assert!(ended.is_ok(), "the stream closes within the bound");
+    assert!(
+        !seen.contains("event: changed"),
+        "the stream received nothing after the removal: {seen}"
+    );
+
+    // The session and the token are gone at once; the owner is not affected.
+    let (status, _, _) = send(&app, remote_get("/board", Some(&cookie))).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let (status, _, _) = send(&app, bearer_mcp(&team.alice_token, None, MCP_BODY)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _, _) = send(&app, bearer_get("/board", TOKEN)).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn failed_member_credentials_are_throttled_like_login_and_a_right_one_is_never_delayed() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-throttle");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store, TOKEN);
+
+    let wrong = |n: usize| {
+        let app = app.clone();
+        async move {
+            let presented = format!("tdm_{:0>43}", n);
+            send(&app, bearer_mcp(&presented, None, MCP_BODY)).await.0
+        }
+    };
+    let flood: Vec<_> = (0..12).map(|n| tokio::spawn(wrong(n))).collect();
+    tokio::task::yield_now().await;
+    let started = Instant::now();
+    let (status, _, _) = send(&app, bearer_mcp(&team.alice_token, None, MCP_BODY)).await;
+    assert_eq!(status, StatusCode::OK, "a right token still passes");
+    assert!(
+        started.elapsed() < Duration::from_millis(400),
+        "a right token is never delayed"
+    );
+    let owner_started = Instant::now();
+    let (status, _, _) = send(&app, bearer_get("/board", TOKEN)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(owner_started.elapsed() < Duration::from_millis(400));
+
+    let mut statuses = Vec::new();
+    for task in flood {
+        statuses.push(task.await.expect("joins"));
+    }
+    let throttled = statuses
+        .iter()
+        .filter(|s| **s == StatusCode::TOO_MANY_REQUESTS)
+        .count();
+    let answered = statuses
+        .iter()
+        .filter(|s| **s == StatusCode::UNAUTHORIZED)
+        .count();
+    assert!(throttled >= 1, "the excess is turned away: {statuses:?}");
+    assert!(answered >= 1, "some wait and are answered: {statuses:?}");
+}
+
+#[tokio::test]
+async fn a_wrong_sign_in_key_as_a_bearer_waits_on_the_same_throttle() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("key-bearer-throttle");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store, TOKEN);
+
+    let wrong_key = |n: usize| {
+        let app = app.clone();
+        async move {
+            let presented = format!("tdk_{:0>43}", n);
+            send(&app, bearer_mcp(&presented, None, MCP_BODY)).await.0
+        }
+    };
+    let flood: Vec<_> = (0..12).map(|n| tokio::spawn(wrong_key(n))).collect();
+    let mut statuses = Vec::new();
+    for task in flood {
+        statuses.push(task.await.expect("joins"));
+    }
+    assert!(
+        statuses.contains(&StatusCode::TOO_MANY_REQUESTS),
+        "a wrong sign-in key as a bearer is throttled too: {statuses:?}"
+    );
+    assert!(
+        statuses
+            .iter()
+            .all(|s| *s == StatusCode::UNAUTHORIZED || *s == StatusCode::TOO_MANY_REQUESTS),
+        "a sign-in key is never admitted as a bearer: {statuses:?}"
+    );
+    let (status, _, _) = send(&app, bearer_mcp(&team.alice_token, None, MCP_BODY)).await;
+    assert_eq!(status, StatusCode::OK, "a right token still passes");
+}
+
+#[tokio::test]
+async fn token_and_key_use_logs_no_credential_header_or_digest() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-logs");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store.clone(), TOKEN);
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    let unknown = format!("tdm_{}", "Z".repeat(43));
+    send(
+        &app,
+        bearer_mcp(&team.alice_token, None, &project_call("logged")),
+    )
+    .await;
+    send(&app, bearer_mcp(&unknown, None, MCP_BODY)).await;
+    send(&app, bearer_mcp(&team.alice_token, Some("bob"), MCP_BODY)).await;
+    send(&app, bearer_get("/board", &team.alice_token)).await;
+    send(&app, bearer_mcp(&team.alice_key, None, MCP_BODY)).await;
+    let wrong_key = format!("tdk_{}", "Y".repeat(43));
+    send(
+        &app,
+        remote_form(
+            "/login",
+            &login_body(&wrong_key, "/"),
+            Some(REMOTE_ORIGIN),
+            None,
+        ),
+    )
+    .await;
+    let cookie = sign_in_with(&app, &team.alice_key).await;
+    send(&app, remote_get("/board", Some(&cookie))).await;
+    store.member_remove("alice", NOW + 1).unwrap();
+    send(&app, bearer_mcp(&team.alice_token, None, MCP_BODY)).await;
+
+    let text = captured.text();
+    let value = cookie.split_once('=').map(|(_, value)| value).unwrap_or("");
+    for secret in [
+        team.alice_token.as_str(),
+        team.alice_key.as_str(),
+        team.bob_token.as_str(),
+        unknown.as_str(),
+        wrong_key.as_str(),
+        value,
+    ] {
+        assert!(
+            !secret.is_empty() && !text.contains(secret),
+            "{secret}: {text}"
+        );
+        assert!(
+            !text.contains(&crate::store::credential_digest(secret)),
+            "no digest is logged"
+        );
+    }
+    for needle in ["tdm_", "tdk_", "Bearer", "authorization", "x-tandem-agent"] {
+        assert!(
+            !text.to_lowercase().contains(&needle.to_lowercase()),
+            "{needle}: {text}"
+        );
+    }
+    assert!(!text.contains("tandem_session"), "{text}");
+}

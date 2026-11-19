@@ -19,6 +19,7 @@ The records that explain the product as it is today:
 - [0046](0046-tandem-serve-and-single-binary-distribution.md): `tandem serve`, the single binary and how it is distributed.
 - [0047, serve is the single door](0047-serve-is-the-single-door.md): agents reach Tandem over MCP on `tandem serve`; how requests are guarded and named.
 - [0049](0049-a-browser-signs-in-to-a-token-guarded-serve.md): how a browser signs in to a token-guarded serve.
+- [0052](0052-members-and-personal-tokens.md): members, personal tokens and sign-in keys; identity comes from the credential.
 
 ## How to read the status column
 
@@ -79,11 +80,12 @@ The status comes from each record's own header and from the "Prior records" list
 | 0045 | [The board and notes cut](0045-the-board-and-notes-cut.md) | In force | |
 | 0046 | [Tandem serve and single-binary distribution](0046-tandem-serve-and-single-binary-distribution.md) | In force, amended by 0047 (single door) | Its "two server doors", "no HTTP JSON-RPC" and "loopback is the authentication" clauses are superseded. |
 | 0047 | [Lanes are labels](0047-lanes-are-labels.md) | In force | Schema v12. |
-| 0047 | [Tandem serve is the single door](0047-serve-is-the-single-door.md) | In force, amended (CUT-37) | MCP over HTTP on `tandem serve`; `tandem mcp` is retired. Shares its number with the record above: two branches took 0047 and both merged. Both stay as numbered, and the index check accepts the pair; a renumbering is a human call. |
+| 0047 | [Tandem serve is the single door](0047-serve-is-the-single-door.md) | In force, amended (CUT-37, CUT-36) | MCP over HTTP on `tandem serve`; `tandem mcp` is retired. Shares its number with the record above: two branches took 0047 and both merged. Both stay as numbered, and the index check accepts the pair; a renumbering is a human call. |
 | 0048 | [Hosted Tandem is one `tandem serve` per workspace](0048-hosted-tandem-is-one-serve-per-workspace.md) | In force | The hosted product is the published binary, one serve and one home per workspace, behind a closed control plane that holds no content. Records the boundary; the siblings own their parts. |
 | 0049 | [A browser signs in to a token-guarded serve](0049-a-browser-signs-in-to-a-token-guarded-serve.md) | In force | A session cookie held by the instance, a keyed digest in `browser_sessions` (schema v13). Supersedes the browser-login half of 0047. |
 | 0050 | [The home leaves and arrives as one archive](0050-the-home-leaves-and-arrives-as-one-archive.md) | In force | `tandem export` and `tandem import`: one streamed `.tar.gz` of the store and the notes, no secrets, restored only into an empty home; one export permission check and a record line. Amends 0047's list of verbs with no remote form; 0018's "no restore verb" stands for the rolling `.bak`. |
 | 0051 | [A Claude Code plugin is the connector](0051-a-claude-code-plugin-is-the-connector.md) | In force | The repository is a Claude Code marketplace; the `tandem` plugin is `examples/` pinned to the latest release tag: it registers the MCP endpoint, ships the example skills and agents, and checks at session start that serve is up and current. No Tandem-owned installer (0045), serve still started by hand (0047). |
+| 0052 | [Members and personal tokens](0052-members-and-personal-tokens.md) | In force | Members (admin or member), personal tokens (`tdm_`, `/mcp` only) and sign-in keys (`tdk_`, `/login` only), stored as digests in schema v14; the actor comes from the credential, and team mode fails closed. Supersedes by quotation parts of 0047 and 0049. |
 
 ## Adding a record
 

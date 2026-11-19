@@ -6,6 +6,8 @@
 
 Decided 2026-11-16 (CUT-34).
 
+> **Amended by [ADR 0052](0052-members-and-personal-tokens.md):** per-actor tokens are built as personal tokens, and schema v14 adds the member a session names.
+
 ## Decision
 
 - **Token mode only.** Everything below applies when `TANDEM_TOKEN` is set. Loopback and `--allow-unauthenticated` behave as before, and `/login` and `/logout` answer `404` there: there is nothing to sign in to.

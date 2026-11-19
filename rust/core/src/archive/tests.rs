@@ -784,8 +784,14 @@ fn import_refuses_a_store_with_a_foreign_trigger_or_a_filled_emptied_table() {
             "projects",
             "store_meta",
             "schema_migrations",
+            "members",
         ],
-        &["browser_sessions", "secret_probe"],
+        &[
+            "browser_sessions",
+            "member_tokens",
+            "member_signin_keys",
+            "secret_probe",
+        ],
     )
     .expect_err("a filled emptied table is refused");
     assert!(

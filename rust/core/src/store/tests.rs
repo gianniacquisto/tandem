@@ -476,6 +476,9 @@ mod schema {
                 "browser_sessions",
                 "comments",
                 "labels",
+                "member_signin_keys",
+                "member_tokens",
+                "members",
                 "projects",
                 "schema_migrations",
                 "store_meta",
@@ -2442,6 +2445,55 @@ mod export_copy {
             .any(|window| window == needle)
     }
 
+    /// The member tables (CUT-36, schema v14): the names are carried, the
+    /// credentials' digests are emptied, and every one of them is classified.
+    #[test]
+    fn the_member_tables_are_classified_for_the_archive_members_carried_credentials_emptied() {
+        assert!(CARRIED_TABLES.contains(&"members"));
+        assert!(EMPTIED_TABLES.contains(&"member_tokens"));
+        assert!(EMPTIED_TABLES.contains(&"member_signin_keys"));
+        assert!(EMPTIED_TABLES.contains(&"browser_sessions"));
+        let sandbox = Sandbox::new("member-classes");
+        let store = sandbox.store();
+        probe(&store, &Actor::Human, "first");
+        store
+            .member_add("alice", Role::Admin, 1_800_000_000)
+            .unwrap();
+        let token = store
+            .member_token_issue("alice", "laptop", 1_800_000_000)
+            .unwrap()
+            .expect("a live member gets a token");
+        let key = store
+            .member_signin_key_issue("alice", 1_800_000_000)
+            .unwrap()
+            .expect("a live member gets a key");
+        let tables = current_tables();
+        for table in ["members", "member_tokens", "member_signin_keys"] {
+            assert!(tables.iter().any(|name| name == table), "{table} exists");
+        }
+        let copy = store.export_copy().expect("the copy is taken");
+        let bytes = fs::read(copy.path()).unwrap();
+        let connection =
+            Connection::open_with_flags(copy.path(), OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        let rows = |table: &str| -> i64 {
+            connection
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+                .unwrap()
+        };
+        assert_eq!(rows("members"), 1, "the member's name and role travel");
+        assert_eq!(rows("member_tokens"), 0);
+        assert_eq!(rows("member_signin_keys"), 0);
+        for digest in [
+            credential_digest(token.reveal()),
+            credential_digest(key.reveal()),
+        ] {
+            assert!(
+                !contains(&bytes, digest.as_bytes()),
+                "no credential digest survives in the archive's file"
+            );
+        }
+    }
+
     #[test]
     fn taking_the_export_copy_moves_neither_the_revision_nor_the_rolling_backup() {
         let sandbox = Sandbox::new("copy-quiet");
@@ -2640,5 +2692,428 @@ mod browser_sessions {
         let bare = Sandbox::new("sessions-sweep-bare");
         assert_eq!(bare.store().browser_sessions_sweep(NOW).unwrap(), 0);
         assert!(!bare.database().exists(), "a sweep creates nothing");
+    }
+}
+
+// MARK: - Members and credentials (CUT-36, ADR 0052)
+
+mod members {
+    use super::super::schema::{
+        CURRENT_VERSION, MEMBERS_VERSION, MIGRATIONS, has_column, has_table, migrate_with, version,
+    };
+    use super::*;
+
+    const DAY: i64 = 24 * 60 * 60;
+    const NOW: i64 = 1_800_000_000;
+
+    fn count(sandbox: &Sandbox, sql: &str) -> i64 {
+        sandbox
+            .connection()
+            .query_row(sql, [], |row| row.get(0))
+            .unwrap()
+    }
+
+    /// A home migrated to v13 only, as a serve built before this change left it.
+    fn v13_home(name: &str) -> Sandbox {
+        let sandbox = Sandbox::new(name);
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..13], &Actor::Human).expect("v13 applies");
+        drop(connection);
+        sandbox
+    }
+
+    #[test]
+    fn the_member_migration_adds_the_tables_and_the_session_column_and_bumps_the_version() {
+        let sandbox = v13_home("members-migration");
+        let connection = Connection::open(sandbox.database()).unwrap();
+        assert!(!has_table(&connection, "members").unwrap());
+        assert!(!has_column(&connection, "browser_sessions", "member_id").unwrap());
+        drop(connection);
+
+        probe(&sandbox.store(), &Actor::Human, "migrates");
+
+        let connection = sandbox.connection();
+        assert_eq!(MEMBERS_VERSION, 14);
+        assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
+        assert_eq!(CURRENT_VERSION, 14);
+        for table in ["members", "member_tokens", "member_signin_keys"] {
+            assert!(has_table(&connection, table).unwrap(), "{table}");
+        }
+        assert!(has_column(&connection, "browser_sessions", "member_id").unwrap());
+        assert!(
+            sandbox.backup().exists(),
+            "a migrating write rolls the backup first"
+        );
+    }
+
+    #[test]
+    fn a_member_name_is_unique_forever_and_reserved_names_are_refused() {
+        let sandbox = Sandbox::new("members-names");
+        let store = sandbox.store();
+        let alice = store.member_add("alice", Role::Admin, NOW).unwrap();
+        assert_eq!(alice.name, "alice");
+        assert_eq!(
+            store.member_add("alice", Role::Member, NOW),
+            Err(MemberError::Taken)
+        );
+        assert!(store.member_remove("alice", NOW).unwrap());
+        assert_eq!(
+            store.member_add("alice", Role::Member, NOW),
+            Err(MemberError::Taken),
+            "a name is never reused, even after removal"
+        );
+        assert!(store.member_find("alice").unwrap().is_none());
+        for reserved in ["human", "operator", "owner"] {
+            assert!(
+                matches!(
+                    store.member_add(reserved, Role::Member, NOW),
+                    Err(MemberError::Invalid(_))
+                ),
+                "{reserved}"
+            );
+        }
+        let long = "a".repeat(65);
+        for bad in ["", "Alice", "a b", "a_b", long.as_str()] {
+            assert!(
+                matches!(
+                    store.member_add(bad, Role::Member, NOW),
+                    Err(MemberError::Invalid(_))
+                ),
+                "{bad:?}"
+            );
+        }
+        assert_eq!(count(&sandbox, "SELECT COUNT(*) FROM members"), 1);
+    }
+
+    #[test]
+    fn tokens_and_sign_in_keys_are_stored_as_digests_and_never_the_value() {
+        let sandbox = Sandbox::new("members-digests");
+        let store = sandbox.store();
+        store.member_add("alice", Role::Member, NOW).unwrap();
+        let token = store
+            .member_token_issue("alice", "laptop", NOW)
+            .unwrap()
+            .unwrap();
+        let key = store
+            .member_signin_key_issue("alice", NOW)
+            .unwrap()
+            .unwrap();
+
+        let (token_value, key_value) = (token.reveal().to_string(), key.reveal().to_string());
+        assert!(token_value.starts_with(TOKEN_PREFIX));
+        assert!(key_value.starts_with(SIGNIN_KEY_PREFIX));
+        assert_eq!(token_value.len(), 4 + 43);
+        assert_eq!(key_value.len(), 4 + 43);
+        assert_eq!(credential_kind(&token_value), Some(CredentialKind::Token));
+        assert_eq!(credential_kind(&key_value), Some(CredentialKind::SigninKey));
+        assert_ne!(
+            token_value[4..],
+            store
+                .member_token_issue("alice", "second", NOW)
+                .unwrap()
+                .unwrap()
+                .reveal()[4..],
+            "each mint is fresh"
+        );
+        let printed = format!("{token:?} {key:?}");
+        assert!(!printed.contains(&token_value) && printed.contains("redacted"));
+
+        let connection = sandbox.connection();
+        let stored: String = connection
+            .query_row(
+                "SELECT digest FROM member_tokens WHERE label = 'laptop'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, credential_digest(&token_value));
+        assert_eq!(stored.len(), 64);
+        let stored_key: String = connection
+            .query_row("SELECT digest FROM member_signin_keys", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(stored_key, credential_digest(&key_value));
+        for file in [sandbox.database(), sandbox.backup()] {
+            let Ok(bytes) = fs::read(file) else { continue };
+            for value in [&token_value, &key_value] {
+                assert!(
+                    !bytes
+                        .windows(value.len())
+                        .any(|window| window == value.as_bytes()),
+                    "the value is never in the file"
+                );
+            }
+        }
+        assert_eq!(
+            store
+                .member_by_token(&token_value, NOW, false)
+                .unwrap()
+                .map(|m| m.name),
+            Some("alice".to_string())
+        );
+        assert_eq!(
+            store
+                .member_by_signin_key(&key_value)
+                .unwrap()
+                .map(|m| m.name),
+            Some("alice".to_string())
+        );
+        assert!(
+            store
+                .member_by_token(&key_value, NOW, false)
+                .unwrap()
+                .is_none(),
+            "a key is not a token"
+        );
+        assert!(store.member_by_signin_key(&token_value).unwrap().is_none());
+        let newer = store
+            .member_signin_key_issue("alice", NOW + 1)
+            .unwrap()
+            .unwrap();
+        assert!(
+            store.member_by_signin_key(&key_value).unwrap().is_none(),
+            "one live key per member: a new one replaces the old"
+        );
+        assert!(
+            store
+                .member_by_signin_key(newer.reveal())
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn credential_writes_and_last_used_move_neither_the_revision_nor_the_rolling_backup() {
+        let sandbox = Sandbox::new("members-revision");
+        let store = sandbox.store();
+        probe(&store, &Actor::Human, "first");
+        probe(&store, &Actor::Human, "second");
+        let revision = store.revision().unwrap();
+        let backup_before = fs::read(sandbox.backup()).ok();
+        let backup_modified = fs::metadata(sandbox.backup())
+            .and_then(|m| m.modified())
+            .ok();
+
+        store.member_add("alice", Role::Admin, NOW).unwrap();
+        store.member_add("bob", Role::Member, NOW).unwrap();
+        let token = store
+            .member_token_issue("alice", "laptop", NOW)
+            .unwrap()
+            .unwrap();
+        store.member_signin_key_issue("alice", NOW).unwrap();
+        assert!(
+            store
+                .member_by_token(token.reveal(), NOW, true)
+                .unwrap()
+                .is_some()
+        );
+        let first_use: Option<i64> = sandbox
+            .connection()
+            .query_row("SELECT last_used_at FROM member_tokens", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(first_use, Some(NOW), "the first use is recorded");
+        store
+            .member_by_token(token.reveal(), NOW + DAY - 1, true)
+            .unwrap();
+        let again: Option<i64> = sandbox
+            .connection()
+            .query_row("SELECT last_used_at FROM member_tokens", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(again, Some(NOW), "rewritten at most once a day");
+        store
+            .member_by_token(token.reveal(), NOW + DAY, true)
+            .unwrap();
+        let next: Option<i64> = sandbox
+            .connection()
+            .query_row("SELECT last_used_at FROM member_tokens", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(next, Some(NOW + DAY));
+        store
+            .browser_session_open_for("aa", None, NOW, Some("alice"))
+            .unwrap();
+        assert!(store.member_token_revoke("alice", 1, NOW).unwrap());
+        store.member_remove("bob", NOW).unwrap();
+
+        assert_eq!(store.revision().unwrap(), revision, "no revision bump");
+        assert_eq!(
+            fs::read(sandbox.backup()).ok(),
+            backup_before,
+            "no backup roll"
+        );
+        assert_eq!(
+            fs::metadata(sandbox.backup())
+                .and_then(|m| m.modified())
+                .ok(),
+            backup_modified
+        );
+    }
+
+    #[test]
+    fn removing_a_member_deletes_their_sessions_tokens_and_key_in_one_write() {
+        let sandbox = Sandbox::new("members-remove");
+        let store = sandbox.store();
+        store.member_add("alice", Role::Admin, NOW).unwrap();
+        store.member_add("bob", Role::Member, NOW).unwrap();
+        for name in ["alice", "bob"] {
+            store.member_token_issue(name, "laptop", NOW).unwrap();
+            store.member_token_issue(name, "desktop", NOW).unwrap();
+            store.member_signin_key_issue(name, NOW).unwrap();
+            store
+                .browser_session_open_for(&format!("session-{name}"), None, NOW, Some(name))
+                .unwrap();
+        }
+        store
+            .browser_session_open("owner-session", None, NOW)
+            .unwrap();
+
+        assert!(store.member_remove("alice", NOW + 5).unwrap());
+        assert!(
+            !store.member_remove("alice", NOW + 6).unwrap(),
+            "a second removal finds no live member"
+        );
+
+        let removed_at: Option<i64> = sandbox
+            .connection()
+            .query_row(
+                "SELECT removed_at FROM members WHERE name = 'alice'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(removed_at, Some(NOW + 5), "the row stays as a tombstone");
+        assert_eq!(
+            count(
+                &sandbox,
+                "SELECT COUNT(*) FROM member_tokens WHERE member_id = 1"
+            ),
+            0
+        );
+        assert_eq!(
+            count(
+                &sandbox,
+                "SELECT COUNT(*) FROM member_signin_keys WHERE member_id = 1"
+            ),
+            0
+        );
+        assert_eq!(
+            count(
+                &sandbox,
+                "SELECT COUNT(*) FROM browser_sessions WHERE member_id = 1"
+            ),
+            0
+        );
+        assert_eq!(
+            count(
+                &sandbox,
+                "SELECT COUNT(*) FROM member_tokens WHERE member_id = 2"
+            ),
+            2
+        );
+        assert_eq!(
+            count(
+                &sandbox,
+                "SELECT COUNT(*) FROM member_signin_keys WHERE member_id = 2"
+            ),
+            1
+        );
+        assert_eq!(count(&sandbox, "SELECT COUNT(*) FROM browser_sessions"), 2);
+        assert_eq!(
+            store
+                .browser_session_check("session-alice", NOW + 6, false)
+                .unwrap(),
+            SessionCheck::Missing
+        );
+        let bob = store
+            .browser_session_lookup("session-bob", NOW + 6, false)
+            .unwrap();
+        assert_eq!(bob.check, SessionCheck::Valid);
+        assert_eq!(
+            bob.member.map(|member| member.name),
+            Some("bob".to_string())
+        );
+        assert!(
+            !store
+                .browser_session_open_for("late", None, NOW + 7, Some("alice"))
+                .unwrap(),
+            "no session is minted for a removed member"
+        );
+    }
+
+    #[test]
+    fn a_store_without_the_member_tables_reads_as_no_members() {
+        let sandbox = v13_home("members-absent");
+        let store = sandbox.store();
+        let token = format!("tdm_{}", "A".repeat(43));
+        let key = format!("tdk_{}", "A".repeat(43));
+        assert!(!store.team_mode().unwrap());
+        assert!(store.members().unwrap().is_empty());
+        assert!(store.member_find("alice").unwrap().is_none());
+        assert!(store.member_by_token(&token, NOW, true).unwrap().is_none());
+        assert!(store.member_by_signin_key(&key).unwrap().is_none());
+        assert!(store.member_tokens("alice").unwrap().is_empty());
+        let session = store
+            .browser_session_lookup("anything", NOW, false)
+            .unwrap();
+        assert_eq!(
+            (session.check, session.member),
+            (SessionCheck::Missing, None)
+        );
+        let connection = sandbox.connection();
+        assert_eq!(
+            version(&connection).unwrap(),
+            Some(13),
+            "a read migrates nothing"
+        );
+
+        let bare = Sandbox::new("members-absent-bare");
+        assert!(!bare.store().team_mode().unwrap());
+        assert!(
+            bare.store()
+                .member_by_token(&token, NOW, true)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!bare.database().exists(), "a read creates nothing");
+    }
+
+    #[test]
+    fn an_existing_session_row_migrates_to_the_owner_session() {
+        let sandbox = v13_home("members-owner-session");
+        Connection::open(sandbox.database())
+            .unwrap()
+            .execute(
+                "INSERT INTO browser_sessions (digest, created_at, last_used_at) VALUES ('old', ?1, ?1)",
+                [NOW],
+            )
+            .unwrap();
+        let store = sandbox.store();
+        let before = store.browser_session_lookup("old", NOW + 1, false).unwrap();
+        assert_eq!(
+            (before.check, before.member),
+            (SessionCheck::Valid, None),
+            "a v13 row reads as an owner session before it migrates"
+        );
+
+        probe(&store, &Actor::Human, "migrates");
+
+        let member_id: Option<i64> = sandbox
+            .connection()
+            .query_row(
+                "SELECT member_id FROM browser_sessions WHERE digest = 'old'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(member_id, None);
+        let after = store.browser_session_lookup("old", NOW + 1, false).unwrap();
+        assert_eq!((after.check, after.member), (SessionCheck::Valid, None));
     }
 }

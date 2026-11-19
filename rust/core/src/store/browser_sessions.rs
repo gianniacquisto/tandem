@@ -14,6 +14,7 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 
+use super::members::Member;
 use super::schema::{self, has_table};
 use super::{
     Actor, Result, Store, backup_database, begin_immediate, commit, enter_gate, open,
@@ -38,8 +39,25 @@ pub enum SessionCheck {
     Refreshed,
 }
 
+/// What a session lookup found: the check, and the member the session belongs
+/// to (`None` for an owner session).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionLookup {
+    pub check: SessionCheck,
+    pub member: Option<Member>,
+}
+
+impl SessionLookup {
+    fn missing() -> Self {
+        Self {
+            check: SessionCheck::Missing,
+            member: None,
+        }
+    }
+}
+
 /// Version 13: the browser sessions. Only a keyed digest, no member or owner
-/// column (a later migration adds one).
+/// column (version 14 adds the nullable `member_id`).
 pub(crate) const VERSION_THIRTEEN: &str = "
 CREATE TABLE IF NOT EXISTS browser_sessions (
     digest TEXT PRIMARY KEY,
@@ -52,7 +70,10 @@ impl Store {
     /// A write that is not board data: the lazy migration and the one
     /// transaction of [`Store::write`], and neither the revision bump nor the
     /// rolling backup.
-    fn session_write<T>(&self, body: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {
+    pub(super) fn session_write<T>(
+        &self,
+        body: impl FnOnce(&Connection) -> Result<T>,
+    ) -> Result<T> {
         self.home().ensure().map_err(|error| {
             super::StoreError::Io(format!(
                 "could not create the home {}: {error}",
@@ -84,16 +105,38 @@ impl Store {
         }
     }
 
-    /// Mint a session: insert its digest, drop the one the browser presented
-    /// (a login replaces it) and sweep every expired row.
+    /// Mint an owner session: insert its digest, drop the one the browser
+    /// presented (a login replaces it) and sweep every expired row.
     pub fn browser_session_open(
         &self,
         digest: &str,
         replacing: Option<&str>,
         now: i64,
     ) -> Result<()> {
+        self.browser_session_open_for(digest, replacing, now, None)
+            .map(|_| ())
+    }
+
+    /// Mint a session for `member` (by name), or an owner session with `None`.
+    /// `false` means the named member is not live and nothing was stored, so a
+    /// removal that lands between a sign-in key check and this write signs
+    /// nobody in. The one function every door that signs a member in calls.
+    pub fn browser_session_open_for(
+        &self,
+        digest: &str,
+        replacing: Option<&str>,
+        now: i64,
+        member: Option<&str>,
+    ) -> Result<bool> {
         self.session_write(|connection| {
             sweep(connection, now)?;
+            let member_id = match member {
+                None => None,
+                Some(name) => match super::members::live_member_id(connection, name)? {
+                    Some(id) => Some(id),
+                    None => return Ok(false),
+                },
+            };
             if let Some(old) = replacing {
                 connection
                     .execute("DELETE FROM browser_sessions WHERE digest = ?1", [old])
@@ -101,12 +144,12 @@ impl Store {
             }
             connection
                 .execute(
-                    "INSERT OR REPLACE INTO browser_sessions (digest, created_at, last_used_at)
-                     VALUES (?1, ?2, ?2)",
-                    params![digest, now],
+                    "INSERT OR REPLACE INTO browser_sessions (digest, created_at, last_used_at, member_id)
+                     VALUES (?1, ?2, ?2, ?3)",
+                    params![digest, now, member_id],
                 )
                 .map_err(|error| translate(error, connection))?;
-            Ok(())
+            Ok(true)
         })
     }
 
@@ -119,29 +162,63 @@ impl Store {
         now: i64,
         touch: bool,
     ) -> Result<SessionCheck> {
-        let last_used = self
+        self.browser_session_lookup(digest, now, touch)
+            .map(|lookup| lookup.check)
+    }
+
+    /// [`Store::browser_session_check`] and the member the session belongs to:
+    /// `None` is an owner session, including every row a v13 store holds. A
+    /// session whose member is removed, or whose member tables cannot be read,
+    /// is [`SessionCheck::Missing`] (fail closed).
+    pub fn browser_session_lookup(
+        &self,
+        digest: &str,
+        now: i64,
+        touch: bool,
+    ) -> Result<SessionLookup> {
+        let found = self
             .read(|connection| {
                 if !has_table(connection, "browser_sessions")? {
                     return Ok(None);
                 }
-                connection
-                    .query_row(
-                        "SELECT last_used_at FROM browser_sessions WHERE digest = ?1",
-                        [digest],
-                        |row| row.get::<_, i64>(0),
-                    )
+                let member_column =
+                    schema::has_column(connection, "browser_sessions", "member_id")?;
+                let query = if member_column {
+                    "SELECT last_used_at, member_id FROM browser_sessions WHERE digest = ?1"
+                } else {
+                    "SELECT last_used_at, NULL FROM browser_sessions WHERE digest = ?1"
+                };
+                let row = connection
+                    .query_row(query, [digest], |row| {
+                        Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?))
+                    })
                     .optional()
-                    .map_err(|error| translate(error, connection))
+                    .map_err(|error| translate(error, connection))?;
+                let Some((last_used, member_id)) = row else {
+                    return Ok(None);
+                };
+                let member = match member_id {
+                    None => None,
+                    Some(id) => match super::members::live_member_by_id(connection, id) {
+                        Ok(Some(member)) => Some(member),
+                        // A removed member, or tables that cannot be read.
+                        Ok(None) | Err(_) => return Ok(None),
+                    },
+                };
+                Ok(Some((last_used, member)))
             })?
             .flatten();
-        let Some(last_used) = last_used else {
-            return Ok(SessionCheck::Missing);
+        let Some((last_used, member)) = found else {
+            return Ok(SessionLookup::missing());
         };
         if now - last_used > SESSION_IDLE_SECONDS {
-            return Ok(SessionCheck::Missing);
+            return Ok(SessionLookup::missing());
         }
         if !touch || now - last_used < SESSION_TOUCH_SECONDS {
-            return Ok(SessionCheck::Valid);
+            return Ok(SessionLookup {
+                check: SessionCheck::Valid,
+                member,
+            });
         }
         let touched = self.session_write(|connection| {
             connection
@@ -153,9 +230,12 @@ impl Store {
                 .map_err(|error| translate(error, connection))
         });
         // A touch that loses the lock is not a sign-out: the session is live.
-        Ok(match touched {
-            Ok(_) => SessionCheck::Refreshed,
-            Err(_) => SessionCheck::Valid,
+        Ok(SessionLookup {
+            check: match touched {
+                Ok(_) => SessionCheck::Refreshed,
+                Err(_) => SessionCheck::Valid,
+            },
+            member,
         })
     }
 
