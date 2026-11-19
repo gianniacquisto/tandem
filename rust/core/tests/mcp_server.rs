@@ -1247,6 +1247,7 @@ fn note_search_answers_a_hit_with_a_snippet_an_empty_query_with_no_rows_and_cuts
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn note_search_does_not_follow_a_link_out_of_the_vault() {
     let sandbox = Sandbox::new("mcp-note-search-link");
@@ -1256,7 +1257,6 @@ fn note_search_does_not_follow_a_link_out_of_the_vault() {
     std::fs::create_dir_all(&outside).unwrap();
     std::fs::write(outside.join("Secret.md"), "Title\nneedle-outside").unwrap();
     let vault = sandbox.home().directory().join("bikeshed");
-    #[cfg(unix)]
     std::os::unix::fs::symlink(&outside, vault.join("link")).unwrap();
     let (_, found) = result_of(&store, "note_search", json!({"query": "needle-outside"}));
     assert_eq!(found["hits"], json!([]), "{found}");
