@@ -35,6 +35,10 @@ pub(crate) const CARRIED_TABLES: &[&str] = &[
     // The people of a team workspace (CUT-36, schema v14): their names and
     // roles are workspace data and travel. Their credentials do not.
     "members",
+    // The access record (CUT-39, schema v15): who changed access and who
+    // exported, and when. It holds no secret, and an import only lands in an
+    // empty home, so it cannot forge a record into a live workspace.
+    "access_record",
     // Older stores, before their first migrating write.
     "lanes",
     // The legacy agent-session table of older stores, carried as data. It is

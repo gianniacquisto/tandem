@@ -38,6 +38,7 @@ enum Wake {
 pub(super) async fn events(
     context: Context,
     session: Option<Extension<Session>>,
+    Extension(principal): Extension<guard::Principal>,
     Extension(changes): Extension<broadcast::Sender<i64>>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<SseEvent, Infallible>>> {
     // The stream opens on the revision the board was drawn from, so a client
@@ -59,6 +60,12 @@ pub(super) async fn events(
     // session before every frame and on a timer, and delivers nothing more
     // once the session is gone. A bearer stream has no session to lose.
     let digest = session.map(|Extension(session)| session.digest);
+    // The role the stream opened with: a change of role closes it, the way a
+    // removal does, so a demoted admin's stream does not outlive the role.
+    let opened_role = match &principal {
+        guard::Principal::MemberSession(member) => Some(member.role),
+        _ => None,
+    };
     let store = context.store.clone();
     let revisions = BroadcastStream::new(subscription).map(|item| match item {
         Ok(revision) => Wake::Revision(Some(revision)),
@@ -81,7 +88,7 @@ pub(super) async fn events(
             let lagged = lagged.clone();
             async move {
                 if let Some(digest) = &digest
-                    && !guard::session_live(&store, digest).await
+                    && !guard::session_still(&store, digest, opened_role).await
                 {
                     return Step::End;
                 }

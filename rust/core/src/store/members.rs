@@ -24,6 +24,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use sha2::{Digest, Sha256};
 use tokio::sync::broadcast;
 
+use super::access_record::{AccessActor, append};
 use super::schema::has_table;
 use super::{Result, Store, StoreError, translate};
 
@@ -150,6 +151,12 @@ pub enum MemberError {
     Invalid(&'static str),
     /// The name is taken now, or was taken before a removal: never reused.
     Taken,
+    /// The member is the workspace's last admin, who cannot be removed or
+    /// demoted by any door, the operator's included (CUT-39).
+    LastAdmin,
+    /// The home has no live admin yet, so the first member must be one: a
+    /// workspace is never left with members and no admin.
+    NoAdmin,
     Store(StoreError),
 }
 
@@ -160,6 +167,12 @@ impl fmt::Display for MemberError {
             Self::Taken => {
                 formatter.write_str("that member name is taken, and a name is never reused")
             }
+            Self::LastAdmin => formatter.write_str(
+                "that member is the last admin, who cannot be removed or demoted: make another member an admin first",
+            ),
+            Self::NoAdmin => formatter.write_str(
+                "the first member must be an admin: a workspace needs one admin before anyone else joins",
+            ),
             Self::Store(error) => error.fmt(formatter),
         }
     }
@@ -294,14 +307,47 @@ pub(super) fn live_member_by_id(connection: &Connection, id: i64) -> Result<Opti
         .map(Option::flatten)
 }
 
+/// Whether the member `id` is a live admin and the only one.
+fn is_last_admin(connection: &Connection, id: i64) -> Result<bool> {
+    let admins: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM members WHERE role = 'admin' AND removed_at IS NULL",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|error| translate(error, connection))?;
+    let is_admin: bool = connection
+        .query_row(
+            "SELECT 1 FROM members WHERE id = ?1 AND role = 'admin' AND removed_at IS NULL",
+            [id],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|error| translate(error, connection))?
+        .unwrap_or(false);
+    Ok(is_admin && admins <= 1)
+}
+
 impl Store {
-    /// Add a member. The first one puts the home in team mode, in the same
-    /// write, and nothing unsets it.
+    /// Add a member as the owner (the home's holder). See [`Store::member_add_by`].
     pub fn member_add(
         &self,
         name: &str,
         role: Role,
         now: i64,
+    ) -> std::result::Result<Member, MemberError> {
+        self.member_add_by(name, role, now, &AccessActor::owner())
+    }
+
+    /// Add a member. The first one puts the home in team mode, in the same
+    /// write, and nothing unsets it. The access record gets its row in that
+    /// write too.
+    pub fn member_add_by(
+        &self,
+        name: &str,
+        role: Role,
+        now: i64,
+        by: &AccessActor,
     ) -> std::result::Result<Member, MemberError> {
         if let Some(rule) = member_name_rule(name) {
             return Err(MemberError::Invalid(rule));
@@ -317,6 +363,16 @@ impl Store {
             if taken {
                 return Ok(Err(MemberError::Taken));
             }
+            let admins: i64 = connection
+                .query_row(
+                    "SELECT COUNT(*) FROM members WHERE role = 'admin' AND removed_at IS NULL",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|error| translate(error, connection))?;
+            if admins == 0 && role != Role::Admin {
+                return Ok(Err(MemberError::NoAdmin));
+            }
             connection
                 .execute(
                     "INSERT INTO members (name, role, created_at) VALUES (?1, ?2, ?3)",
@@ -330,6 +386,15 @@ impl Store {
                     [TEAM_MODE_KEY],
                 )
                 .map_err(|error| translate(error, connection))?;
+            append(
+                connection,
+                by,
+                "member-added",
+                Some(name),
+                Some(role.as_str()),
+                None,
+                now,
+            )?;
             Ok(Ok(Member {
                 id,
                 name: name.to_string(),
@@ -338,14 +403,30 @@ impl Store {
         })?
     }
 
+    /// Remove a member as the owner. See [`Store::member_remove_by`].
+    pub fn member_remove(&self, name: &str, now: i64) -> std::result::Result<bool, MemberError> {
+        self.member_remove_by(name, now, &AccessActor::owner())
+    }
+
     /// Remove a member: the row is tombstoned (the name stays taken) and their
     /// sessions, tokens and sign-in key are deleted in the same write. The one
-    /// removal every door calls. `false` when there is no such live member.
-    pub fn member_remove(&self, name: &str, now: i64) -> Result<bool> {
+    /// removal every door calls. `false` when there is no such live member, and
+    /// [`MemberError::LastAdmin`] when they are the last admin: the count and
+    /// the removal are one transaction, so two admins removing each other at
+    /// once leave one.
+    pub fn member_remove_by(
+        &self,
+        name: &str,
+        now: i64,
+        by: &AccessActor,
+    ) -> std::result::Result<bool, MemberError> {
         let removed = self.session_write(|connection| {
             let Some(id) = live_member_id(connection, name)? else {
-                return Ok(false);
+                return Ok(Ok(false));
             };
+            if is_last_admin(connection, id)? {
+                return Ok(Err(MemberError::LastAdmin));
+            }
             let run = |sql: &str, parameters: &[&dyn rusqlite::ToSql]| {
                 connection
                     .execute(sql, parameters)
@@ -361,12 +442,86 @@ impl Store {
                 "UPDATE members SET removed_at = ?2 WHERE id = ?1",
                 &[&id, &now],
             )?;
-            Ok(true)
-        })?;
+            append(
+                connection,
+                by,
+                "member-removed",
+                Some(name),
+                None,
+                None,
+                now,
+            )?;
+            Ok(Ok(true))
+        })??;
         if removed {
             notify();
         }
         Ok(removed)
+    }
+
+    /// Change a member's role as the owner. See [`Store::member_set_role_by`].
+    pub fn member_set_role(
+        &self,
+        name: &str,
+        role: Role,
+        now: i64,
+    ) -> std::result::Result<bool, MemberError> {
+        self.member_set_role_by(name, role, now, &AccessActor::owner())
+    }
+
+    /// Give a live member a new role. `false` when there is no such member.
+    /// The last admin cannot be demoted, by any door: the count and the change
+    /// are one transaction. A member changing their own role ends their own
+    /// sessions, and every open stream re-checks at once. A role is read from
+    /// the store on every request, so any other change reaches the member's
+    /// next request. Setting the role a member already has changes and records
+    /// nothing.
+    pub fn member_set_role_by(
+        &self,
+        name: &str,
+        role: Role,
+        now: i64,
+        by: &AccessActor,
+    ) -> std::result::Result<bool, MemberError> {
+        let outcome = self.session_write(|connection| {
+            let Some(id) = live_member_id(connection, name)? else {
+                return Ok(Ok(None));
+            };
+            let Some(current) = live_member_by_id(connection, id)? else {
+                return Ok(Ok(None));
+            };
+            if current.role == role {
+                return Ok(Ok(Some(false)));
+            }
+            if current.role == Role::Admin && is_last_admin(connection, id)? {
+                return Ok(Err(MemberError::LastAdmin));
+            }
+            connection
+                .execute(
+                    "UPDATE members SET role = ?2 WHERE id = ?1",
+                    params![id, role.as_str()],
+                )
+                .map_err(|error| translate(error, connection))?;
+            if by.is_member(name) {
+                connection
+                    .execute("DELETE FROM browser_sessions WHERE member_id = ?1", [id])
+                    .map_err(|error| translate(error, connection))?;
+            }
+            append(
+                connection,
+                by,
+                "member-role-changed",
+                Some(name),
+                Some(role.as_str()),
+                None,
+                now,
+            )?;
+            Ok(Ok(Some(true)))
+        })??;
+        if outcome == Some(true) {
+            notify();
+        }
+        Ok(outcome.is_some())
     }
 
     /// A live member by name. A store with no member tables reads as no member.
@@ -454,6 +609,17 @@ impl Store {
         label: &str,
         now: i64,
     ) -> Result<Option<IssuedCredential>> {
+        self.member_token_issue_by(member, label, now, &AccessActor::owner())
+    }
+
+    /// [`Store::member_token_issue`], recorded as made by `by`.
+    pub fn member_token_issue_by(
+        &self,
+        member: &str,
+        label: &str,
+        now: i64,
+        by: &AccessActor,
+    ) -> Result<Option<IssuedCredential>> {
         let value = mint(TOKEN_PREFIX)?;
         let digest = credential_digest(&value);
         let stored = self.session_write(|connection| {
@@ -467,6 +633,15 @@ impl Store {
                     params![digest, id, label, now],
                 )
                 .map_err(|error| translate(error, connection))?;
+            append(
+                connection,
+                by,
+                "token-created",
+                Some(member),
+                Some(label),
+                None,
+                now,
+            )?;
             Ok(true)
         })?;
         Ok(stored.then_some(IssuedCredential { value }))
@@ -508,8 +683,31 @@ impl Store {
     /// Revoke one of a member's tokens at once. `false` when it is not theirs or
     /// is already revoked.
     pub fn member_token_revoke(&self, member: &str, token_id: i64, now: i64) -> Result<bool> {
+        self.member_token_revoke_by(member, token_id, now, &AccessActor::owner())
+    }
+
+    /// [`Store::member_token_revoke`], recorded as made by `by`.
+    pub fn member_token_revoke_by(
+        &self,
+        member: &str,
+        token_id: i64,
+        now: i64,
+        by: &AccessActor,
+    ) -> Result<bool> {
         let revoked = self.session_write(|connection| {
             let Some(id) = live_member_id(connection, member)? else {
+                return Ok(false);
+            };
+            let label: Option<String> = connection
+                .query_row(
+                    "SELECT label FROM member_tokens
+                     WHERE id = ?1 AND member_id = ?2 AND revoked_at IS NULL",
+                    params![token_id, id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|error| translate(error, connection))?;
+            let Some(label) = label else {
                 return Ok(false);
             };
             connection
@@ -518,8 +716,17 @@ impl Store {
                      WHERE id = ?1 AND member_id = ?2 AND revoked_at IS NULL",
                     params![token_id, id, now],
                 )
-                .map_err(|error| translate(error, connection))
-                .map(|changed| changed > 0)
+                .map_err(|error| translate(error, connection))?;
+            append(
+                connection,
+                by,
+                "token-revoked",
+                Some(member),
+                Some(&label),
+                None,
+                now,
+            )?;
+            Ok(true)
         })?;
         if revoked {
             notify();
@@ -534,6 +741,16 @@ impl Store {
         member: &str,
         now: i64,
     ) -> Result<Option<IssuedCredential>> {
+        self.member_signin_key_issue_by(member, now, &AccessActor::owner())
+    }
+
+    /// [`Store::member_signin_key_issue`], recorded as made by `by`.
+    pub fn member_signin_key_issue_by(
+        &self,
+        member: &str,
+        now: i64,
+        by: &AccessActor,
+    ) -> Result<Option<IssuedCredential>> {
         let value = mint(SIGNIN_KEY_PREFIX)?;
         let digest = credential_digest(&value);
         let stored = self.session_write(|connection| {
@@ -547,6 +764,15 @@ impl Store {
                     params![id, digest, now],
                 )
                 .map_err(|error| translate(error, connection))?;
+            append(
+                connection,
+                by,
+                "signin-key-issued",
+                Some(member),
+                None,
+                None,
+                now,
+            )?;
             Ok(true)
         })?;
         Ok(stored.then_some(IssuedCredential { value }))

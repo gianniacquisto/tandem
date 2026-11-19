@@ -19,6 +19,10 @@
 //!   `ResolveContext::resolve` only reads it. A personal token (`tdm_`) is
 //!   admitted on `/mcp` and `/health` only; a sign-in key (`tdk_`) is accepted
 //!   at `POST /login` and never as a bearer; `TANDEM_TOKEN` is the owner.
+//! - **What each route needs, in one table** (CUT-39): [`ROUTE_NEEDS`] maps
+//!   every route to the permission it asks, and [`permits`] decides. A route with
+//!   no entry is refused, so a later route cannot opt out. A refused page
+//!   answers a `403` page; a refused `/mcp` call answers a JSON-RPC error.
 //! - **The route decides the shape.** `/mcp` takes JSON from no foreign origin;
 //!   every other write takes a same-origin form.
 //!
@@ -30,6 +34,7 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use sha2::{Digest, Sha256};
 
+use crate::permission::{Permission, PrincipalKind, permits};
 use crate::store::{
     Member, SESSION_IDLE_SECONDS, SessionCheck, SessionLookup, Store, credential_kind, unix_now,
 };
@@ -327,6 +332,139 @@ pub(super) enum Principal {
     Operator,
 }
 
+impl Principal {
+    /// The closed kind the one permission function reads (CUT-39).
+    pub(super) fn kind(&self) -> PrincipalKind {
+        match self {
+            Self::Owner => PrincipalKind::Owner,
+            Self::MemberSession(member) => PrincipalKind::MemberSession(member.role),
+            Self::MemberToken(member) => PrincipalKind::MemberToken(member.role),
+            Self::Operator => PrincipalKind::Operator,
+        }
+    }
+}
+
+/// What a route asks of the caller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Need {
+    /// Exempt by name from every credential: the liveness probe, the login
+    /// pages and the static assets. They reach no workspace data.
+    Public,
+    /// The caller must hold this permission.
+    Permit(Permission),
+}
+
+/// Every route and the permission it needs: the one map (CUT-39). The guard
+/// refuses a route that is not here, and a test reads `routes()` against this
+/// table, so adding a route without a line fails the build.
+pub(super) const ROUTE_NEEDS: &[(&str, Need)] = &[
+    ("/", Need::Permit(Permission::Board)),
+    ("/board", Need::Permit(Permission::Board)),
+    ("/events", Need::Permit(Permission::Board)),
+    ("/export", Need::Permit(Permission::Export)),
+    (HEALTH_ROUTE, Need::Public),
+    (LOGIN_ROUTE, Need::Public),
+    (LOGOUT_ROUTE, Need::Public),
+    (MCP_ROUTE, Need::Permit(Permission::Board)),
+    (STATIC_ROUTE, Need::Public),
+    ("/tickets", Need::Permit(Permission::Board)),
+    ("/tickets/{id}", Need::Permit(Permission::Board)),
+    ("/tickets/{id}/status", Need::Permit(Permission::Board)),
+    ("/tickets/{id}/comments", Need::Permit(Permission::Board)),
+    ("/tickets/{id}/label", Need::Permit(Permission::Board)),
+    ("/labels", Need::Permit(Permission::Board)),
+    ("/labels/{name}/rename", Need::Permit(Permission::Board)),
+    ("/notes", Need::Permit(Permission::Board)),
+    ("/notes/view", Need::Permit(Permission::Board)),
+    ("/notes/edit", Need::Permit(Permission::Board)),
+    ("/notes/preview", Need::Permit(Permission::Board)),
+    ("/notes/save", Need::Permit(Permission::Board)),
+    ("/notes/create", Need::Permit(Permission::Board)),
+    ("/notes/create-folder", Need::Permit(Permission::Board)),
+    ("/notes/daily", Need::Permit(Permission::Board)),
+    ("/notes/new", Need::Permit(Permission::Board)),
+    ("/notes/move", Need::Permit(Permission::Board)),
+    ("/notes/rename", Need::Permit(Permission::Board)),
+    ("/notes/delete", Need::Permit(Permission::Board)),
+    ("/notes/restore", Need::Permit(Permission::Board)),
+];
+
+/// The need a route has, or `None` for a route the table does not name.
+pub(super) fn route_need(route: &str) -> Option<Need> {
+    // The routes the router tests add beside the real ones; the table above
+    // is the only map a running serve has.
+    #[cfg(test)]
+    if matches!(route, "/unguarded" | "/context") {
+        return Some(Need::Permit(Permission::Board));
+    }
+    ROUTE_NEEDS
+        .iter()
+        .find(|(path, _)| *path == route)
+        .map(|(_, need)| *need)
+}
+
+/// Whether `principal` may reach `route`: `None` lets it through. An unmapped
+/// route, a refused permission and an unknown principal all refuse (fail
+/// closed), and the reason names the permission, never a value.
+pub(super) fn authorize(principal: &Principal, route: &str, matched: bool) -> Option<Response> {
+    match route_need(route) {
+        // A path no route matched falls through to the router's own `404`;
+        // a route that matched and has no line is the one refused.
+        None if !matched => None,
+        None => Some(refuse_access(route, "the route has no permission mapped")),
+        Some(Need::Public) => None,
+        Some(Need::Permit(permission)) => {
+            if permits(principal.kind(), permission) {
+                None
+            } else {
+                Some(refuse_access(
+                    route,
+                    match permission {
+                        Permission::Export => "the credential does not hold the export permission",
+                        Permission::Board => "the credential does not hold the board permission",
+                        _ => "the credential does not hold the permission the route needs",
+                    },
+                ))
+            }
+        }
+    }
+}
+
+/// The body of a refused page: the `ux` wording, and a way back.
+const ACCESS_REFUSED_PAGE: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>No access</title></head><body><h1>You do not have access to this page</h1><p>Only admins can manage people. Ask an admin if you need a change.</p><p><a href=\"/\">Back to the board</a></p></body></html>\n";
+
+/// What a refused `/mcp` call answers, as a JSON-RPC error.
+pub(super) const ACCESS_REFUSED_MCP: &str =
+    "A personal token cannot manage people or export the workspace.";
+
+/// A permission refusal: a `403` page for a page request, the JSON-RPC error
+/// for `/mcp`, and a log line with the reason and no value.
+pub(super) fn refuse_access(route: &str, reason: &str) -> Response {
+    tracing::warn!(reason, "request refused");
+    if route == MCP_ROUTE {
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": null,
+            "error": {"code": -32001, "message": ACCESS_REFUSED_MCP},
+        });
+        return (
+            StatusCode::FORBIDDEN,
+            [(header::CONTENT_TYPE, "application/json")],
+            body.to_string(),
+        )
+            .into_response();
+    }
+    (
+        StatusCode::FORBIDDEN,
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        ACCESS_REFUSED_PAGE,
+    )
+        .into_response()
+}
+
 /// A same-origin path to return to after sign-in, else `/`: one leading `/`, a
 /// second character that is neither `/` nor a backslash, no control character.
 pub(super) fn return_target(raw: &str) -> String {
@@ -373,19 +511,27 @@ async fn lookup(access: &Access, store: &Store, cookie: &str, touch: bool) -> Se
     }
 }
 
-/// Whether the session behind this digest is still live, without touching it.
-pub(super) async fn session_live(store: &Store, digest: &str) -> bool {
+/// Whether the session is live and, for a member's, still has the role it had
+/// when the stream opened (`opened`): a removal, a sign-out, an expiry and a
+/// change of role all end it. Read from the store each time, never remembered.
+pub(super) async fn session_still(
+    store: &Store,
+    digest: &str,
+    opened: Option<crate::store::Role>,
+) -> bool {
     let store = store.clone();
     let digest = digest.to_string();
-    matches!(
-        tokio::task::spawn_blocking(move || store.browser_session_check(
-            &digest,
-            unix_now(),
-            false
-        ))
-        .await,
-        Ok(Ok(SessionCheck::Valid | SessionCheck::Refreshed))
-    )
+    match tokio::task::spawn_blocking(move || {
+        store.browser_session_lookup(&digest, unix_now(), false)
+    })
+    .await
+    {
+        Ok(Ok(found)) => {
+            matches!(found.check, SessionCheck::Valid | SessionCheck::Refreshed)
+                && found.member.map(|member| member.role) == opened
+        }
+        _ => false,
+    }
 }
 
 /// What an `Origin` header says about a request: none, ours, or not ours.
@@ -502,6 +648,7 @@ pub(super) async fn access_guard(mut request: Request, next: Next) -> Response {
         tracing::error!("request refused: the router carries no access policy");
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
+    let matched = request.extensions().get::<MatchedPath>().is_some();
     let route = request
         .extensions()
         .get::<MatchedPath>()
@@ -524,16 +671,20 @@ pub(super) async fn access_guard(mut request: Request, next: Next) -> Response {
             let throttle = request.extensions().get::<LoginThrottle>().cloned();
             match member_token(store, throttle, presented.to_string()).await {
                 TokenCheck::Member(member) => {
+                    // The credential kind comes first: a token is admitted on
+                    // /mcp only (/health is public and never reaches here), so
+                    // it holds `board` over /mcp and nothing on a page.
+                    let principal = Principal::MemberToken(member);
                     if route != MCP_ROUTE {
-                        return refuse(
-                            StatusCode::FORBIDDEN,
-                            "forbidden",
+                        return refuse_access(
+                            &route,
                             "a personal token reaches /mcp and /health only",
                         );
                     }
-                    request
-                        .extensions_mut()
-                        .insert(Principal::MemberToken(member));
+                    if let Some(denied) = authorize(&principal, &route, matched) {
+                        return denied;
+                    }
+                    request.extensions_mut().insert(principal);
                     return finish(access, route, method, request, next, false, None).await;
                 }
                 TokenCheck::TooMany => {
@@ -581,6 +732,9 @@ pub(super) async fn access_guard(mut request: Request, next: Next) -> Response {
         if !bearer && !cookie_authenticated && !exempt {
             return signed_out(&route, &method, &request);
         }
+    }
+    if let Some(denied) = authorize(&principal, &route, matched) {
+        return denied;
     }
     request.extensions_mut().insert(principal);
     finish(

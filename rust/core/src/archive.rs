@@ -29,6 +29,7 @@ use flate2::write::GzEncoder;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::permission::{Permission, PrincipalKind, permits};
 use crate::store::{self, Actor, Home, Refusal, Store, StoreError};
 
 /// The archive format this build writes and reads.
@@ -59,6 +60,12 @@ pub enum Access {
     Unauthenticated,
     /// A request carrying the server's token.
     Token,
+    /// A member's browser session, of this role.
+    MemberSession(store::Role),
+    /// A member's personal token, of this role.
+    MemberToken(store::Role),
+    /// The hosting provider's key.
+    Operator,
     /// A principal this build does not know. The check fails closed on it.
     Unknown,
 }
@@ -88,27 +95,40 @@ impl Door {
 }
 
 /// The one export permission check; the CLI verb and the board's route both
-/// call it, and nothing else decides.
+/// call it, and nothing else decides. It is a thin caller of
+/// [`crate::permission::permits`] with the `export` permission (CUT-39): the
+/// owner (the solo modes, `TANDEM_TOKEN`, and the offline CLI at the home's own
+/// files) always may, an admin's browser session may, and a member's session,
+/// any personal token and the operator may not. It fails closed on a principal
+/// it does not know.
 ///
-/// Today it allows every principal that exists: with no members, whoever
-/// reaches the home is its owner. It fails closed on a principal it does not
-/// know. CUT-36 binds it to its admin role for team workspaces and leaves the
-/// solo owner free. It stops the one-step bulk export; it does not stop a member
-/// who can read every ticket and note from copying them, and it does not bind the
-/// offline CLI, where whoever can read the home's files could copy them anyway
-/// (file permissions are that boundary).
+/// It stops the one-step bulk export; it does not stop a member who can read
+/// every ticket and note from copying them, and it does not bind the offline
+/// CLI, which opens the home directly: anyone who can read the home's files could
+/// copy them anyway, so file permissions are that boundary.
 pub fn may_export(principal: &Principal) -> Result<(), ArchiveError> {
-    match principal.access {
-        Access::Local | Access::Loopback | Access::Unauthenticated | Access::Token => Ok(()),
-        Access::Unknown => Err(ArchiveError::NotAllowed),
+    let kind = match principal.access {
+        Access::Local | Access::Loopback | Access::Unauthenticated | Access::Token => {
+            PrincipalKind::Owner
+        }
+        Access::MemberSession(role) => PrincipalKind::MemberSession(role),
+        Access::MemberToken(role) => PrincipalKind::MemberToken(role),
+        Access::Operator => PrincipalKind::Operator,
+        Access::Unknown => PrincipalKind::Unknown,
+    };
+    if permits(kind, Permission::Export) {
+        Ok(())
+    } else {
+        Err(ArchiveError::NotAllowed)
     }
 }
 
 /// The export record: one line for an export that starts, naming the actor, the
 /// time and the door and nothing else (never a token, a path or content). It is
 /// a `tracing::info!` event, and the line is returned so the CLI, which installs
-/// no subscriber, prints the same text to stderr. A durable, in-board trail is
-/// CUT-36's: a row here would change the store being exported.
+/// no subscriber, prints the same text to stderr. The board's door also writes a
+/// row of the durable access record (CUT-39, `Store::access_record_export`) beside
+/// it; the CLI door keeps the line only, because it is read-only and offline.
 pub fn record_export(actor: &Actor, door: Door) -> String {
     let actor: String = actor
         .as_str()

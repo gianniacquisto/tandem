@@ -5696,6 +5696,9 @@ async fn a_removed_members_session_and_open_events_stream_stop() {
         .expect("the first frame")
         .expect("readable");
 
+    store
+        .member_add("zed", crate::store::Role::Admin, NOW)
+        .unwrap();
     assert!(store.member_remove("alice", NOW + 1).unwrap());
     // A board change after the removal must not reach the stream.
     let board = Board::with_actor(store.clone(), Actor::Human);
@@ -5844,6 +5847,9 @@ async fn token_and_key_use_logs_no_credential_header_or_digest() {
     .await;
     let cookie = sign_in_with(&app, &team.alice_key).await;
     send(&app, remote_get("/board", Some(&cookie))).await;
+    store
+        .member_add("zed", crate::store::Role::Admin, NOW)
+        .unwrap();
     store.member_remove("alice", NOW + 1).unwrap();
     send(&app, bearer_mcp(&team.alice_token, None, MCP_BODY)).await;
 
@@ -5873,4 +5879,447 @@ async fn token_and_key_use_logs_no_credential_header_or_digest() {
         );
     }
     assert!(!text.contains("tandem_session"), "{text}");
+}
+
+// MARK: - Roles in one place (CUT-39)
+
+/// The ux wording of a refused page.
+const NO_ACCESS: &str = "You do not have access to this page";
+const ONLY_ADMINS: &str = "Only admins can manage people. Ask an admin if you need a change.";
+
+fn issue_key(store: &Store, name: &str) -> String {
+    store
+        .member_signin_key_issue(name, NOW)
+        .unwrap()
+        .unwrap()
+        .reveal()
+        .to_string()
+}
+
+fn cookie_get(uri: &str, cookie: &str) -> Request<Body> {
+    remote_get(uri, Some(cookie))
+}
+
+fn export_rows(store: &Store) -> Vec<crate::store::AccessRow> {
+    store
+        .access_record()
+        .unwrap()
+        .into_iter()
+        .filter(|row| row.event == "export")
+        .collect()
+}
+
+#[tokio::test]
+async fn every_route_in_the_table_maps_to_a_permission_and_an_unmapped_route_is_refused() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("route-map");
+
+    // Every route `routes()` declares has a line in the guard's map, and every
+    // line names a route that exists.
+    let source = include_str!("mod.rs");
+    let routes_fn = &source[source.find("fn routes()").expect("routes()")
+        ..source.find("fn layered(").expect("layered()")];
+    let mut declared: Vec<&str> = routes_fn
+        .split(".route(")
+        .skip(1)
+        .filter_map(|rest| rest.trim_start().strip_prefix('"')?.split('"').next())
+        .collect();
+    declared.sort_unstable();
+    declared.dedup();
+    let mut mapped: Vec<&str> = guard::ROUTE_NEEDS.iter().map(|(path, _)| *path).collect();
+    mapped.sort_unstable();
+    mapped.dedup();
+    assert_eq!(declared, mapped, "the map names every route and no other");
+    for route in &declared {
+        assert!(guard::route_need(route).is_some(), "{route}");
+    }
+    // The export route needs the export permission, the pages the board.
+    assert_eq!(
+        guard::route_need("/export"),
+        Some(guard::Need::Permit(crate::permission::Permission::Export))
+    );
+    assert_eq!(
+        guard::route_need("/board"),
+        Some(guard::Need::Permit(crate::permission::Permission::Board))
+    );
+    assert_eq!(guard::route_need("/health"), Some(guard::Need::Public));
+    assert_eq!(guard::route_need("/nowhere"), None);
+
+    // A route added to the router and not to the map is refused, even for the
+    // owner on loopback: a later route cannot opt out.
+    let app = extra_router(
+        routes().route("/nowhere", axum::routing::get(resolved_context)),
+        sandbox.store(),
+    );
+    let captured = Captured::default();
+    let _guard = captured.install();
+    let (status, _, body) = get(&app, "/nowhere").await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert!(
+        captured
+            .text()
+            .contains("the route has no permission mapped"),
+        "{}",
+        captured.text()
+    );
+}
+
+#[tokio::test]
+async fn a_member_session_gets_the_403_page_on_export_and_a_token_gets_the_403_on_everything_but_mcp()
+ {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-403");
+    let store = sandbox.store();
+    let team = team(&store);
+    let bob_key = issue_key(&store, "bob");
+    let app = remote_app(store.clone(), TOKEN);
+    let bob = sign_in_with(&app, &bob_key).await;
+
+    let (status, headers, body) = send(&app, cookie_get("/export", &bob)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(
+        headers[header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("text/html")
+    );
+    assert!(body.contains(NO_ACCESS), "{body}");
+    assert!(body.contains(ONLY_ADMINS), "{body}");
+    assert!(
+        body.contains("href=\"/\""),
+        "a link back to the board: {body}"
+    );
+    assert!(!body.contains(&bob), "no credential in the refusal");
+    // A member still reaches the board.
+    assert_eq!(
+        send(&app, cookie_get("/board", &bob)).await.0,
+        StatusCode::OK
+    );
+
+    // A token, of an admin or a member, is refused on every page route.
+    for token in [&team.alice_token, &team.bob_token] {
+        for (method, _, uri) in ROUTE_TABLE {
+            let (status, _, body) = send(&app, table_request(method, uri, token)).await;
+            if matches!(*uri, "/mcp" | "/health") {
+                assert_eq!(status, StatusCode::OK, "{method} {uri}: {body}");
+            } else {
+                assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}");
+                assert!(body.contains(NO_ACCESS), "{method} {uri}: {body}");
+            }
+        }
+    }
+
+    // The /mcp refusal is the JSON-RPC error, in its own wording.
+    let response = guard::refuse_access("/mcp", "a test");
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let bytes = response.into_body().collect().await.unwrap().to_bytes();
+    let answer: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(answer["jsonrpc"], "2.0");
+    assert_eq!(
+        answer["error"]["message"],
+        "A personal token cannot manage people or export the workspace."
+    );
+    assert!(
+        !String::from_utf8_lossy(&bytes).contains(NO_ACCESS),
+        "the two wordings are separate"
+    );
+}
+
+#[tokio::test]
+async fn an_admin_session_exports_and_a_member_session_does_not() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("admin-export");
+    let store = sandbox.store();
+    exportable(&store);
+    let team = team(&store);
+    let bob_key = issue_key(&store, "bob");
+    let app = remote_app(store.clone(), TOKEN);
+    let alice = sign_in_with(&app, &team.alice_key).await;
+    let bob = sign_in_with(&app, &bob_key).await;
+
+    let (status, headers, bytes) = send_raw(&app, cookie_get("/export", &alice)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_TYPE], "application/gzip");
+    assert_eq!(&bytes[..2], &[0x1f, 0x8b]);
+
+    let (status, headers, _) = send_raw(&app, cookie_get("/export", &bob)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(headers.get(header::CONTENT_DISPOSITION).is_none());
+
+    // The shell draws the control for the admin and not for the member.
+    let (_, _, page) = send(&app, cookie_get("/board", &alice)).await;
+    assert!(page.contains("Export workspace"));
+    let (_, _, page) = send(&app, cookie_get("/board", &bob)).await;
+    assert!(!page.contains("Export workspace"));
+    assert!(!page.contains("/export"));
+
+    // The owner's bearer still exports.
+    let (status, _, _) = send_raw(&app, bearer_get("/export", TOKEN)).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a_demoted_admins_next_request_and_open_stream_follow_the_new_role() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("demotion");
+    let store = sandbox.store();
+    exportable(&store);
+    let team = team(&store);
+    store
+        .member_add("zed", crate::store::Role::Admin, NOW)
+        .unwrap();
+    let app = remote_app(store.clone(), TOKEN);
+    let alice = sign_in_with(&app, &team.alice_key).await;
+    assert_eq!(
+        send_raw(&app, cookie_get("/export", &alice)).await.0,
+        StatusCode::OK
+    );
+
+    let response = app
+        .clone()
+        .oneshot(remote_get("/events", Some(&alice)))
+        .await
+        .expect("the router answers");
+    assert_eq!(response.status(), StatusCode::OK);
+    let mut stream = response.into_body();
+    stream
+        .frame()
+        .await
+        .expect("the first frame")
+        .expect("readable");
+
+    // Another admin demotes her: no sign-out, the role is read on each request.
+    assert_eq!(
+        store.member_set_role_by(
+            "alice",
+            crate::store::Role::Member,
+            NOW + 1,
+            &crate::store::AccessActor::member_session("zed"),
+        ),
+        Ok(true)
+    );
+    let (status, _, body) = send(&app, cookie_get("/export", &alice)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(
+        send(&app, cookie_get("/board", &alice)).await.0,
+        StatusCode::OK,
+        "she is still a member"
+    );
+
+    // The stream she opened as an admin ends within the bound.
+    let ended = tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(frame) = stream.frame().await {
+            if frame.is_err() {
+                break;
+            }
+        }
+    })
+    .await;
+    assert!(ended.is_ok(), "the stream closes within the bound");
+}
+
+#[tokio::test]
+async fn the_mcp_tool_list_holds_no_export_or_people_tool_for_any_principal() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("mcp-tools");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store, TOKEN);
+    let list = r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#;
+
+    let mut seen = Vec::new();
+    for token in [TOKEN, &team.alice_token, &team.bob_token] {
+        let (status, _, body) = send(&app, bearer_mcp(token, None, list)).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let answer: serde_json::Value = serde_json::from_str(&body).expect("one JSON frame");
+        let mut names: Vec<String> = answer["result"]["tools"]
+            .as_array()
+            .expect("a tool list")
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap().to_string())
+            .collect();
+        names.sort();
+        seen.push(names);
+    }
+    assert_eq!(seen[0], seen[1], "an admin's token sees the owner's list");
+    assert_eq!(seen[1], seen[2], "a member's token sees the same list");
+    let mut pinned = vec![
+        "doctor_report",
+        "label_add",
+        "label_delete",
+        "label_list",
+        "label_move",
+        "label_rename",
+        "note_backlinks",
+        "note_create",
+        "note_create_folder",
+        "note_edit",
+        "note_health",
+        "note_move",
+        "note_read",
+        "note_search",
+        "note_tree",
+        "note_write",
+        "project_add",
+        "project_delete",
+        "project_list",
+        "project_rename",
+        "ticket_add",
+        "ticket_archive",
+        "ticket_block",
+        "ticket_comment_add",
+        "ticket_comment_list",
+        "ticket_complete",
+        "ticket_list",
+        "ticket_move",
+        "ticket_set",
+        "ticket_show",
+        "ticket_unblock",
+    ];
+    pinned.sort_unstable();
+    assert_eq!(
+        seen[0], pinned,
+        "the list is pinned: a new tool is a decision"
+    );
+    for name in &seen[0] {
+        for word in [
+            "export", "import", "member", "people", "role", "access", "signin",
+        ] {
+            assert!(!name.contains(word), "{name} names {word}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_board_export_writes_one_access_record_row_and_a_cli_export_writes_none() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("export-record");
+    let store = sandbox.store();
+    exportable(&store);
+    let team = team(&store);
+    let app = remote_app(store.clone(), TOKEN);
+    let alice = sign_in_with(&app, &team.alice_key).await;
+    let before = store.access_record().unwrap().len();
+    let revision = store.revision().unwrap();
+
+    let (status, _, _) = send_raw(&app, cookie_get("/export", &alice)).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = export_rows(&store);
+    assert_eq!(rows.len(), 1, "one export, one row");
+    assert_eq!(
+        (
+            rows[0].actor.as_str(),
+            rows[0].credential.as_str(),
+            rows[0].door.as_deref()
+        ),
+        ("alice", "member-session", Some("board"))
+    );
+    assert_eq!(store.access_record().unwrap().len(), before + 1);
+    assert_eq!(store.revision().unwrap(), revision, "no revision bump");
+
+    // The owner's bearer is recorded as the owner.
+    let (status, _, _) = send_raw(&app, bearer_get("/export", TOKEN)).await;
+    assert_eq!(status, StatusCode::OK);
+    let rows = export_rows(&store);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[1].actor, "owner");
+    assert_eq!(rows[1].credential, "owner");
+
+    // The CLI door asks the same check, opens the home directly and writes the
+    // log line only.
+    let principal = crate::archive::Principal {
+        access: crate::archive::Access::Local,
+        actor: Actor::Human,
+    };
+    crate::archive::start_export(&principal, crate::archive::Door::Cli).expect("allowed");
+    let mut sink = Vec::new();
+    crate::archive::export(store.home(), &mut sink).expect("the CLI export runs");
+    assert!(!sink.is_empty());
+    assert_eq!(export_rows(&store).len(), 2, "the CLI door writes no row");
+}
+
+#[tokio::test]
+async fn solo_modes_still_export_as_before() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("solo-export");
+    let store = sandbox.store();
+    exportable(&store);
+
+    // Loopback.
+    let loopback = router(context(store.clone()));
+    let (status, _, bytes) = send_raw(&loopback, export_get(&[])).await;
+    assert_eq!((status, &bytes[..2]), (StatusCode::OK, &[0x1f, 0x8b][..]));
+    let (_, _, page) = get(&loopback, "/board").await;
+    assert!(page.contains("Export workspace"));
+
+    // `--allow-unauthenticated`.
+    let open = router(SessionContext {
+        access: Access::open(7700),
+        ..context(store.clone())
+    });
+    let request = Request::builder()
+        .uri("/export")
+        .header(header::HOST, REMOTE_HOST)
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(send_raw(&open, request).await.0, StatusCode::OK);
+
+    // A lone TANDEM_TOKEN, by bearer and by the owner's browser session.
+    let token = remote_app(store.clone(), TOKEN);
+    assert_eq!(
+        send_raw(&token, bearer_get("/export", TOKEN)).await.0,
+        StatusCode::OK
+    );
+    let cookie = sign_in(&token).await;
+    assert_eq!(
+        send_raw(&token, cookie_get("/export", &cookie)).await.0,
+        StatusCode::OK
+    );
+    let (_, _, page) = send(&token, cookie_get("/board", &cookie)).await;
+    assert!(page.contains("Export workspace"));
+}
+
+#[tokio::test]
+async fn a_refused_act_logs_its_reason_and_no_value_and_writes_no_row() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("refused-no-row");
+    let store = sandbox.store();
+    exportable(&store);
+    let team = team(&store);
+    let bob_key = issue_key(&store, "bob");
+    let app = remote_app(store.clone(), TOKEN);
+    let bob = sign_in_with(&app, &bob_key).await;
+    let before = store.access_record().unwrap();
+    let captured = Captured::default();
+    let _guard = captured.install();
+
+    // A member session on export, and a token on a page.
+    assert_eq!(
+        send_raw(&app, cookie_get("/export", &bob)).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(&app, bearer_get("/export", &team.alice_token)).await.0,
+        StatusCode::FORBIDDEN
+    );
+
+    let text = captured.text();
+    assert!(
+        text.contains("the credential does not hold the export permission"),
+        "{text}"
+    );
+    assert!(
+        text.contains("a personal token reaches /mcp and /health only"),
+        "{text}"
+    );
+    let values: [&str; 5] = [&bob, &bob_key, &team.alice_token, &team.alice_key, TOKEN];
+    for value in values {
+        assert!(!text.contains(value), "no value in the log: {text}");
+    }
+    assert!(!text.contains("export started"), "no export began");
+    assert_eq!(
+        store.access_record().unwrap(),
+        before,
+        "a refused attempt writes no row"
+    );
 }

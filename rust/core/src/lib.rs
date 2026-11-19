@@ -6,6 +6,8 @@
 //!   lives there; nothing outside it writes a row.
 //! - [`archive`]: the home as one archive (ADR 0050): export, import, the
 //!   export permission check and its record.
+//! - [`permission`]: the one pure function that says what each kind of principal
+//!   may do (ADR 0052).
 //! - [`wire`]: the JSON the agent face prints and the app reads.
 //! - [`domain`]: the aggregates, pure over the adapter: the board's tickets,
 //!   labels, comments, order and the dependency edge. Every failure the
@@ -29,6 +31,7 @@ pub mod diagnostics;
 pub mod domain;
 pub mod env;
 pub mod mcp;
+pub mod permission;
 pub mod rpc;
 pub mod serve;
 pub mod store;

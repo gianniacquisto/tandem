@@ -196,7 +196,7 @@ fn recoverable_label(recovery: &crate::bikeshed::Recovery) -> String {
 }
 
 fn render_notes(
-    context: &SessionContext,
+    context: &Context,
     params: &HashMap<String, String>,
     notice: Option<String>,
     error: Option<String>,
@@ -381,7 +381,7 @@ fn render_notes(
 }
 
 fn notes_response(
-    context: &SessionContext,
+    context: &Context,
     params: &HashMap<String, String>,
     notice: Option<String>,
     error: Option<String>,
@@ -556,7 +556,7 @@ pub(super) async fn note_create_folder(
 }
 
 async fn note_create_thing(
-    context: &SessionContext,
+    context: &Context,
     headers: HeaderMap,
     form: Result<Form<HashMap<String, String>>, FormRejection>,
     folder: bool,

@@ -108,19 +108,6 @@ pub struct SessionContext {
 }
 
 impl SessionContext {
-    /// Who asks to export: how the bind let the request in, and the actor.
-    fn export_principal(&self) -> crate::archive::Principal {
-        crate::archive::Principal {
-            access: self.access.export_access(),
-            actor: self.actor.clone(),
-        }
-    }
-
-    /// Whether this viewer may export: the shell draws its control only then.
-    fn may_export(&self) -> bool {
-        self.export_check.allows(&self.export_principal()).is_ok()
-    }
-
     fn board(&self) -> Board {
         Board::with_actor(self.store.clone(), self.actor.clone())
     }
@@ -182,17 +169,20 @@ impl ResolveContext for Arc<SessionContext> {
         match principal {
             guard::Principal::Owner => {
                 let Some(name) = named else {
-                    return Ok(Context(Arc::clone(self)));
+                    return Ok(Context::new(Arc::clone(self), principal));
                 };
                 let actor = if name == "human" {
                     Actor::Human
                 } else {
                     Actor::parse(Some(name))
                 };
-                Ok(Context(Arc::new(SessionContext {
-                    actor,
-                    ..(**self).clone()
-                })))
+                Ok(Context::new(
+                    Arc::new(SessionContext {
+                        actor,
+                        ..(**self).clone()
+                    }),
+                    principal,
+                ))
             }
             guard::Principal::MemberSession(member) | guard::Principal::MemberToken(member) => {
                 if named.is_some_and(|name| name != member.name) {
@@ -202,10 +192,13 @@ impl ResolveContext for Arc<SessionContext> {
                         "the actor header names someone other than the credential's member",
                     ));
                 }
-                Ok(Context(Arc::new(SessionContext {
-                    actor: Actor::Agent(member.name.clone()),
-                    ..(**self).clone()
-                })))
+                Ok(Context::new(
+                    Arc::new(SessionContext {
+                        actor: Actor::Agent(member.name.clone()),
+                        ..(**self).clone()
+                    }),
+                    principal,
+                ))
             }
             // The operator never acts as a member and never opens the board.
             guard::Principal::Operator => Err(guard::refuse(
@@ -233,13 +226,64 @@ fn valid_actor_name(name: &str) -> bool {
 /// so the context is resolved per request and nothing depends on a
 /// process-wide one.
 #[derive(Debug, Clone)]
-pub struct Context(Arc<SessionContext>);
+pub struct Context {
+    session: Arc<SessionContext>,
+    principal: guard::Principal,
+}
+
+impl Context {
+    fn new(session: Arc<SessionContext>, principal: &guard::Principal) -> Self {
+        Self {
+            session,
+            principal: principal.clone(),
+        }
+    }
+
+    /// Who asks to export: how the credential reached the home (a member by
+    /// session or token, else how the bind let the request in), and the actor.
+    fn export_principal(&self) -> crate::archive::Principal {
+        use crate::archive::Access;
+        let access = match &self.principal {
+            guard::Principal::Owner => self.session.access.export_access(),
+            guard::Principal::MemberSession(member) => Access::MemberSession(member.role),
+            guard::Principal::MemberToken(member) => Access::MemberToken(member.role),
+            guard::Principal::Operator => Access::Operator,
+        };
+        crate::archive::Principal {
+            access,
+            actor: self.session.actor.clone(),
+        }
+    }
+
+    /// Whether this viewer may export: the shell draws its control only then.
+    fn may_export(&self) -> bool {
+        self.session
+            .export_check
+            .allows(&self.export_principal())
+            .is_ok()
+    }
+
+    /// Who the record names for an act this request makes: a member by their
+    /// name and credential, the operator, else the owner. Never from a header.
+    fn access_actor(&self) -> crate::store::AccessActor {
+        match &self.principal {
+            guard::Principal::Owner => crate::store::AccessActor::owner(),
+            guard::Principal::MemberSession(member) => {
+                crate::store::AccessActor::member_session(&member.name)
+            }
+            guard::Principal::MemberToken(member) => {
+                crate::store::AccessActor::member_token(&member.name)
+            }
+            guard::Principal::Operator => crate::store::AccessActor::operator(),
+        }
+    }
+}
 
 impl Deref for Context {
     type Target = SessionContext;
 
     fn deref(&self) -> &SessionContext {
-        &self.0
+        &self.session
     }
 }
 
