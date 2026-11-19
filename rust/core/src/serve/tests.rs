@@ -4483,7 +4483,7 @@ async fn every_route_and_refusal_carries_the_security_headers() {
             "nosniff",
             "{label}"
         );
-        assert_eq!(headers[header::REFERRER_POLICY], "no-referrer", "{label}");
+        assert_eq!(headers[header::REFERRER_POLICY], "same-origin", "{label}");
         assert_eq!(
             headers["cross-origin-opener-policy"], "same-origin",
             "{label}"

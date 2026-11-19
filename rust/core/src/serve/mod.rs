@@ -419,7 +419,7 @@ async fn security_headers(request: Request, next: Next) -> Response {
     );
     headers.insert(
         header::REFERRER_POLICY,
-        HeaderValue::from_static("no-referrer"),
+        HeaderValue::from_static("same-origin"),
     );
     headers.insert(
         "cross-origin-opener-policy",
