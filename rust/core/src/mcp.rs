@@ -834,7 +834,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "note_write",
             method_tag: "note.write",
-            description: "Write a note's whole text, atomically, under the vault lock. A missing text is refused.",
+            description: "Write a note's whole text, atomically, under the vault lock. A missing text is refused. Pass expectedHash from your note_read (or \"absent\" for a new note): the write is then refused if the note changed since you read it.",
             input_schema: NoteWriteParams::schema(),
             annotations: Annotations::DESTRUCTIVE,
             method: Method::NoteWrite(NoteWriteParams::default()),

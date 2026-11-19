@@ -159,7 +159,7 @@ fn backlinks_are_recomputed_after_note_creation() {
     let bikeshed = vault.bikeshed();
     assert!(rows(&bikeshed, "B.md").is_empty());
 
-    bikeshed.write("C.md", "new link to [[B]]").unwrap();
+    bikeshed.write("C.md", "new link to [[B]]", None).unwrap();
     assert_eq!(
         rows(&bikeshed, "B.md"),
         vec![Backlink {

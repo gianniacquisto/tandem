@@ -34,7 +34,7 @@ The list below is generated from `tools()` in `rust/core/src/mcp.rs`, one line p
 - `doctor_report`: Report where this machine's Tandem state lives and whether it is healthy. Params: none.
 - `note_tree`: Read the vault's folder tree: folders first, notes after, hidden entries skipped. Params: none.
 - `note_read`: Read one note: its whole text, the content hash a save compares and its mtime. Params: `path` (required).
-- `note_write`: Write a note's whole text, atomically, under the vault lock. A missing text is refused. Params: `path` (required), `text` (required).
+- `note_write`: Write a note's whole text, atomically, under the vault lock. A missing text is refused. Pass expectedHash from your note_read (or "absent" for a new note): the write is then refused if the note changed since you read it. Params: `expectedHash`, `path` (required), `text` (required).
 - `note_create`: Create an empty note. A taken path is refused, never overwritten. Params: `path` (required).
 - `note_create_folder`: Create a folder, with no note in it. Params: `path` (required).
 - `note_move`: Move a note or folder into another folder, rewriting every wikilink that resolves to it. Params: `into` (required), `path` (required).

@@ -37,7 +37,7 @@ fn two_writers_on_threads_interleave_without_lost_or_torn_notes() {
         handles.push(thread::spawn(move || {
             for i in 0..20 {
                 for path in ["A.md", "B.md"] {
-                    if let Err(error) = bikeshed.write(path, &format!("{tag}{i}")) {
+                    if let Err(error) = bikeshed.write(path, &format!("{tag}{i}"), None) {
                         errors.lock().unwrap().push(error.message());
                     }
                 }
@@ -87,13 +87,13 @@ fn a_write_on_a_locked_bikeshed_throws_locked_after_the_bounded_retry() {
 
     assert_eq!(
         bikeshed
-            .write("A.md", "should fail while locked")
+            .write("A.md", "should fail while locked", None)
             .unwrap_err(),
         DomainError::BikeshedLocked
     );
     holder.join().expect("the holder releases");
 
-    bikeshed.write("A.md", "after release").unwrap();
+    bikeshed.write("A.md", "after release", None).unwrap();
     assert_eq!(vault.read("A.md"), "after release");
 }
 
@@ -129,7 +129,7 @@ fn a_configured_lock_window_still_bites_after_a_deliberate_hold() {
     let started = Instant::now();
     assert_eq!(
         bikeshed
-            .write("A.md", "should fail while locked")
+            .write("A.md", "should fail while locked", None)
             .unwrap_err(),
         DomainError::BikeshedLocked
     );
@@ -144,7 +144,7 @@ fn a_configured_lock_window_still_bites_after_a_deliberate_hold() {
         elapsed < Duration::from_secs(5),
         "the writer did not wait far past the configured window: {elapsed:?}"
     );
-    bikeshed.write("A.md", "after release").unwrap();
+    bikeshed.write("A.md", "after release", None).unwrap();
     assert_eq!(vault.read("A.md"), "after release");
 }
 
@@ -203,7 +203,7 @@ fn stale_orphan_temps_are_removed_and_fresh_temps_are_kept() {
     let fresh = ".note-fresh.tmp";
     vault.stage(fresh, "fresh");
 
-    bikeshed.write("A.md", "trigger cleanup").unwrap();
+    bikeshed.write("A.md", "trigger cleanup", None).unwrap();
 
     assert!(!vault.exists(orphan), "the stale orphan was not removed");
     assert!(vault.exists(fresh), "a fresh temp was wrongly removed");

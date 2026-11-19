@@ -335,7 +335,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
                 return Err(WireError::domain("the write carries no text"));
             };
             let record = open_bikeshed(store)
-                .write(path, text)
+                .write(path, text, params.expected_hash.as_deref())
                 .map_err(domain)?
                 .value;
             Ok(Reply::NoteWrite(NoteWriteReply {

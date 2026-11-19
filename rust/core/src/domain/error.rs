@@ -108,6 +108,9 @@ pub enum DomainError {
     /// A create, rename or move target that already exists. An error, never an
     /// overwrite.
     NoteAlreadyExists(String),
+    /// A write carried an expected hash and the note on disk no longer has it:
+    /// someone saved in between. Nothing was written.
+    StaleNote(String),
     /// A name the bikeshed's create/rename rule refuses.
     InvalidName(String),
     /// A folder moved into itself or one of its own descendants.
@@ -224,6 +227,10 @@ impl DomainError {
             Self::BikeshedIo(detail) => format!("Bikeshed error: {detail}. Try again."),
             Self::UnknownNote(path) => format!(
                 "No note at \"{path}\" in the bikeshed. List the bikeshed to see what is there."
+            ),
+            Self::StaleNote(path) => format!(
+                "The note \"{path}\" changed since you read it, so nothing was written. \
+                 Read it again with note_read, merge your change into the new text and write it back with the new hash."
             ),
             Self::NoteAlreadyExists(path) => {
                 format!("A file already exists at \"{path}\". Choose a different name.")

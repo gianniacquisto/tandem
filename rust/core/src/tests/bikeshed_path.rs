@@ -144,7 +144,7 @@ mod links {
         let (vault, outside) = vault_with_links("link-dir-ops");
         let bikeshed = vault.bikeshed();
         assert!(bikeshed.read("link/secret.md").is_err());
-        assert!(bikeshed.write("link/secret.md", "PWNED").is_err());
+        assert!(bikeshed.write("link/secret.md", "PWNED", None).is_err());
         assert!(bikeshed.create("link/new.md").is_err());
         assert!(bikeshed.create_folder("link/sub").is_err());
         assert_eq!(
@@ -159,7 +159,7 @@ mod links {
         let (vault, outside) = vault_with_links("link-file-ops");
         let bikeshed = vault.bikeshed();
         assert!(bikeshed.read("note-link.md").is_err());
-        assert!(bikeshed.write("note-link.md", "PWNED").is_err());
+        assert!(bikeshed.write("note-link.md", "PWNED", None).is_err());
         assert!(bikeshed.delete("note-link.md").is_err());
         assert!(bikeshed.rename("note-link.md", "moved.md").is_err());
         assert!(bikeshed.move_into("note-link.md", "").is_err());
@@ -259,7 +259,7 @@ mod links {
             .create("a.md")
             .expect("a note is created through the root link");
         bikeshed
-            .write("a.md", "hello")
+            .write("a.md", "hello", None)
             .expect("the note is written");
         assert_eq!(
             bikeshed.read("a.md").expect("the note reads").value.text,

@@ -491,32 +491,13 @@ pub(super) async fn note_save(
     let resolution = field(&params, "resolution");
     let vault = context.bikeshed();
 
-    let disk = match vault.read(&path) {
-        Ok(read) => read.value,
-        Err(error) => {
-            return notes_response(
-                &context,
-                &params,
-                None,
-                Some(error.message()),
-                None,
-                &headers,
-            );
-        }
-    };
-    if disk.hash != baseline && resolution != "keep_mine" {
-        if resolution == "take_theirs" {
-            return notes_response(&context, &params, None, None, None, &headers);
-        }
-        let conflict = ConflictView {
-            path: path.clone(),
-            mine: text.to_string(),
-            theirs: disk.text.clone(),
-            baseline_hash: disk.hash.clone(),
-        };
-        return notes_response(&context, &params, None, None, Some(conflict), &headers);
+    if resolution == "take_theirs" {
+        return notes_response(&context, &params, None, None, None, &headers);
     }
-    match vault.write(&path, text) {
+    // The core compares the baseline with the disk inside the vault lock, in
+    // the same critical section as the write; "keep mine" skips the check.
+    let expected = (resolution != "keep_mine").then_some(baseline);
+    match vault.write(&path, text, expected) {
         Ok(_) => {
             tracing::info!(
                 actor = ?context.actor.as_str(),
@@ -525,6 +506,27 @@ pub(super) async fn note_save(
                 "note saved"
             );
             notes_response(&context, &params, None, None, None, &headers)
+        }
+        Err(crate::domain::DomainError::StaleNote(_)) => {
+            let conflict = vault.read(&path).ok().map(|read| ConflictView {
+                path: path.clone(),
+                mine: text.to_string(),
+                theirs: read.value.text.clone(),
+                baseline_hash: read.value.hash.clone(),
+            });
+            match conflict {
+                Some(conflict) => {
+                    notes_response(&context, &params, None, None, Some(conflict), &headers)
+                }
+                None => notes_response(
+                    &context,
+                    &params,
+                    None,
+                    Some(crate::domain::DomainError::UnknownNote(path.clone()).message()),
+                    None,
+                    &headers,
+                ),
+            }
         }
         Err(error) => notes_response(
             &context,
