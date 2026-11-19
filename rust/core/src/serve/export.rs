@@ -126,6 +126,25 @@ pub(super) async fn export(context: Context, headers: HeaderMap) -> Response {
             "the export permission refused",
         );
     }
+    // The durable record first: an export that cannot be recorded does not
+    // start (no export without a row). It is a row of its own, written beside
+    // the log line, and moves neither the revision nor the backup.
+    let recorded = {
+        let store = context.store.clone();
+        let by = context.access_actor();
+        tokio::task::spawn_blocking(move || {
+            store.access_record_export(&by, Door::Board.as_str(), crate::store::unix_now())
+        })
+        .await
+    };
+    if !matches!(recorded, Ok(Ok(()))) {
+        tracing::warn!("the export was not started: the access record could not be written");
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "The export could not be started: the access record could not be written. Try again.\n",
+        )
+            .into_response();
+    }
     archive::record_export(&principal.actor, Door::Board);
 
     let home = context.store.home().clone();

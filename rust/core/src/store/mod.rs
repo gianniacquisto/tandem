@@ -33,6 +33,7 @@
 //!   sweep) is shared by the rolling backup and by the bikeshed's locked
 //!   writes; the bikeshed's sidecar lock lives in [`crate::bikeshed`].
 
+mod access_record;
 pub(crate) mod board_rows;
 mod browser_sessions;
 mod diagnostics;
@@ -57,6 +58,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{Connection, ErrorCode, OpenFlags, backup::Backup};
 
+pub use access_record::{AccessActor, AccessCredential, AccessRow};
 pub use browser_sessions::{
     SESSION_IDLE_SECONDS, SESSION_TOUCH_SECONDS, SessionCheck, SessionLookup,
 };

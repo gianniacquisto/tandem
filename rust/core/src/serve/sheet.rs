@@ -145,7 +145,7 @@ fn sheet_label_options(ticket: &Ticket, labels: &[String]) -> Vec<LabelOption> {
 }
 
 fn render_sheet(
-    context: &SessionContext,
+    context: &Context,
     id: &str,
     filters: &Filters,
     notice: Option<String>,
@@ -214,7 +214,7 @@ fn render_sheet(
 /// ride the sheet's own request (the query on a GET, the hidden fields on a
 /// write form), so the board behind is the one the sheet was opened over.
 fn sheet_response(
-    context: &SessionContext,
+    context: &Context,
     id: &str,
     filters: &Filters,
     notice: Option<String>,

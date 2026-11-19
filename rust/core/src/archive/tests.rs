@@ -785,6 +785,7 @@ fn import_refuses_a_store_with_a_foreign_trigger_or_a_filled_emptied_table() {
             "store_meta",
             "schema_migrations",
             "members",
+            "access_record",
         ],
         &[
             "browser_sessions",

@@ -473,6 +473,7 @@ mod schema {
         assert_eq!(
             tables,
             vec![
+                "access_record",
                 "browser_sessions",
                 "comments",
                 "labels",
@@ -2736,7 +2737,7 @@ mod members {
         let connection = sandbox.connection();
         assert_eq!(MEMBERS_VERSION, 14);
         assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
-        assert_eq!(CURRENT_VERSION, 14);
+        assert_eq!(CURRENT_VERSION, 15);
         for table in ["members", "member_tokens", "member_signin_keys"] {
             assert!(has_table(&connection, table).unwrap(), "{table}");
         }
@@ -2757,6 +2758,8 @@ mod members {
             store.member_add("alice", Role::Member, NOW),
             Err(MemberError::Taken)
         );
+        // The last admin cannot go, so a second one stands beside alice.
+        store.member_add("zed", Role::Admin, NOW).unwrap();
         assert!(store.member_remove("alice", NOW).unwrap());
         assert_eq!(
             store.member_add("alice", Role::Member, NOW),
@@ -2783,7 +2786,7 @@ mod members {
                 "{bad:?}"
             );
         }
-        assert_eq!(count(&sandbox, "SELECT COUNT(*) FROM members"), 1);
+        assert_eq!(count(&sandbox, "SELECT COUNT(*) FROM members"), 2);
     }
 
     #[test]
@@ -2962,6 +2965,7 @@ mod members {
         let store = sandbox.store();
         store.member_add("alice", Role::Admin, NOW).unwrap();
         store.member_add("bob", Role::Member, NOW).unwrap();
+        store.member_add("zed", Role::Admin, NOW).unwrap();
         for name in ["alice", "bob"] {
             store.member_token_issue(name, "laptop", NOW).unwrap();
             store.member_token_issue(name, "desktop", NOW).unwrap();
@@ -3115,5 +3119,427 @@ mod members {
         assert_eq!(member_id, None);
         let after = store.browser_session_lookup("old", NOW + 1, false).unwrap();
         assert_eq!((after.check, after.member), (SessionCheck::Valid, None));
+    }
+}
+
+// MARK: - The access record and the last-admin rule (CUT-39)
+
+mod access {
+    use super::super::schema::{
+        ACCESS_RECORD_VERSION, CURRENT_VERSION, MIGRATIONS, has_table, migrate_with, version,
+    };
+    use super::*;
+    use crate::store::export::CARRIED_TABLES;
+
+    const NOW: i64 = 1_800_000_000;
+
+    fn count(sandbox: &Sandbox, sql: &str) -> i64 {
+        sandbox
+            .connection()
+            .query_row(sql, [], |row| row.get(0))
+            .unwrap()
+    }
+
+    fn admins(sandbox: &Sandbox) -> i64 {
+        count(
+            sandbox,
+            "SELECT COUNT(*) FROM members WHERE role = 'admin' AND removed_at IS NULL",
+        )
+    }
+
+    #[test]
+    fn the_last_admin_cannot_be_removed_or_demoted() {
+        let sandbox = Sandbox::new("access-last-admin");
+        let store = sandbox.store();
+        store.member_add("alice", Role::Admin, NOW).unwrap();
+        store.member_add("bob", Role::Member, NOW).unwrap();
+        let rows = store.access_record().unwrap().len();
+
+        // No door gets past it: the owner, a member, and the operator.
+        for by in [
+            AccessActor::owner(),
+            AccessActor::member_session("alice"),
+            AccessActor::operator(),
+        ] {
+            assert_eq!(
+                store.member_remove_by("alice", NOW + 1, &by),
+                Err(MemberError::LastAdmin),
+                "{by:?}"
+            );
+            assert_eq!(
+                store.member_set_role_by("alice", Role::Member, NOW + 1, &by),
+                Err(MemberError::LastAdmin),
+                "{by:?}"
+            );
+        }
+        assert_eq!(
+            store.member_remove("alice", NOW + 1),
+            Err(MemberError::LastAdmin)
+        );
+        assert_eq!(admins(&sandbox), 1);
+        assert_eq!(
+            store.access_record().unwrap().len(),
+            rows,
+            "a refused act writes no row"
+        );
+
+        // A member is not an admin: removing or demoting them is free.
+        assert_eq!(
+            store.member_set_role("bob", Role::Member, NOW),
+            Ok(true),
+            "the role is already member: nothing to change, nothing recorded"
+        );
+        assert_eq!(store.member_remove("bob", NOW + 2), Ok(true));
+
+        // With a second admin the first may go, and then the second is last.
+        store.member_add("carol", Role::Admin, NOW).unwrap();
+        assert_eq!(
+            store.member_set_role_by("alice", Role::Member, NOW + 3, &AccessActor::operator()),
+            Ok(true)
+        );
+        assert_eq!(
+            store.member_remove("carol", NOW + 4),
+            Err(MemberError::LastAdmin)
+        );
+        assert_eq!(admins(&sandbox), 1);
+    }
+
+    #[test]
+    fn two_admins_demoting_each_other_at_once_leave_one() {
+        let sandbox = Sandbox::new("access-race");
+        let store = sandbox.store();
+        store.member_add("alice", Role::Admin, NOW).unwrap();
+        store.member_add("bob", Role::Admin, NOW).unwrap();
+
+        for round in 0..2 {
+            let results: Vec<_> = if round == 0 {
+                // Each demotes the other.
+                let (a, b) = (sandbox.store(), sandbox.store());
+                let first = std::thread::spawn(move || {
+                    a.member_set_role_by(
+                        "bob",
+                        Role::Member,
+                        NOW + 1,
+                        &AccessActor::member_session("alice"),
+                    )
+                });
+                let second = std::thread::spawn(move || {
+                    b.member_set_role_by(
+                        "alice",
+                        Role::Member,
+                        NOW + 1,
+                        &AccessActor::member_session("bob"),
+                    )
+                });
+                vec![first.join().unwrap(), second.join().unwrap()]
+            } else {
+                // The same race with removals, on a fresh pair.
+                let sandbox = Sandbox::new("access-race-remove");
+                let store = sandbox.store();
+                store.member_add("carol", Role::Admin, NOW).unwrap();
+                store.member_add("dave", Role::Admin, NOW).unwrap();
+                let (a, b) = (sandbox.store(), sandbox.store());
+                let first = std::thread::spawn(move || a.member_remove("dave", NOW + 1));
+                let second = std::thread::spawn(move || b.member_remove("carol", NOW + 1));
+                let results = vec![first.join().unwrap(), second.join().unwrap()];
+                assert_eq!(admins(&sandbox), 1, "removals leave one admin");
+                results
+            };
+            let landed = results.iter().filter(|result| **result == Ok(true)).count();
+            let refused = results
+                .iter()
+                .filter(|result| **result == Err(MemberError::LastAdmin))
+                .count();
+            assert_eq!((landed, refused), (1, 1), "round {round}: {results:?}");
+        }
+        assert_eq!(admins(&sandbox), 1, "demotions leave one admin");
+    }
+
+    #[test]
+    fn an_admin_may_remove_or_demote_themselves_when_another_admin_exists() {
+        let sandbox = Sandbox::new("access-self");
+        let store = sandbox.store();
+        store.member_add("alice", Role::Admin, NOW).unwrap();
+        store.member_add("bob", Role::Admin, NOW).unwrap();
+        store.member_add("carol", Role::Admin, NOW).unwrap();
+        for name in ["alice", "carol"] {
+            store
+                .browser_session_open_for(&format!("session-{name}"), None, NOW, Some(name))
+                .unwrap();
+        }
+
+        // Alice demotes herself: her sessions end with the change.
+        assert_eq!(
+            store.member_set_role_by(
+                "alice",
+                Role::Member,
+                NOW + 1,
+                &AccessActor::member_session("alice")
+            ),
+            Ok(true)
+        );
+        assert_eq!(
+            store
+                .browser_session_check("session-alice", NOW + 2, false)
+                .unwrap(),
+            SessionCheck::Missing,
+            "a self-demotion ends the member's own sessions"
+        );
+        assert_eq!(
+            store
+                .browser_session_check("session-carol", NOW + 2, false)
+                .unwrap(),
+            SessionCheck::Valid
+        );
+
+        // Carol removes herself while bob stands: allowed, and she is gone.
+        assert_eq!(
+            store.member_remove_by("carol", NOW + 3, &AccessActor::member_session("carol")),
+            Ok(true)
+        );
+        assert!(store.member_find("carol").unwrap().is_none());
+        // Bob is now the last admin, and the rule holds again.
+        assert_eq!(
+            store.member_remove_by("bob", NOW + 4, &AccessActor::member_session("bob")),
+            Err(MemberError::LastAdmin)
+        );
+    }
+
+    #[test]
+    fn the_access_record_row_and_the_act_commit_together_or_not_at_all() {
+        let sandbox = Sandbox::new("access-atomic");
+        let store = sandbox.store();
+        store.member_add("alice", Role::Admin, NOW).unwrap();
+        assert_eq!(store.access_record().unwrap().len(), 1);
+
+        // An act that cannot be recorded does not happen: the insert into the
+        // record fails, so the member row rolls back with it.
+        Connection::open(sandbox.database())
+            .unwrap()
+            .execute_batch(
+                "CREATE TRIGGER block_the_record BEFORE INSERT ON access_record
+                 BEGIN SELECT RAISE(ABORT, 'no room'); END;",
+            )
+            .unwrap();
+        assert!(store.member_add("bob", Role::Member, NOW).is_err());
+        assert!(store.member_token_issue("alice", "laptop", NOW).is_err());
+        assert!(store.member_signin_key_issue("alice", NOW).is_err());
+        assert!(store.member_find("bob").unwrap().is_none(), "no change");
+        assert_eq!(count(&sandbox, "SELECT COUNT(*) FROM member_tokens"), 0);
+        assert_eq!(
+            count(&sandbox, "SELECT COUNT(*) FROM member_signin_keys"),
+            0
+        );
+        assert_eq!(count(&sandbox, "SELECT COUNT(*) FROM access_record"), 1);
+        Connection::open(sandbox.database())
+            .unwrap()
+            .execute_batch("DROP TRIGGER block_the_record")
+            .unwrap();
+
+        // The converse: an act that does not happen leaves no row.
+        let rows = store.access_record().unwrap().len();
+        assert_eq!(
+            store.member_add("alice", Role::Member, NOW),
+            Err(MemberError::Taken)
+        );
+        assert_eq!(store.member_remove("ghost", NOW), Ok(false));
+        assert!(
+            store
+                .member_token_issue("ghost", "x", NOW)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!store.member_token_revoke("alice", 99, NOW).unwrap());
+        assert_eq!(store.access_record().unwrap().len(), rows);
+
+        // And an act that happens leaves exactly one row.
+        store.member_add("bob", Role::Member, NOW + 1).unwrap();
+        assert_eq!(store.access_record().unwrap().len(), rows + 1);
+    }
+
+    #[test]
+    fn the_access_record_holds_no_secret_and_has_no_update_or_delete_path() {
+        let sandbox = Sandbox::new("access-secrets");
+        let store = sandbox.store();
+        store.member_add("alice", Role::Admin, NOW).unwrap();
+        store.member_add("bob", Role::Member, NOW).unwrap();
+        let token = store
+            .member_token_issue_by("bob", "laptop", NOW, &AccessActor::member_session("bob"))
+            .unwrap()
+            .unwrap();
+        let key = store
+            .member_signin_key_issue_by("bob", NOW, &AccessActor::member_session("alice"))
+            .unwrap()
+            .unwrap();
+        store
+            .member_set_role_by(
+                "bob",
+                Role::Admin,
+                NOW + 1,
+                &AccessActor::member_session("alice"),
+            )
+            .unwrap();
+        store.member_token_revoke("bob", 1, NOW + 2).unwrap();
+        store
+            .access_record_export(&AccessActor::owner(), "board", NOW + 3)
+            .unwrap();
+        store.member_remove("bob", NOW + 4).unwrap();
+
+        let rows = store.access_record().unwrap();
+        let events: Vec<&str> = rows.iter().map(|row| row.event.as_str()).collect();
+        assert_eq!(
+            events,
+            [
+                "member-added",
+                "member-added",
+                "token-created",
+                "signin-key-issued",
+                "member-role-changed",
+                "token-revoked",
+                "export",
+                "member-removed",
+            ]
+        );
+        let everything = format!("{rows:?}");
+        let file = fs::read(sandbox.database()).unwrap();
+        for secret in [
+            token.reveal().to_string(),
+            key.reveal().to_string(),
+            credential_digest(token.reveal()),
+            credential_digest(key.reveal()),
+        ] {
+            assert!(!everything.contains(&secret), "no secret in a row");
+        }
+        let exported = rows.iter().find(|row| row.event == "export").unwrap();
+        assert_eq!(
+            (
+                exported.actor.as_str(),
+                exported.credential.as_str(),
+                exported.door.as_deref()
+            ),
+            ("owner", "owner", Some("board"))
+        );
+        let created = &rows[2];
+        assert_eq!(created.actor, "bob");
+        assert_eq!(created.credential, "member-session");
+        assert_eq!(created.target.as_deref(), Some("bob"));
+        assert_eq!(created.detail.as_deref(), Some("laptop"));
+        drop(file);
+
+        // No path edits a row: the triggers abort a raw statement, and no
+        // store source holds one.
+        let connection = sandbox.connection();
+        assert!(
+            connection
+                .execute("UPDATE access_record SET actor = 'x'", [])
+                .is_err()
+        );
+        assert!(connection.execute("DELETE FROM access_record", []).is_err());
+        for source in [
+            include_str!("members.rs"),
+            include_str!("access_record.rs"),
+            include_str!("browser_sessions.rs"),
+            include_str!("export.rs"),
+            include_str!("write.rs"),
+            include_str!("board_rows.rs"),
+        ] {
+            let lowered = source.to_lowercase();
+            assert!(!lowered.contains("update access_record"));
+            assert!(!lowered.contains("delete from access_record"));
+        }
+        assert_eq!(store.access_record().unwrap().len(), 8);
+    }
+
+    #[test]
+    fn the_access_record_moves_neither_the_revision_nor_the_rolling_backup() {
+        let sandbox = Sandbox::new("access-revision");
+        let store = sandbox.store();
+        probe(&store, &Actor::Human, "first");
+        probe(&store, &Actor::Human, "second");
+        let revision = store.revision().unwrap();
+        let backup_before = fs::read(sandbox.backup()).ok();
+        let backup_modified = fs::metadata(sandbox.backup())
+            .and_then(|m| m.modified())
+            .ok();
+
+        store.member_add("alice", Role::Admin, NOW).unwrap();
+        store.member_add("bob", Role::Member, NOW).unwrap();
+        store.member_set_role("bob", Role::Admin, NOW).unwrap();
+        store.member_token_issue("bob", "laptop", NOW).unwrap();
+        store.member_signin_key_issue("bob", NOW).unwrap();
+        store
+            .access_record_export(&AccessActor::owner(), "board", NOW)
+            .unwrap();
+        store.member_remove("bob", NOW).unwrap();
+        assert!(store.access_record().unwrap().len() >= 7);
+
+        assert_eq!(store.revision().unwrap(), revision, "no revision bump");
+        assert_eq!(
+            fs::read(sandbox.backup()).ok(),
+            backup_before,
+            "no backup roll"
+        );
+        assert_eq!(
+            fs::metadata(sandbox.backup())
+                .and_then(|m| m.modified())
+                .ok(),
+            backup_modified
+        );
+    }
+
+    #[test]
+    fn the_access_record_migration_adds_the_table_and_bumps_the_version() {
+        let sandbox = Sandbox::new("access-migration");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..14], &Actor::Human).expect("v14 applies");
+        assert!(!has_table(&connection, "access_record").unwrap());
+        drop(connection);
+
+        probe(&sandbox.store(), &Actor::Human, "migrates");
+
+        let connection = sandbox.connection();
+        assert_eq!(ACCESS_RECORD_VERSION, 15);
+        assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
+        assert_eq!(CURRENT_VERSION, 15);
+        assert!(has_table(&connection, "access_record").unwrap());
+        assert_eq!(
+            count(&sandbox, "SELECT COUNT(*) FROM access_record"),
+            0,
+            "the table starts empty"
+        );
+        assert!(
+            sandbox.backup().exists(),
+            "a migrating write rolls the backup first"
+        );
+    }
+
+    #[test]
+    fn the_access_record_is_classified_carried_for_the_archive() {
+        assert!(CARRIED_TABLES.contains(&"access_record"));
+        assert!(!crate::store::export::EMPTIED_TABLES.contains(&"access_record"));
+        let sandbox = Sandbox::new("access-carried");
+        let store = sandbox.store();
+        probe(&store, &Actor::Human, "first");
+        store.member_add("alice", Role::Admin, NOW).unwrap();
+        store
+            .access_record_export(&AccessActor::owner(), "board", NOW)
+            .unwrap();
+
+        let copy = store.export_copy().expect("the copy is taken");
+        let connection =
+            Connection::open_with_flags(copy.path(), OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        let events: Vec<String> = connection
+            .prepare("SELECT event FROM access_record ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(|row| row.unwrap())
+            .collect();
+        assert_eq!(
+            events,
+            ["member-added", "export"],
+            "who exported and when travels with a move"
+        );
     }
 }

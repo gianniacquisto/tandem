@@ -255,7 +255,7 @@ fn empty_view(
 /// The board the current store and filters draw, or the read failure that kept
 /// it from being drawn.
 fn render_board(
-    context: &SessionContext,
+    context: &Context,
     filters: &Filters,
     notice: Option<String>,
 ) -> Result<BoardView, String> {
@@ -438,7 +438,7 @@ fn render_board(
 
 /// The board with a sheet drawn inside its root, so one htmx swap carries both.
 pub(super) fn board_with_sheet(
-    context: &SessionContext,
+    context: &Context,
     filters: &Filters,
     sheet: String,
     self_url: String,
@@ -489,7 +489,7 @@ pub(super) fn board_with_sheet(
     }
 }
 fn render_response(
-    context: &SessionContext,
+    context: &Context,
     filters: &Filters,
     notice: Option<String>,
     headers: &HeaderMap,
