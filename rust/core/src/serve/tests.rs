@@ -5108,6 +5108,24 @@ const ROUTE_TABLE: &[(&str, &str, &str)] = &[
     ("POST", "/tokens", "/tokens"),
     ("GET", "/tokens/{id}/revoke", "/tokens/1/revoke"),
     ("POST", "/tokens/{id}/revoke", "/tokens/1/revoke"),
+    ("GET", "/people", "/people"),
+    ("POST", "/people", "/people"),
+    ("GET", "/people/{name}", "/people/bob"),
+    ("GET", "/people/{name}/key", "/people/bob/key"),
+    ("POST", "/people/{name}/key", "/people/bob/key"),
+    ("POST", "/people/{name}/role", "/people/bob/role"),
+    ("GET", "/people/{name}/remove", "/people/bob/remove"),
+    ("POST", "/people/{name}/remove", "/people/bob/remove"),
+    (
+        "GET",
+        "/people/{name}/tokens/{id}/revoke",
+        "/people/bob/tokens/1/revoke",
+    ),
+    (
+        "POST",
+        "/people/{name}/tokens/{id}/revoke",
+        "/people/bob/tokens/1/revoke",
+    ),
     ("GET", "/notes", "/notes"),
     ("GET", "/notes/view", "/notes/view"),
     ("GET", "/notes/edit", "/notes/edit"),
@@ -7833,4 +7851,585 @@ async fn the_tokens_screen_logs_no_token_and_no_cookie() {
         );
     }
     assert!(text.contains("/tokens"), "the route is logged: {text}");
+}
+
+// MARK: - The People screen (CUT-42, ADR 0052)
+
+const LAST_ADMIN: &str = "This is the only admin. Make someone else an admin first.";
+
+/// A form key of 32 lowercase hex characters, the way the page draws one.
+fn key_for(n: u8) -> String {
+    format!("{n:032x}")
+}
+
+/// The sign-in key a page shows: `tdk_` and its 43 characters.
+fn shown_key(page: &str) -> String {
+    let marker = "value=\"tdk_";
+    let at = page.find(marker).expect("the page shows a sign-in key") + "value=\"".len();
+    page[at..at + 47].to_string()
+}
+
+/// The `Location` a response names, or the empty string.
+fn location(headers: &HeaderMap) -> String {
+    headers
+        .get(header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// The `before` id a page's older-entries link names, when there is one.
+fn next_before(page: &str) -> Option<String> {
+    let marker = "/people?before=";
+    let at = page.find(marker)? + marker.len();
+    Some(
+        page[at..]
+            .chars()
+            .take_while(|character| character.is_ascii_digit())
+            .collect(),
+    )
+}
+
+/// A team behind the owner token: `alice` (an admin), signed in, and `bob` (a
+/// member) with no session yet.
+struct People {
+    _sandbox: Sandbox,
+    store: Store,
+    app: Router,
+    alice: String,
+}
+
+async fn people_screen(name: &str) -> People {
+    let sandbox = Sandbox::new(name);
+    let store = sandbox.store();
+    store
+        .member_add("alice", crate::store::Role::Admin, NOW)
+        .unwrap();
+    store
+        .member_add("bob", crate::store::Role::Member, NOW)
+        .unwrap();
+    let app = remote_app(store.clone(), TOKEN);
+    let alice_key = issue_key(&store, "alice");
+    let alice = sign_in_with(&app, &alice_key).await;
+    People {
+        _sandbox: sandbox,
+        store,
+        app,
+        alice,
+    }
+}
+
+/// The add form, as the page sends it.
+fn add_person(name: &str, role: &str, n: u8, cookie: &str) -> Request<Body> {
+    let key = key_for(n);
+    token_post(
+        "/people",
+        &[("name", name), ("role", role), ("key", key.as_str())],
+        cookie,
+    )
+}
+
+/// A role change, as a row's form sends it.
+fn role_post(name: &str, role: &str, cookie: &str) -> Request<Body> {
+    token_post(&format!("/people/{name}/role"), &[("role", role)], cookie)
+}
+
+#[tokio::test]
+async fn an_admin_adds_a_person_and_the_response_shows_a_sign_in_key_once() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let s = people_screen("people-add").await;
+    let (status, headers, body) = send(&s.app, add_person("cy", "member", 1, &s.alice)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("Copy it now. You will not see it again."),
+        "{body}"
+    );
+    assert_eq!(
+        headers
+            .get(header::CACHE_CONTROL)
+            .and_then(|value| value.to_str().ok()),
+        Some("no-store")
+    );
+    let key = shown_key(&body);
+    assert!(s.store.member_find("cy").unwrap().is_some());
+    assert!(s.store.member_by_signin_key(&key).unwrap().is_some());
+    let (_, _, list) = send(&s.app, cookie_get("/people", &s.alice)).await;
+    assert!(!list.contains("tdk_"), "the list never shows a key");
+}
+
+#[tokio::test]
+async fn the_sign_in_key_signs_the_person_in_and_the_session_belongs_to_them() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let s = people_screen("people-key-login").await;
+    let (_, _, body) = send(&s.app, add_person("cy", "member", 2, &s.alice)).await;
+    let cy = sign_in_with(&s.app, &shown_key(&body)).await;
+    let (status, _, _) = send(&s.app, cookie_get("/board", &cy)).await;
+    assert_eq!(status, StatusCode::OK);
+    // The session is cy's, and cy is a member: the people screen refuses her.
+    let (status, _, page) = send(&s.app, cookie_get("/people", &cy)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    assert!(page.contains(NO_ACCESS), "{page}");
+}
+
+#[tokio::test]
+async fn reissuing_a_key_stops_the_old_one_at_once() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let s = people_screen("people-reissue").await;
+    let old = issue_key(&s.store, "bob");
+    let (status, _, _) = send(&s.app, cookie_get("/people/bob/key", &s.alice)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, body) = send(&s.app, token_post("/people/bob/key", &[], &s.alice)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let new = shown_key(&body);
+    assert_ne!(new, old);
+    let (status, _, _) = send(
+        &s.app,
+        remote_form(
+            "/login",
+            &login_body(&old, "/board"),
+            Some(REMOTE_ORIGIN),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "the old key is stopped");
+    let _ = sign_in_with(&s.app, &new).await;
+}
+
+#[tokio::test]
+async fn a_reserved_duplicate_or_ever_used_name_is_refused_and_keeps_the_input() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let s = people_screen("people-names").await;
+    for (n, name) in ["owner", "human", "operator", "count"].iter().enumerate() {
+        let (status, _, body) =
+            send(&s.app, add_person(name, "member", 10 + n as u8, &s.alice)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{name}: {body}");
+        assert!(body.contains("is reserved"), "{name}: {body}");
+        assert!(
+            body.contains(&format!("value=\"{name}\"")),
+            "{name}: {body}"
+        );
+    }
+    let (status, _, body) = send(&s.app, add_person("Ana", "member", 20, &s.alice)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(body.contains("value=\"Ana\""), "{body}");
+    // A live name is taken.
+    let (status, _, body) = send(&s.app, add_person("bob", "member", 21, &s.alice)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(body.contains("That name is already taken."), "{body}");
+    assert!(body.contains("value=\"bob\""), "{body}");
+    // So is a removed one: a name is never reused.
+    s.store
+        .member_add("dana", crate::store::Role::Member, NOW)
+        .unwrap();
+    s.store.member_remove("dana", NOW).unwrap();
+    let (status, _, body) = send(&s.app, add_person("dana", "member", 22, &s.alice)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(body.contains("That name is already taken."), "{body}");
+    assert!(s.store.member_find("dana").unwrap().is_none());
+}
+
+#[tokio::test]
+async fn changing_a_role_takes_effect_on_the_next_request() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let s = people_screen("people-role").await;
+    let bob = sign_in_with(&s.app, &issue_key(&s.store, "bob")).await;
+    let (status, _, _) = send(&s.app, cookie_get("/people", &bob)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "a member is refused");
+    let (status, _, body) = send(&s.app, role_post("bob", "admin", &s.alice)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "{body}");
+    let (status, _, _) = send(&s.app, cookie_get("/people", &bob)).await;
+    assert_eq!(status, StatusCode::OK, "the next request is an admin's");
+    let (status, _, body) = send(&s.app, role_post("bob", "member", &s.alice)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "{body}");
+    let (status, _, _) = send(&s.app, cookie_get("/people", &bob)).await;
+    assert_eq!(
+        status,
+        StatusCode::FORBIDDEN,
+        "the next request is a member's"
+    );
+}
+
+#[tokio::test]
+async fn the_last_admins_controls_are_disabled_with_a_reason_and_the_server_refuses_the_same_act() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let s = people_screen("people-last-admin").await;
+    let (status, _, page) = send(&s.app, cookie_get("/people", &s.alice)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(page.contains(LAST_ADMIN), "{page}");
+    assert!(page.contains("disabled"), "{page}");
+    let (status, _, body) = send(&s.app, role_post("alice", "member", &s.alice)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(body.contains(LAST_ADMIN), "{body}");
+    let (status, _, body) = send(&s.app, cookie_get("/people/alice/remove", &s.alice)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(body.contains(LAST_ADMIN), "{body}");
+    let (status, _, body) = send(&s.app, token_post("/people/alice/remove", &[], &s.alice)).await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(
+        s.store.member_find("alice").unwrap().unwrap().role,
+        crate::store::Role::Admin
+    );
+}
+
+#[tokio::test]
+async fn an_admin_removing_themselves_lands_on_login_with_the_removed_notice() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let s = people_screen("people-self-remove").await;
+    s.store
+        .member_set_role("bob", crate::store::Role::Admin, NOW)
+        .unwrap();
+    let (status, _, page) = send(&s.app, cookie_get("/people/alice/remove", &s.alice)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(page.contains("Remove yourself?"), "{page}");
+    let (status, headers, body) =
+        send(&s.app, token_post("/people/alice/remove", &[], &s.alice)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "{body}");
+    assert_eq!(location(&headers), "/login?notice=removed");
+    let (_, _, login) = send(&s.app, remote_get("/login?notice=removed", None)).await;
+    assert!(
+        login.contains("You were removed from this workspace."),
+        "{login}"
+    );
+    let (status, headers, _) = send(&s.app, cookie_get("/board", &s.alice)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(location(&headers).starts_with("/login"));
+    assert!(s.store.member_find("alice").unwrap().is_none());
+}
+
+#[tokio::test]
+async fn removing_a_person_goes_through_a_confirm_page_and_ends_their_sessions_tokens_and_stream() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let s = people_screen("people-remove").await;
+    let bob_key = issue_key(&s.store, "bob");
+    let bob = sign_in_with(&s.app, &bob_key).await;
+    let bob_token = issued(&s.store, "bob", LAPTOP);
+    let mut signal = crate::store::credentials_changed();
+    let (status, _, page) = send(&s.app, cookie_get("/people/bob/remove", &s.alice)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(page.contains("This cannot be undone."), "{page}");
+    assert!(page.contains("autofocus"), "Cancel is the focused control");
+    assert!(
+        s.store.member_find("bob").unwrap().is_some(),
+        "the confirm page changes nothing"
+    );
+    let (status, _, body) = send(&s.app, token_post("/people/bob/remove", &[], &s.alice)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("bob was removed."), "{body}");
+    assert!(s.store.member_find("bob").unwrap().is_none());
+    let (status, headers, _) = send(&s.app, cookie_get("/board", &bob)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(location(&headers).starts_with("/login"));
+    let (status, _, _) = send(&s.app, bearer_mcp(&bob_token, None, &project_call("after"))).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "the token stops at once");
+    let (status, _, _) = send(
+        &s.app,
+        remote_form(
+            "/login",
+            &login_body(&bob_key, "/board"),
+            Some(REMOTE_ORIGIN),
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "the key stops at once");
+    assert!(signal.try_recv().is_ok(), "open streams are told at once");
+}
+
+#[tokio::test]
+async fn a_removed_name_stays_on_old_tickets_and_comments_unmarked_and_cannot_be_reused() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let s = people_screen("people-removed-name").await;
+    let bob_token = issued(&s.store, "bob", LAPTOP);
+    let (status, _, body) =
+        send(&s.app, bearer_mcp(&bob_token, None, &project_call("alpha"))).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(author_of_project(&s.store, "alpha"), "bob");
+    let (status, _, _) = send(&s.app, cookie_get("/people/bob/remove", &s.alice)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, body) = send(&s.app, token_post("/people/bob/remove", &[], &s.alice)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        author_of_project(&s.store, "alpha"),
+        "bob",
+        "the history keeps the name as written"
+    );
+    let (status, _, body) = send(&s.app, add_person("bob", "member", 30, &s.alice)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(body.contains("That name is already taken."), "{body}");
+    let (_, _, list) = send(&s.app, cookie_get("/people", &s.alice)).await;
+    assert!(list.contains("alice removed bob"), "{list}");
+    assert!(!list.contains("(removed)"), "{list}");
+}
+
+#[tokio::test]
+async fn a_member_gets_the_403_page_on_every_people_route_including_a_post_and_a_token_gets_the_403()
+ {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let s = people_screen("people-member-403").await;
+    let bob = sign_in_with(&s.app, &issue_key(&s.store, "bob")).await;
+    let bob_token = issued(&s.store, "bob", LAPTOP);
+    let routes = [
+        ("GET", "/people"),
+        ("POST", "/people"),
+        ("GET", "/people/alice"),
+        ("GET", "/people/alice/key"),
+        ("POST", "/people/alice/key"),
+        ("POST", "/people/alice/role"),
+        ("GET", "/people/alice/remove"),
+        ("POST", "/people/alice/remove"),
+        ("GET", "/people/alice/tokens/1/revoke"),
+        ("POST", "/people/alice/tokens/1/revoke"),
+    ];
+    for (method, uri) in routes {
+        let request = if method == "GET" {
+            cookie_get(uri, &bob)
+        } else {
+            let key = key_for(40);
+            token_post(
+                uri,
+                &[("name", "cy"), ("role", "admin"), ("key", key.as_str())],
+                &bob,
+            )
+        };
+        let (status, _, body) = send(&s.app, request).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri}: {body}");
+        assert!(body.contains(NO_ACCESS), "{method} {uri}: {body}");
+    }
+    for (method, uri) in routes {
+        let (status, _, _) = send(&s.app, table_request(method, uri, &bob_token)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN, "{method} {uri} for a token");
+    }
+}
+
+#[tokio::test]
+async fn the_access_record_pages_by_fifty_newest_first_and_shows_the_empty_sentence() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    // An empty record reads as a sentence, not a blank table.
+    let empty = Sandbox::new("people-record-empty");
+    let empty_app = remote_app(empty.store(), TOKEN);
+    let owner = sign_in_with(&empty_app, TOKEN).await;
+    let (status, _, page) = send(&empty_app, cookie_get("/people", &owner)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(page.contains("Nothing recorded yet."), "{page}");
+
+    let s = people_screen("people-record").await;
+    for _ in 0..120 {
+        issue_key(&s.store, "bob");
+    }
+    let total = s.store.access_record().unwrap().len();
+    let mut uri = "/people".to_string();
+    let mut seen = 0;
+    let mut pages = 0;
+    loop {
+        let (status, _, page) = send(&s.app, cookie_get(&uri, &s.alice)).await;
+        assert_eq!(status, StatusCode::OK, "{page}");
+        let rows = page.matches("class=\"people__event\"").count();
+        assert!(rows <= 50, "a page holds 50 rows at most, got {rows}");
+        if pages == 0 {
+            assert_eq!(rows, 50);
+            let at = page.find("class=\"people__event\"").unwrap();
+            assert!(page[at..at + 200].contains("for bob"), "newest first");
+        }
+        if next_before(&page).is_none() {
+            assert!(page.contains("added alice as admin"), "the oldest is last");
+        }
+        seen += rows;
+        pages += 1;
+        match next_before(&page) {
+            Some(before) => uri = format!("/people?before={before}"),
+            None => break,
+        }
+        assert!(pages < 10, "the paging must end");
+    }
+    assert_eq!(seen, total);
+    assert_eq!(pages, total.div_ceil(50));
+}
+
+#[tokio::test]
+async fn an_admin_revokes_another_members_token_and_it_is_recorded() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let s = people_screen("people-token").await;
+    let bob_token = issued(&s.store, "bob", LAPTOP);
+    let (status, _, body) = send(&s.app, bearer_mcp(&bob_token, None, &project_call("beta"))).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let id = s.store.member_tokens("bob").unwrap()[0].id;
+    let uri = format!("/people/bob/tokens/{id}/revoke");
+    let (status, _, page) = send(&s.app, cookie_get(&uri, &s.alice)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(page.contains(LAPTOP), "{page}");
+    let (status, headers, body) = send(&s.app, token_post(&uri, &[], &s.alice)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER, "{body}");
+    assert_eq!(location(&headers), "/people/bob?notice=token-revoked");
+    let (status, _, _) = send(&s.app, bearer_mcp(&bob_token, None, &project_call("gamma"))).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let rows: Vec<_> = s
+        .store
+        .access_record()
+        .unwrap()
+        .into_iter()
+        .filter(|row| row.event == "token-revoked")
+        .collect();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].actor, "alice");
+    assert_eq!(rows[0].target.as_deref(), Some("bob"));
+}
+
+#[tokio::test]
+async fn the_owner_session_adds_the_first_admin_and_no_unauthenticated_path_does() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("people-bootstrap");
+    let store = sandbox.store();
+    let app = remote_app(store.clone(), TOKEN);
+    // Nobody signed in: the page sends them to sign in, and the add makes nobody.
+    let (status, headers, _) = send(&app, remote_get("/people", None)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert!(location(&headers).starts_with("/login"));
+    let key = key_for(50);
+    let body = format!("name=eve&role=admin&key={key}");
+    let (status, _, _) = send(
+        &app,
+        remote_form("/people", &body, Some(REMOTE_ORIGIN), None),
+    )
+    .await;
+    assert_ne!(status, StatusCode::OK);
+    assert!(store.member_find("eve").unwrap().is_none());
+    // The TANDEM_TOKEN holder signs in and adds the first admin here.
+    let owner = sign_in_with(&app, TOKEN).await;
+    let (status, _, page) = send(&app, cookie_get("/people", &owner)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(page.contains("workspace owner"), "{page}");
+    let (status, _, body) = send(&app, add_person("fay", "member", 51, &owner)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(
+        body.contains("The first person must be an admin."),
+        "{body}"
+    );
+    let (status, _, body) = send(&app, add_person("ana", "admin", 52, &owner)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(shown_key(&body).starts_with("tdk_"));
+    assert_eq!(
+        store.member_find("ana").unwrap().unwrap().role,
+        crate::store::Role::Admin
+    );
+    // The owner's act is recorded as the owner, not as a member invented for it.
+    let added = store
+        .access_record()
+        .unwrap()
+        .into_iter()
+        .find(|row| row.target.as_deref() == Some("ana"))
+        .expect("the first admin's add is recorded");
+    assert_eq!(added.actor, "owner");
+    assert_eq!(added.credential, "owner");
+}
+
+#[tokio::test]
+async fn people_answers_404_outside_team_mode_and_the_shell_shows_no_people_link_in_solo_modes() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    // Loopback with no token and no members: nothing to manage.
+    let sandbox = Sandbox::new("people-404");
+    let store = sandbox.store();
+    let loopback = router(context(store.clone()));
+    let (status, _, _) = get(&loopback, "/people").await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    // The owner token with no members: no People link in the menu.
+    let solo = remote_app(store.clone(), TOKEN);
+    let owner = sign_in_with(&solo, TOKEN).await;
+    let (_, _, board) = send(&solo, cookie_get("/board", &owner)).await;
+    assert!(!board.contains("href=\"/people\""), "{board}");
+    // Team mode: an admin and the owner see the link, a member does not.
+    store
+        .member_add("alice", crate::store::Role::Admin, NOW)
+        .unwrap();
+    store
+        .member_add("bob", crate::store::Role::Member, NOW)
+        .unwrap();
+    let team = remote_app(store.clone(), TOKEN);
+    let alice = sign_in_with(&team, &issue_key(&store, "alice")).await;
+    let bob = sign_in_with(&team, &issue_key(&store, "bob")).await;
+    let team_owner = sign_in_with(&team, TOKEN).await;
+    for cookie in [&alice, &team_owner] {
+        let (_, _, board) = send(&team, cookie_get("/board", cookie)).await;
+        assert!(board.contains("href=\"/people\""), "{board}");
+    }
+    let (_, _, board) = send(&team, cookie_get("/board", &bob)).await;
+    assert!(!board.contains("href=\"/people\""), "{board}");
+}
+
+#[tokio::test]
+async fn the_owner_keeps_the_people_screen_in_team_mode_and_the_operator_key_never_reaches_it() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("people-owner-team");
+    let store = sandbox.store();
+    store
+        .member_add("alice", crate::store::Role::Admin, NOW)
+        .unwrap();
+    let app = remote_app(store.clone(), TOKEN);
+    let owner = sign_in_with(&app, TOKEN).await;
+    let (status, _, page) = send(&app, cookie_get("/people", &owner)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    // The operator key is a hosting door, not a browser credential: it gets no People page.
+    let operator = operator_app(store.clone(), OPERATOR_KEY, None);
+    let (status, _, _) = send(
+        &operator,
+        operator_request("GET", "/people", Some(OPERATOR_KEY), None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a_stale_people_confirm_answers_the_end_state() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let s = people_screen("people-stale").await;
+    let (status, _, _) = send(&s.app, cookie_get("/people/bob/remove", &s.alice)).await;
+    assert_eq!(status, StatusCode::OK);
+    // Removed through another door while the confirm page was open.
+    s.store.member_remove("bob", NOW).unwrap();
+    let (status, _, body) = send(&s.app, token_post("/people/bob/remove", &[], &s.alice)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("bob was already removed."), "{body}");
+    let (_, _, body) = send(&s.app, cookie_get("/people/bob/key", &s.alice)).await;
+    assert!(body.contains("bob was already removed."), "{body}");
+    let (status, _, _) = send(&s.app, cookie_get("/people/nobody/remove", &s.alice)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn the_people_screens_log_no_key_token_or_cookie() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let captured = Captured::default();
+    let _guard = captured.install();
+    let s = people_screen("people-logs").await;
+    let (_, _, body) = send(&s.app, add_person("cy", "member", 60, &s.alice)).await;
+    let added = shown_key(&body);
+    let (_, _, body) = send(&s.app, token_post("/people/cy/key", &[], &s.alice)).await;
+    let reissued = shown_key(&body);
+    let token = issued(&s.store, "bob", LAPTOP);
+    let _ = send(&s.app, role_post("bob", "admin", &s.alice)).await;
+    let _ = send(&s.app, role_post("bob", "member", &s.alice)).await;
+    let id = s.store.member_tokens("bob").unwrap()[0].id;
+    let _ = send(
+        &s.app,
+        token_post(&format!("/people/bob/tokens/{id}/revoke"), &[], &s.alice),
+    )
+    .await;
+    let cookie_value = s
+        .alice
+        .split_once('=')
+        .map(|(_, value)| value.to_string())
+        .unwrap();
+    let text = captured.text();
+    for needle in [
+        "tdk_",
+        "tdm_",
+        "Bearer",
+        "Set-Cookie",
+        added.as_str(),
+        reissued.as_str(),
+        token.as_str(),
+        cookie_value.as_str(),
+    ] {
+        assert!(!text.contains(needle), "{needle} reached the log: {text}");
+    }
 }

@@ -41,10 +41,15 @@
           <p class="menu__title">Account</p>
           <a class="menu__option" href="/tokens">Personal tokens</a>
           {%- endif %}
-          {%- if export %}
+          {%- if people || export %}
           <p class="menu__title">Workspace</p>
+          {%- if people %}
+          <a class="menu__option" href="/people">People</a>
+          {%- endif %}
+          {%- if export %}
           <a class="menu__option" href="/export" download>Export workspace</a>
           <p class="menu__note">The file holds every ticket and note and is not encrypted, so keep it somewhere safe.</p>
+          {%- endif %}
           {%- endif %}
         </div>
       </details>

@@ -28,6 +28,8 @@ const WRONG_TOKEN: &str = "That token was not accepted.";
 const TRY_AGAIN: &str = "Too many attempts at once. Try again in a moment.";
 const SIGN_IN_FAILED: &str = "Signing in failed on the server. Try again in a moment.";
 const SIGNED_OUT: &str = "You are signed out.";
+const REMOVED: &str = "You were removed from this workspace.";
+const ROLE_CHANGED: &str = "Your role changed. Sign in again to continue.";
 
 /// The shared wait list for wrong tokens.
 #[derive(Debug, Clone)]
@@ -107,7 +109,12 @@ pub(super) async fn login_page_get(
     if session.is_some() {
         return see_other(&guard::return_target(next));
     }
-    let notice = (field(&params, "notice") == "signed-out").then_some(SIGNED_OUT);
+    let notice = match field(&params, "notice") {
+        "signed-out" => Some(SIGNED_OUT),
+        "removed" => Some(REMOVED),
+        "role-changed" => Some(ROLE_CHANGED),
+        _ => None,
+    };
     login_page(next, None, notice, StatusCode::OK)
 }
 

@@ -57,6 +57,7 @@ mod markdown;
 mod mcp;
 mod notes;
 mod operator;
+mod people;
 mod sheet;
 mod tokens;
 
@@ -268,6 +269,18 @@ impl Context {
         ) && self.store.team_mode().unwrap_or(false)
     }
 
+    /// Whether the shell links the People screen (CUT-42): team mode only, for an
+    /// admin's browser session and the owner's. A solo owner gets no link; the page
+    /// still answers by URL, the one bootstrap moment (the first admin is added there).
+    fn shows_people(&self) -> bool {
+        self.store.team_mode().unwrap_or(false)
+            && match &self.principal {
+                guard::Principal::Owner => true,
+                guard::Principal::MemberSession(member) => member.role == crate::store::Role::Admin,
+                guard::Principal::MemberToken(_) | guard::Principal::Operator => false,
+            }
+    }
+
     /// Whether this viewer may export: the shell draws its control only then.
     fn may_export(&self) -> bool {
         self.session
@@ -356,6 +369,21 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route(
             "/tokens/{id}/revoke",
             get(tokens::revoke_confirm).post(tokens::revoke),
+        )
+        .route("/people", get(people::list).post(people::add))
+        .route("/people/{name}", get(people::detail))
+        .route(
+            "/people/{name}/key",
+            get(people::key_confirm).post(people::key_reissue),
+        )
+        .route("/people/{name}/role", post(people::set_role))
+        .route(
+            "/people/{name}/remove",
+            get(people::remove_confirm).post(people::remove),
+        )
+        .route(
+            "/people/{name}/tokens/{id}/revoke",
+            get(people::token_confirm).post(people::token_revoke),
         )
         .route("/labels", post(board::add_label))
         .route("/labels/{name}/rename", post(board::rename_label))
@@ -753,6 +781,9 @@ struct PageView {
     /// Whether the header menu links the Personal tokens screen: team mode
     /// only, for a member's browser session and for the owner's.
     tokens: bool,
+    /// Whether the header menu links the People screen (CUT-42): team mode only,
+    /// for an admin's browser session and for the owner's.
+    people: bool,
 }
 
 impl PageView {

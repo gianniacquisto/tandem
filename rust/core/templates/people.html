@@ -1,0 +1,103 @@
+<section class="people">
+  <p class="people__back"><a class="people__link" href="/board">Back to the board</a></p>
+  <h1 class="people__title">People</h1>
+  <p class="people__lead">Admins can add and remove people and export the workspace.</p>
+  {%- if let Some(lead) = owner_lead %}
+  <p class="people__owner"><span class="people__mark">Owner</span> {{ lead }}</p>
+  {%- endif %}
+  <p class="people__status" id="people-status" role="status" aria-live="polite"
+    {%- if notice.is_some() %} tabindex="-1" autofocus data-autofocus{% endif %}>
+    {%- if let Some(notice) = notice %}{{ notice }}{% endif -%}
+  </p>
+  {%- if let Some(error) = error %}
+  <p class="people__error" role="alert" tabindex="-1" autofocus data-autofocus>{{ error }}</p>
+  {%- endif %}
+
+  {%- if rows.is_empty() %}
+  <p class="people__empty">No one else has been added yet. Add a person below.</p>
+  {%- else %}
+  <table class="people__table">
+    <caption class="people__caption">Everyone in this workspace</caption>
+    <thead>
+      <tr>
+        <th scope="col">Name</th>
+        <th scope="col">Role</th>
+        <th scope="col">Last signed in</th>
+        <th scope="col">Personal tokens</th>
+        <th scope="col"><span class="people__hidden">Actions</span></th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for row in rows %}
+      <tr>
+        <th scope="row" class="people__name">{{ row.name }}{% if row.you %} <span class="people__mark">You</span>{% endif %}</th>
+        <td>{{ row.role_label }}</td>
+        <td>{{ row.last_seen }}</td>
+        <td>{{ row.tokens }}</td>
+        <td class="people__actions">
+          <form class="people__role" method="post" action="/people/{{ row.name }}/role">
+            <label class="people__hidden" for="role-{{ row.name }}">Role for {{ row.name }}</label>
+            <select class="people__select" id="role-{{ row.name }}" name="role"{% if row.last_admin %} disabled aria-describedby="reason-{{ row.name }}"{% endif %}>
+              <option value="admin"{% if row.role == "admin" %} selected{% endif %}>Admin</option>
+              <option value="member"{% if row.role == "member" %} selected{% endif %}>Member</option>
+            </select>
+            {%- if row.last_admin %}
+            <button class="people__button" type="submit" disabled>Change role</button>
+            {%- else %}
+            <button class="people__button" type="submit">Change role</button>
+            {%- endif %}
+          </form>
+          {%- if row.last_admin %}
+          <p class="people__reason" id="reason-{{ row.name }}">This is the only admin. Make someone else an admin first.</p>
+          <span class="people__button people__button--disabled" aria-disabled="true">Remove</span>
+          {%- else %}
+          <a class="people__button people__button--danger" href="/people/{{ row.name }}/remove">Remove<span class="people__hidden"> {{ row.name }}</span></a>
+          {%- endif %}
+          <a class="people__link" href="/people/{{ row.name }}">Details<span class="people__hidden"> for {{ row.name }}</span></a>
+          <a class="people__link" href="/people/{{ row.name }}/key">Reissue sign-in key<span class="people__hidden"> for {{ row.name }}</span></a>
+        </td>
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+  {%- endif %}
+
+  <form class="people__form" method="post" action="/people">
+    <h2 class="people__subtitle">Add a person</h2>
+    <p class="people__hint">You get a sign-in key to give them. It is shown once.</p>
+    <input type="hidden" name="key" value="{{ key }}">
+    <label class="people__label" for="people-name">Name</label>
+    <p class="people__hint" id="people-name-hint">Lowercase letters, digits and hyphens, up to 64. The name is on everything they do here, and it is never reused.</p>
+    <input class="people__input" id="people-name" type="text" name="name" value="{{ name }}" required autocomplete="off"
+      placeholder="ana"
+      {%- if name_error.is_some() %} autofocus aria-invalid="true" aria-describedby="people-name-hint people-name-error"{% else %} aria-describedby="people-name-hint"{% endif %}>
+    {%- if let Some(error) = name_error %}
+    <p class="people__error" id="people-name-error">{{ error }}</p>
+    {%- endif %}
+    <label class="people__label" for="people-role">Role</label>
+    <select class="people__select" id="people-role" name="role"
+      {%- if role_error.is_some() %} aria-invalid="true" aria-describedby="people-role-error"{% endif %}>
+      <option value="member"{% if role == "member" %} selected{% endif %}>Member</option>
+      <option value="admin"{% if role == "admin" %} selected{% endif %}>Admin</option>
+    </select>
+    {%- if let Some(error) = role_error %}
+    <p class="people__error" id="people-role-error">{{ error }}</p>
+    {%- endif %}
+    <button class="people__button people__button--primary" type="submit">Add person</button>
+  </form>
+
+  <h2 class="people__subtitle">Access record</h2>
+  <p class="people__hint">Who added, removed, changed or gave access, newest first, in UTC. It never shows a token, key or digest.</p>
+  {%- if record.is_empty() %}
+  <p class="people__empty">Nothing recorded yet.</p>
+  {%- else %}
+  <ol class="people__record">
+    {%- for line in record %}
+    <li class="people__event">{{ line }}</li>
+    {%- endfor %}
+  </ol>
+  {%- endif %}
+  {%- if let Some(before) = older %}
+  <p><a class="people__link" href="/people?before={{ before }}">Older entries</a></p>
+  {%- endif %}
+</section>

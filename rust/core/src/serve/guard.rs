@@ -426,6 +426,21 @@ pub(super) const ROUTE_NEEDS: &[(&str, Need)] = &[
         "/tokens/{id}/revoke",
         Need::Permit(Permission::ManageOwnTokens),
     ),
+    ("/people", Need::Permit(Permission::ManagePeople)),
+    ("/people/{name}", Need::Permit(Permission::ManagePeople)),
+    ("/people/{name}/key", Need::Permit(Permission::ManagePeople)),
+    (
+        "/people/{name}/role",
+        Need::Permit(Permission::ManagePeople),
+    ),
+    (
+        "/people/{name}/remove",
+        Need::Permit(Permission::ManagePeople),
+    ),
+    (
+        "/people/{name}/tokens/{id}/revoke",
+        Need::Permit(Permission::ManagePeople),
+    ),
     ("/labels", Need::Permit(Permission::Board)),
     ("/labels/{name}/rename", Need::Permit(Permission::Board)),
     ("/notes", Need::Permit(Permission::Board)),

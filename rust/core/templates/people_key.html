@@ -1,0 +1,14 @@
+<section class="people">
+  <h1 class="people__title">Sign-in key</h1>
+  <p class="people__status" role="status" aria-live="polite">{{ heading }}</p>
+  <p class="people__once"><strong>Copy it now. You will not see it again.</strong></p>
+  <label class="people__label" for="people-key">Sign-in key for {{ name }}</label>
+  <input class="people__input people__input--value" id="people-key" type="text" readonly value="{{ key }}" spellcheck="false" autocomplete="off" autofocus data-select-all>
+  <p class="people__row">
+    <button class="people__button people__button--primary" type="button" data-copy-token="people-key" data-copy-status="people-copy-status">Copy key</button>
+    <span class="people__copied" id="people-copy-status" role="status" aria-live="polite"></span>
+  </p>
+  <p class="people__lead">Give it to {{ name }}. They paste it into the sign-in form to get into the board. It works like a password until you reissue it or remove them.</p>
+  <p class="people__lead">If it is lost, reissue it. A lost key is never shown again.</p>
+  <p><a class="people__button" href="/people">Back to People</a></p>
+</section>
