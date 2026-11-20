@@ -11,6 +11,9 @@
   <body class="login">
     <main class="login__card">
       <h1 class="login__wordmark">Tandem</h1>
+      {%- if let Some(warning) = warning %}
+      <p class="banner login__notice" role="alert">{{ warning }}</p>
+      {%- endif %}
       {%- if let Some(notice) = notice %}
       <p class="banner banner--notice login__notice" role="status">{{ notice }}</p>
       {%- endif %}

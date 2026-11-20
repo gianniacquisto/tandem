@@ -13,7 +13,7 @@
   "stdin": "A comment from stdin.\n",
   "stdout": {
     "at": "<timestamp>",
-    "author": "",
+    "author": "golden-agent",
     "body": "A comment from stdin."
   },
   "stdoutKind": "json"

@@ -39,7 +39,9 @@ pub mod text;
 pub mod ticket;
 pub mod ticket_label;
 
-pub use board::{AddTicket, Board, SetFields, resolve_assignee, resolve_origin};
+pub use board::{
+    AddTicket, Board, SetFields, resolve_assignee, resolve_comment_author, resolve_origin,
+};
 pub use comment::{Comment, CommentRead};
 pub use contents::Contents;
 pub use description::DescriptionBody;

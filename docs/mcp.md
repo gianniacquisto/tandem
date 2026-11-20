@@ -20,7 +20,7 @@ The list below is generated from `tools()` in `rust/core/src/mcp.rs`, one line p
 - `ticket_unblock`: Remove one edge, or every edge the ticket has when `on` is absent. Answers the whole ticket; detail "lean" answers a short receipt. Params: `detail`, `id` (required), `on`.
 - `ticket_complete`: The short path to done: idempotent, no reopen verb. Answers the whole ticket; detail "lean" answers a short receipt. Params: `detail`, `id` (required).
 - `ticket_archive`: Archive one ticket, or every done ticket when `id` is absent. One ticket answers the whole ticket; detail "lean" answers a short receipt. Params: `detail`, `id`.
-- `ticket_comment_add`: Append to the ticket's discussion log. Write the role out as the author. Echoes the comment; detail "lean" answers the time and author, not the body. Params: `author`, `body` (required), `detail`, `id` (required).
+- `ticket_comment_add`: Append to the ticket's discussion log. Write the role out as the author; left out, it is the caller's own name (a member's token, or the X-Tandem-Agent name). Echoes the comment; detail "lean" answers the time and author, not the body. Params: `author`, `body` (required), `detail`, `id` (required).
 - `ticket_comment_list`: List the ticket's discussion log in append order. Params: `id` (required).
 - `label_list`: List every label, in render order. Params: none.
 - `label_add`: Declare a label. A label must exist before tickets move to it. Params: `abbr`, `name` (required), `project`.

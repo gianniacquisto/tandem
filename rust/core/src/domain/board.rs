@@ -1166,6 +1166,20 @@ pub fn resolve_origin(raw: Option<&str>, actor: &Actor) -> Result<String, Domain
     }
 }
 
+/// A comment's author: the one given, else the named actor the write runs as
+/// (a member's credential, `X-Tandem-Agent`, `TANDEM_AGENT`), so a known
+/// caller's comment is not left unsigned. Blank counts as absent. The plain
+/// human actor keeps the unnamed author `""`. One rule for every door.
+pub fn resolve_comment_author<'a>(raw: Option<&'a str>, actor: &'a Actor) -> &'a str {
+    match raw.map(str::trim) {
+        Some(given) if !given.is_empty() => given,
+        _ => match actor {
+            Actor::Agent(name) => name.as_str(),
+            Actor::Human => "",
+        },
+    }
+}
+
 /// The assignee's spelling rule: trimmed; empty means unassigned; the reserved word
 /// `human` is stored lowercase so it is one name; anything else is an agent's name
 /// exactly as given.

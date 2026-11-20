@@ -11,7 +11,7 @@ use crate::bikeshed::Bikeshed;
 use crate::diagnostics;
 use crate::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, Status, TicketQuery, resolve_assignee,
-    resolve_origin,
+    resolve_comment_author, resolve_origin,
 };
 use crate::store::{Actor, Store};
 use crate::wire::rpc::{
@@ -175,10 +175,11 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
             }
         },
         Method::TicketCommentAdd(params) => {
+            let author = resolve_comment_author(params.author.as_deref(), actor);
             let comment = board
                 .append_comment(
                     named(&params.id),
-                    params.author.as_deref().unwrap_or(""),
+                    author,
                     params.body.as_deref().unwrap_or(""),
                 )
                 .map_err(domain)?;

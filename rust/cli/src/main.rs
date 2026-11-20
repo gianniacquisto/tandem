@@ -748,10 +748,14 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                         Some(body) => body.to_string(),
                         None => String::new(),
                     };
+                    let actor = Actor::current();
                     let comment = board
                         .append_comment(
                             args.id.as_deref().unwrap_or(""),
-                            args.author.as_deref().unwrap_or(""),
+                            tandem_core::domain::resolve_comment_author(
+                                args.author.as_deref(),
+                                &actor,
+                            ),
                             &body,
                         )
                         .map_err(Failure::domain)?;

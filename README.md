@@ -34,6 +34,8 @@ tandem doctor         # check that the install and your data are healthy
 
 Your data lives in `~/.tandem`.
 
+**Host it for a team.** To run one board for several people, each signing in as themselves with their own agents, see [Self-hosting](docs/self-hosting.md): it covers the server, HTTPS and bootstrapping the first admin.
+
 **Run from source.** These commands use the installed release binary. To build and run your own checkout instead, including the team mode test setup, see [Run from source](CONTRIBUTING.md#run-from-source).
 
 ## Connect your agent
@@ -88,6 +90,7 @@ Details in [architecture](docs/architecture.md).
 
 ## Docs
 
+- [Self-hosting](docs/self-hosting.md): a team board, the first admin, people and their agents
 - [Architecture](docs/architecture.md)
 - [CLI reference](docs/cli.md)
 - [MCP tools](docs/mcp.md)

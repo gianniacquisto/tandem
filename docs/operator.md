@@ -4,6 +4,8 @@
 
 The interface is versioned by its path. A change that breaks a shape or a status code is a new prefix, `/operator/v2`.
 
+**A member added here cannot sign in yet.** The operator never issues a sign-in key, so the reply is only `{"id", "name", "role"}`. To get them in, the owner (signed in with `TANDEM_TOKEN`) or an admin opens `/people`, uses the **Reissue sign-in key** link on the person's row, confirms, and hands them the `tdk_` key it shows once. A self-hoster does not need this interface at all: the owner adds the first admin on `/people` directly. The whole flow is in [self-hosting.md](self-hosting.md).
+
 ## The key
 
 The operator key is a credential of its own, held in the serve process's environment:
@@ -65,3 +67,5 @@ curl -X POST https://workspace.example/operator/v1/members \
 curl -H "Authorization: Bearer $TANDEM_OPERATOR_KEY" \
   https://workspace.example/operator/v1/members/count
 ```
+
+The examples use `https://` because a hosted workspace sits behind a TLS proxy. `tandem serve` itself speaks plain HTTP: against a local serve (for example `tandem serve --port 7799`) use `http://localhost:7799/operator/v1/...`. Sending `https://` to it fails with `curl: (35) Send failure: Broken pipe`.
