@@ -42,6 +42,8 @@ tandem-cli note links
 tandem-cli doctor
 ```
 
+A comment's `--author` left out (or blank) is the actor the run writes as: `TANDEM_AGENT` locally, the member or `X-Tandem-Agent` name through `tandem serve`; with no agent named it stays unnamed.
+
 The Statuses are `backlog`, `on-hold`, `ready`, `in-progress`, `in-review` and `done` (`on-hold` is the parked slot: a blocker, a human decision pending); a ticket's label is named with `--label`, and the unnamed default area always comes first. A ticket in a label carries a **ref** - the label's key and a per-label number, `TAN-42` - and every `--id` (or `--ticket`) accepts it beside the full UUID; the default area's tickets have none, and a label's key is frozen once its tickets carry numbers.
 
 `todo` still answers for `ticket` as a deprecated alias: same parse, same output, one line on stderr saying so, and the `list` reply carries both `tickets` and `todos` with the same array ([ADR 0030](adr/0030-one-entity-the-ticket.md)). The alias and the doubled reply go in the release after the one that deprecated them.
