@@ -735,7 +735,11 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
         );
         assert!(!body.is_empty(), "{path} carries its bytes");
         if path == "/static/tandem.js" {
-            for key in ["tandem.collapsed", "tandem.collapsedSet", "data-tree-action"] {
+            for key in [
+                "tandem.collapsed",
+                "tandem.collapsedSet",
+                "data-tree-action",
+            ] {
                 assert!(body.contains(key), "tandem.js carries {key}");
             }
         }
