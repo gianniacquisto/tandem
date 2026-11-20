@@ -8,7 +8,7 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli label delete — a label, its members to the default area.",
+    "tandem-cli label delete \u2014 a label; its tickets lose the label and stay in their project.",
     "",
     "Usage:",
     "  tandem-cli label delete --name <name>"

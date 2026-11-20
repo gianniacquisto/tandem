@@ -45,6 +45,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
                 params.text.as_deref(),
                 params.status.as_deref(),
                 assignee.as_deref(),
+                params.project.as_deref(),
                 params.label.as_deref(),
                 params.archived,
                 params.blocked,
@@ -88,6 +89,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
                 .add(
                     params.title.as_deref().unwrap_or(""),
                     AddTicket {
+                        project: params.project.as_deref(),
                         label: params.label.as_deref(),
                         status,
                         assignee: assignee.as_deref(),
@@ -204,7 +206,6 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
             let labels = board
                 .add_label(
                     params.name.as_deref().unwrap_or(""),
-                    params.abbr.as_deref(),
                     params.project.as_deref(),
                 )
                 .map_err(domain)?;
@@ -218,7 +219,6 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
                 .rename_label(
                     params.from.as_deref().unwrap_or(""),
                     params.to.as_deref().unwrap_or(""),
-                    params.abbr.as_deref(),
                     params.project.as_deref(),
                 )
                 .map_err(domain)?;
@@ -259,6 +259,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
                     .into_iter()
                     .map(|entry| ProjectEntry {
                         name: entry.name,
+                        key: entry.key,
                         labels: entry.labels,
                     })
                     .collect(),
@@ -266,7 +267,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
         }
         Method::ProjectAdd(params) => {
             let projects = board
-                .add_project(params.name.as_deref().unwrap_or(""))
+                .add_project(params.name.as_deref().unwrap_or(""), params.abbr.as_deref())
                 .map_err(domain)?;
             Ok(Reply::ProjectList(ProjectListReply {
                 revision: store.last_revision(),
@@ -274,6 +275,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
                     .into_iter()
                     .map(|entry| ProjectEntry {
                         name: entry.name,
+                        key: entry.key,
                         labels: entry.labels,
                     })
                     .collect(),
@@ -284,6 +286,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
                 .rename_project(
                     params.from.as_deref().unwrap_or(""),
                     params.to.as_deref().unwrap_or(""),
+                    params.abbr.as_deref(),
                 )
                 .map_err(domain)?;
             Ok(Reply::ProjectList(ProjectListReply {
@@ -292,6 +295,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
                     .into_iter()
                     .map(|entry| ProjectEntry {
                         name: entry.name,
+                        key: entry.key,
                         labels: entry.labels,
                     })
                     .collect(),
@@ -307,6 +311,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
                     .into_iter()
                     .map(|entry| ProjectEntry {
                         name: entry.name,
+                        key: entry.key,
                         labels: entry.labels,
                     })
                     .collect(),

@@ -1,6 +1,8 @@
 # A ticket's area is a label, not a lane
 
-> **Status:** In force. See [the index](README.md).
+> **Status:** In force as amended. See [the index](README.md).
+
+> **Amended 2026-11-20 by [ADR 0053](0053-one-prefix-per-project.md):** the key and the issued-number counter belong to the project, not the label, and deleting a label unlabels its tickets inside their project. The amendment's text is ADR 0053's.
 
 The board, the CLI and the MCP tools called a ticket's single named area a "lane". It is drawn as a chip on the card and used as a filter ([ADR 0043](0043-the-board-draws-one-axis.md)), never as a swimlane, so the word described a drawing the board no longer makes. This ADR renames the word. The model does not change.
 

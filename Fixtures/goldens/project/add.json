@@ -11,8 +11,9 @@
   "stdout": {
     "projects": [
       {
-        "name": "Alpha",
-        "labels": []
+        "key": "ALP",
+        "labels": [],
+        "name": "Alpha"
       }
     ]
   },

@@ -9,7 +9,7 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli ticket comment add — one comment on the log.",
+    "tandem-cli ticket comment add \u2014 one comment on the log.",
     "",
     "Usage:",
     "  tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->",

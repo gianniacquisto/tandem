@@ -211,6 +211,40 @@
     moveCard(card.getAttribute('data-ticket'), target);
   });
 
+  // MARK: - The New form's label choices
+
+  // The Label select lists the chosen project's labels only, and goes back to
+  // "No label" when the project changes. Every label carries its project in
+  // data-project; the page draws them all, hidden but for the preset's.
+  function syncNewLabels(form) {
+    var project = form.elements.ticket_project;
+    var label = form.elements.ticket_label;
+    if (!project || !label) return;
+    var chosen = project.value;
+    Array.prototype.forEach.call(label.options, function (option) {
+      var own = option.getAttribute('data-project');
+      if (own === null) return;
+      var show = own === chosen;
+      option.hidden = !show;
+      option.disabled = !show;
+    });
+    label.disabled = chosen === '';
+  }
+
+  document.addEventListener('change', function (event) {
+    var project = closest(event.target, 'select[name="ticket_project"]');
+    if (!project || !project.form) return;
+    project.form.elements.ticket_label.value = '';
+    syncNewLabels(project.form);
+  });
+
+  function setUpNewForm() {
+    var form = document.querySelector('.new-form');
+    if (form) syncNewLabels(form);
+  }
+  document.addEventListener('DOMContentLoaded', setUpNewForm);
+  document.addEventListener('htmx:afterSettle', setUpNewForm);
+
   // MARK: - The ticket sheet
 
   // The label is the one metadata control that moves at once: its own form.
@@ -1218,12 +1252,15 @@
     field.dispatchEvent(new Event('change', { bubbles: true }));
   });
 
-  // Opening New puts the cursor in the title.
+  // Opening New puts the cursor in the title, or in the Project select when no
+  // project is chosen yet, so the one required choice is the one in reach.
   document.addEventListener('toggle', function (event) {
     var details = event.target;
     if (!details.classList || !details.classList.contains('new-menu') || !details.open) return;
+    var project = details.querySelector('select[name="ticket_project"]');
     var input = details.querySelector('input[name="title"]');
-    if (input) input.focus();
+    if (project && !project.disabled && project.value === '') project.focus();
+    else if (input) input.focus();
   }, true);
 
   // The daily note is today's page by the reader's own calendar, not the server's.

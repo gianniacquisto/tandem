@@ -8,7 +8,7 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli ticket comment — a ticket's discussion log.",
+    "tandem-cli ticket comment \u2014 a ticket's discussion log.",
     "",
     "Usage:",
     "  tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->",

@@ -23,6 +23,12 @@ use tandem_core::wire::rpc::{METHODS, Method};
 /// back by [`handle`] so a case can read which call an answer belongs to.
 type Call = (u64, String, Value);
 
+/// A home files its tickets into a project (TAN-339): one for the cases that
+/// only need somewhere to put them.
+fn seed_project(store: &tandem_core::store::Store) {
+    handle(store, &frame(0, "project.add", json!({"name": "Main"})));
+}
+
 fn frame(id: u64, method: &str, params: Value) -> Call {
     (id, method.to_string(), params)
 }
@@ -132,7 +138,16 @@ fn a_mutation_moves_the_revision_and_the_next_listing_carries_it() {
     let sandbox = Sandbox::new("rpc-mutate");
     let store = sandbox.store();
 
-    let added = handle(&store, &frame(1, "ticket.add", json!({"title": "First"})));
+    seed_project(&store);
+
+    let added = handle(
+        &store,
+        &frame(
+            1,
+            "ticket.add",
+            json!({"project": "Main", "title": "First"}),
+        ),
+    );
     let written = added["result"]["revision"]
         .as_i64()
         .unwrap_or_else(|| panic!("the mutation answers a revision: {added}"));
@@ -155,12 +170,14 @@ fn self_is_the_agent_on_the_wire_and_the_human_is_refused() {
     let store = sandbox.store();
     let reviewer = Actor::Agent("reviewer".to_string());
 
+    seed_project(&store);
+
     let added = handle_as(
         &store,
         &frame(
             1,
             "ticket.add",
-            json!({"title": "Mine", "assignee": "self", "origin": "self"}),
+            json!({"project": "Main", "title": "Mine", "assignee": "self", "origin": "self"}),
         ),
         &reviewer,
     );
@@ -184,7 +201,7 @@ fn self_is_the_agent_on_the_wire_and_the_human_is_refused() {
         &frame(
             3,
             "ticket.add",
-            json!({"title": "Other", "assignee": "self"}),
+            json!({"project": "Main", "title": "Other", "assignee": "self"}),
         ),
     );
     assert_eq!(refused["error"]["code"], "domain");
@@ -202,12 +219,14 @@ fn an_empty_description_on_add_is_the_cli_refusal() {
     let sandbox = Sandbox::new("rpc-empty-description");
     let store = sandbox.store();
 
+    seed_project(&store);
+
     let refused = handle(
         &store,
         &frame(
             1,
             "ticket.add",
-            json!({"title": "Bodyless", "description": ""}),
+            json!({"project": "Main", "title": "Bodyless", "description": ""}),
         ),
     );
     assert_eq!(refused["error"]["code"], "domain");
@@ -230,7 +249,16 @@ fn a_no_op_write_does_not_move_the_revision() {
     let sandbox = Sandbox::new("rpc-noop");
     let store = sandbox.store();
 
-    let added = handle(&store, &frame(1, "ticket.add", json!({"title": "First"})));
+    seed_project(&store);
+
+    let added = handle(
+        &store,
+        &frame(
+            1,
+            "ticket.add",
+            json!({"project": "Main", "title": "First"}),
+        ),
+    );
     let written = added["result"]["revision"].as_i64().expect("a revision");
 
     // `ticket set` with no field names a ticket and changes nothing: a success
@@ -252,7 +280,12 @@ fn arguments_that_do_not_read_and_an_unknown_method_are_errors() {
     let sandbox = Sandbox::new("rpc-parse");
     let store = sandbox.store();
 
-    let unreadable = handle(&store, &frame(1, "ticket.add", json!({"title": 7})));
+    seed_project(&store);
+
+    let unreadable = handle(
+        &store,
+        &frame(1, "ticket.add", json!({"project": "Main", "title": 7})),
+    );
     assert_eq!(unreadable["error"]["code"], "parse");
     assert!(
         unreadable["error"]["message"]
@@ -299,7 +332,12 @@ fn every_read_reply_carries_the_revision_of_its_own_snapshot() {
     let sandbox = Sandbox::new("rpc-read-revisions");
     let store = sandbox.store();
 
-    let added = handle(&store, &frame(1, "ticket.add", json!({"title": "One"})));
+    seed_project(&store);
+
+    let added = handle(
+        &store,
+        &frame(1, "ticket.add", json!({"project": "Main", "title": "One"})),
+    );
     let id = added["result"]["ticket"]["id"].as_str().expect("an id");
     handle(
         &store,
@@ -339,14 +377,22 @@ fn a_watch_connection_sees_a_later_write_without_reopening() {
         "there is nothing to watch before the first write"
     );
 
-    handle(&store, &frame(1, "ticket.add", json!({"title": "One"})));
+    seed_project(&store);
+
+    handle(
+        &store,
+        &frame(1, "ticket.add", json!({"project": "Main", "title": "One"})),
+    );
     let watch = store
         .watch()
         .expect("the store is watchable")
         .expect("a WAL store hands back one connection");
     let before = watch.revision().expect("the watch reads");
 
-    handle(&store, &frame(2, "ticket.add", json!({"title": "Two"})));
+    handle(
+        &store,
+        &frame(2, "ticket.add", json!({"project": "Main", "title": "Two"})),
+    );
     assert!(
         watch.revision().expect("the watch reads") > before,
         "the reused connection sees a commit made after it opened"
@@ -358,8 +404,15 @@ fn a_watch_connection_sees_a_later_write_without_reopening() {
 fn a_watch_notices_the_store_was_replaced() {
     let sandbox = Sandbox::new("rpc-watch-restore");
     let store = sandbox.store();
-    handle(&store, &frame(1, "ticket.add", json!({"title": "One"})));
-    handle(&store, &frame(2, "ticket.add", json!({"title": "Two"})));
+    seed_project(&store);
+    handle(
+        &store,
+        &frame(1, "ticket.add", json!({"project": "Main", "title": "One"})),
+    );
+    handle(
+        &store,
+        &frame(2, "ticket.add", json!({"project": "Main", "title": "Two"})),
+    );
 
     let watch = store
         .watch()
@@ -389,7 +442,12 @@ fn the_revision_moves_once_per_write_that_changes_a_row() {
     let store = sandbox.store();
     assert_eq!(store.revision().expect("a fresh home reads"), 0);
 
-    let first = handle(&store, &frame(1, "ticket.add", json!({"title": "One"})));
+    seed_project(&store);
+
+    let first = handle(
+        &store,
+        &frame(1, "ticket.add", json!({"project": "Main", "title": "One"})),
+    );
     let once = store.revision().expect("the store reads");
     assert!(once > 0);
     assert_eq!(first["result"]["revision"], once);
@@ -399,7 +457,10 @@ fn the_revision_moves_once_per_write_that_changes_a_row() {
         "the receipt's revision was read inside the write's transaction"
     );
 
-    handle(&store, &frame(2, "ticket.add", json!({"title": "Two"})));
+    handle(
+        &store,
+        &frame(2, "ticket.add", json!({"project": "Main", "title": "Two"})),
+    );
     assert_eq!(store.revision().expect("the store reads"), once + 1);
 }
 
@@ -624,7 +685,7 @@ fn project_messages_round_trip_like_the_label_ones() {
     let added = handle(&store, &frame(2, "project.add", json!({"name": "Alpha"})));
     assert_eq!(
         added["result"]["projects"],
-        json!([{"name": "Alpha", "labels": []}])
+        json!([{"name": "Alpha", "key": "ALP", "labels": []}])
     );
 
     let renamed = handle(
@@ -633,8 +694,8 @@ fn project_messages_round_trip_like_the_label_ones() {
     );
     assert_eq!(
         renamed["result"]["projects"],
-        json!([{"name": "Beta", "labels": []}]),
-        "a rename moves its labels with it (none here)"
+        json!([{"name": "Beta", "key": "ALP", "labels": []}]),
+        "a rename moves its labels with it (none here), and keeps the key"
     );
 
     let deleted = handle(&store, &frame(4, "project.delete", json!({"name": "Beta"})));
@@ -644,14 +705,23 @@ fn project_messages_round_trip_like_the_label_ones() {
         "an empty project deletes"
     );
 
-    // A label auto-parents the project named for it, and a project rename moves
-    // the label with it while refs stay label-keyed.
-    handle(&store, &frame(5, "label.add", json!({"name": "Cycle"})));
+    // A label needs a project (there is no implicit one), and a project rename
+    // moves the label with it while the key stays the project's.
+    let orphan = handle(&store, &frame(4, "label.add", json!({"name": "Cycle"})));
+    assert_eq!(orphan["error"]["code"], "domain");
+    handle(
+        &store,
+        &frame(5, "project.add", json!({"name": "Cycle", "abbr": "cyc"})),
+    );
+    handle(
+        &store,
+        &frame(5, "label.add", json!({"name": "Cycle", "project": "Cycle"})),
+    );
     let grouped = handle(&store, &frame(6, "project.list", json!({})));
     assert_eq!(
         grouped["result"]["projects"],
-        json!([{"name": "Cycle", "labels": ["Cycle"]}]),
-        "label add without a project auto-parents"
+        json!([{"name": "Cycle", "key": "CYC", "labels": ["Cycle"]}]),
+        "a label sits in the project it names, and the key is the project's"
     );
     let moved = handle(
         &store,
@@ -659,7 +729,7 @@ fn project_messages_round_trip_like_the_label_ones() {
     );
     assert_eq!(
         moved["result"]["projects"],
-        json!([{"name": "Beta", "labels": ["Cycle"]}]),
+        json!([{"name": "Beta", "key": "CYC", "labels": ["Cycle"]}]),
         "the label moves with its project"
     );
 
@@ -680,9 +750,13 @@ fn project_messages_round_trip_like_the_label_ones() {
 fn label_move_reorders_the_declared_labels_over_the_wire() {
     let sandbox = Sandbox::new("rpc-label-move");
     let store = sandbox.store();
-    handle(&store, &frame(1, "label.add", json!({"name": "A"})));
-    handle(&store, &frame(2, "label.add", json!({"name": "B"})));
-    handle(&store, &frame(3, "label.add", json!({"name": "C"})));
+    handle(&store, &frame(0, "project.add", json!({"name": "P"})));
+    for (id, name) in [(1, "A"), (2, "B"), (3, "C")] {
+        handle(
+            &store,
+            &frame(id, "label.add", json!({"name": name, "project": "P"})),
+        );
+    }
 
     let moved = handle(
         &store,

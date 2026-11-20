@@ -8,15 +8,14 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli label rename \u2014 a label's name, its key and its parent.",
+    "tandem-cli label rename - a label's name and its parent.",
     "",
     "Usage:",
-    "  tandem-cli label rename --from <name> --to <name> [--abbr <key>] [--project <name>]",
+    "  tandem-cli label rename --from <name> --to <name> [--project <name>]",
     "",
-    "The key survives a rename; `--abbr` moves it, and a label with a numbered ticket",
-    "refuses \u2014 the refs a human already wrote would move with it. The project",
-    "survives too; `--project` re-parents the label, naming a known project, and",
-    "never touches keys, numbers or refs."
+    "The project survives a rename; `--project` re-parents the label, naming a known",
+    "project, and is refused while the label holds any ticket: a ticket never changes",
+    "project. Numbers and refs are never touched."
   ],
   "stdoutKind": "text"
 }

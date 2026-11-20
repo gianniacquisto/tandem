@@ -24,7 +24,7 @@ fn temp_board() -> (Sandbox, Board) {
 #[test]
 fn a_ticket_round_trips_status_archived_description_assignee_and_label() {
     let (sandbox, board) = temp_board();
-    board.add_label("Core", None, None).unwrap();
+    board.add_label("Core", Some(support::PROJECT)).unwrap();
     let added = board
         .add(
             "Ship the model",
@@ -77,7 +77,7 @@ fn in_review_round_trips_through_the_store() {
             "Waiting for review",
             AddTicket {
                 status: Status::InReview,
-                ..AddTicket::default()
+                ..support::ticket()
             },
         )
         .unwrap();
@@ -128,7 +128,7 @@ fn on_hold_round_trips_through_the_store() {
             "Parked on purpose",
             AddTicket {
                 status: Status::OnHold,
-                ..AddTicket::default()
+                ..support::ticket()
             },
         )
         .unwrap();
@@ -166,7 +166,7 @@ fn an_origin_round_trips_through_the_store() {
             "Filed by an agent",
             AddTicket {
                 origin: "builder",
-                ..AddTicket::default()
+                ..support::ticket()
             },
         )
         .unwrap();
@@ -180,7 +180,7 @@ fn an_origin_round_trips_through_the_store() {
 fn add_stamps_its_origin_defaulting_to_human_with_the_assignees_spelling_rules() {
     let (_sandbox, board) = temp_board();
     assert_eq!(
-        board.add("default", AddTicket::default()).unwrap().origin,
+        board.add("default", support::ticket()).unwrap().origin,
         "human"
     );
     assert_eq!(
@@ -189,7 +189,7 @@ fn add_stamps_its_origin_defaulting_to_human_with_the_assignees_spelling_rules()
                 "empty",
                 AddTicket {
                     origin: "   ",
-                    ..AddTicket::default()
+                    ..support::ticket()
                 }
             )
             .unwrap()
@@ -202,7 +202,7 @@ fn add_stamps_its_origin_defaulting_to_human_with_the_assignees_spelling_rules()
                 "reserved",
                 AddTicket {
                     origin: "  HUMAN ",
-                    ..AddTicket::default()
+                    ..support::ticket()
                 }
             )
             .unwrap()
@@ -216,7 +216,7 @@ fn add_stamps_its_origin_defaulting_to_human_with_the_assignees_spelling_rules()
                 "named",
                 AddTicket {
                     origin: " Blue Agent ",
-                    ..AddTicket::default()
+                    ..support::ticket()
                 }
             )
             .unwrap()
@@ -228,14 +228,14 @@ fn add_stamps_its_origin_defaulting_to_human_with_the_assignees_spelling_rules()
 #[test]
 fn origin_is_written_once_at_add_and_set_move_place_reopen_leave_it() {
     let (_sandbox, board) = temp_board();
-    board.add_label("Core", None, None).unwrap();
+    board.add_label("Core", Some(support::PROJECT)).unwrap();
     let added = board
         .add(
             "Task",
             AddTicket {
                 assignee: Some("core"),
                 origin: "builder",
-                ..AddTicket::default()
+                ..support::ticket()
             },
         )
         .unwrap();
@@ -279,7 +279,7 @@ fn origin_is_written_once_at_add_and_set_move_place_reopen_leave_it() {
 #[test]
 fn completing_writes_status_done_and_completed_at() {
     let (sandbox, board) = temp_board();
-    let added = board.add("Task", AddTicket::default()).unwrap();
+    let added = board.add("Task", support::ticket()).unwrap();
     board.complete(&added.id.to_string()).unwrap();
 
     let fresh = Board::with_actor(sandbox.store(), tandem_core::store::Actor::Human);
@@ -296,7 +296,7 @@ fn reopening_after_done_lands_in_backlog() {
             "Task",
             AddTicket {
                 status: Status::Ready,
-                ..AddTicket::default()
+                ..support::ticket()
             },
         )
         .unwrap();
@@ -327,7 +327,7 @@ fn reopening_after_done_lands_in_backlog() {
 #[test]
 fn set_changes_only_the_fields_it_names() {
     let (_sandbox, board) = temp_board();
-    board.add_label("Core", None, None).unwrap();
+    board.add_label("Core", Some(support::PROJECT)).unwrap();
     let added = board
         .add(
             "Title",
@@ -374,7 +374,7 @@ fn set_clears_an_optional_field_with_set_none_and_leaves_it_with_unchanged() {
             AddTicket {
                 status: Status::Ready,
                 assignee: Some("core"),
-                ..AddTicket::default()
+                ..support::ticket()
             },
         )
         .unwrap();
@@ -407,7 +407,7 @@ fn set_clears_an_optional_field_with_set_none_and_leaves_it_with_unchanged() {
 #[test]
 fn set_trims_text_treats_an_empty_value_as_cleared_and_stores_human_lowercase() {
     let (_sandbox, board) = temp_board();
-    let added = board.add("old", AddTicket::default()).unwrap();
+    let added = board.add("old", support::ticket()).unwrap();
     let set = board
         .set(
             &added.id.to_string(),
@@ -453,7 +453,7 @@ fn set_trims_text_treats_an_empty_value_as_cleared_and_stores_human_lowercase() 
 #[test]
 fn set_rejects_an_empty_title_and_leaves_the_ticket_untouched() {
     let (_sandbox, board) = temp_board();
-    let added = board.add("Task", AddTicket::default()).unwrap();
+    let added = board.add("Task", support::ticket()).unwrap();
     for title in ["", "   ", "\t\n  "] {
         assert!(matches!(
             board.set(
@@ -472,7 +472,7 @@ fn set_rejects_an_empty_title_and_leaves_the_ticket_untouched() {
 #[test]
 fn set_with_an_unknown_id_is_the_unknown_id_failure_carrying_the_open_list() {
     let (sandbox, board) = temp_board();
-    let open = board.add("A", AddTicket::default()).unwrap();
+    let open = board.add("A", support::ticket()).unwrap();
     let error = board
         .set(
             &uuid_string(),
@@ -495,7 +495,7 @@ fn set_with_an_unknown_id_is_the_unknown_id_failure_carrying_the_open_list() {
 #[test]
 fn setting_status_to_done_stamps_completed_at_and_leaving_done_clears_it() {
     let (_sandbox, board) = temp_board();
-    let added = board.add("Task", AddTicket::default()).unwrap();
+    let added = board.add("Task", support::ticket()).unwrap();
     let done = board
         .set(
             &added.id.to_string(),
@@ -536,7 +536,7 @@ fn setting_status_to_done_stamps_completed_at_and_leaving_done_clears_it() {
 #[test]
 fn archiving_takes_a_ticket_out_of_the_default_views_and_never_deletes_it() {
     let (_sandbox, board) = temp_board();
-    let added = board.add("Task", AddTicket::default()).unwrap();
+    let added = board.add("Task", support::ticket()).unwrap();
     board
         .set(
             &added.id.to_string(),
@@ -566,7 +566,7 @@ fn archiving_takes_a_ticket_out_of_the_default_views_and_never_deletes_it() {
 #[test]
 fn add_files_a_ticket_in_a_status_and_with_an_owner_and_a_title_alone_stays_default() {
     let (_sandbox, board) = temp_board();
-    let plain = board.add("plain", AddTicket::default()).unwrap();
+    let plain = board.add("plain", support::ticket()).unwrap();
     assert_eq!(plain.status, Status::Backlog);
     assert_eq!(plain.assignee, None);
     assert_eq!(plain.origin, "human");
@@ -579,7 +579,7 @@ fn add_files_a_ticket_in_a_status_and_with_an_owner_and_a_title_alone_stays_defa
             AddTicket {
                 status: Status::Ready,
                 assignee: Some("core"),
-                ..AddTicket::default()
+                ..support::ticket()
             },
         )
         .unwrap();
@@ -594,7 +594,7 @@ fn add_files_a_ticket_in_a_status_and_with_an_owner_and_a_title_alone_stays_defa
 #[test]
 fn the_returned_ticket_is_the_one_a_read_returns() {
     let (_sandbox, board) = temp_board();
-    let added = board.add("same", AddTicket::default()).unwrap();
+    let added = board.add("same", support::ticket()).unwrap();
     let read: Ticket = board.list_filter(Filter::All).unwrap().remove(0);
     assert_eq!(added, read);
 }
@@ -612,7 +612,7 @@ fn uuid_string() -> String {
 #[test]
 fn a_row_with_an_unreadable_id_is_a_domain_error_not_a_ticket_with_no_id() {
     let (sandbox, board) = temp_board();
-    board.add("good", AddTicket::default()).unwrap();
+    board.add("good", support::ticket()).unwrap();
 
     let connection = rusqlite::Connection::open(sandbox.database()).unwrap();
     connection
@@ -639,7 +639,7 @@ fn a_row_with_an_unreadable_id_is_a_domain_error_not_a_ticket_with_no_id() {
     );
     // A write refuses the same row: it reads the board inside its transaction, so a
     // silent repair cannot reach the store.
-    assert!(board.add("another", AddTicket::default()).is_err());
+    assert!(board.add("another", support::ticket()).is_err());
 }
 
 /// A timestamp is the same rule: an unreadable `created_at` is a store this build
@@ -647,16 +647,17 @@ fn a_row_with_an_unreadable_id_is_a_domain_error_not_a_ticket_with_no_id() {
 #[test]
 fn a_row_with_an_unreadable_timestamp_is_a_domain_error() {
     let (sandbox, board) = temp_board();
-    board.add("good", AddTicket::default()).unwrap();
+    board.add("good", support::ticket()).unwrap();
 
     let connection = rusqlite::Connection::open(sandbox.database()).unwrap();
     connection
         .execute(
             "INSERT INTO tickets
                 (id, title, description, status, archived, label, number, origin,
-                 assignee, link, position, created_at, completed_at, author)
+                 assignee, link, position, created_at, completed_at, author, project)
              VALUES ('00000000-0000-0000-0000-0000000000aa', 'bad', NULL, 'backlog',
-                     0, NULL, NULL, 'human', NULL, NULL, 99, 'yesterday', NULL, 'human')",
+                     0, NULL, NULL, 'human', NULL, NULL, 99, 'yesterday', NULL, 'human',
+                     'Main')",
             [],
         )
         .unwrap();
@@ -672,4 +673,29 @@ fn a_row_with_an_unreadable_timestamp_is_a_domain_error() {
         "the failure names the column: {}",
         error.message()
     );
+}
+
+/// A ticket always lives in a project: a stored row without one is corrupt, named
+/// as such, and refused by a read and by a write alike (TAN-339).
+#[test]
+fn a_row_with_no_project_is_a_domain_error_naming_the_ticket() {
+    let (sandbox, board) = temp_board();
+    board.add("good", support::ticket()).unwrap();
+    let connection = rusqlite::Connection::open(sandbox.database()).unwrap();
+    connection
+        .execute("UPDATE tickets SET project = NULL WHERE title = 'good'", [])
+        .unwrap();
+    drop(connection);
+
+    let error = board.list_filter(Filter::All).unwrap_err();
+    assert!(matches!(
+        error,
+        tandem_core::domain::DomainError::Unreadable(_)
+    ));
+    assert!(
+        error.message().contains("no project"),
+        "{}",
+        error.message()
+    );
+    assert!(board.add("another", support::ticket()).is_err());
 }

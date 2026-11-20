@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "ticket",
+    "add",
+    "--title",
+    "Golden ticket"
+  ],
+  "exit": 1,
+  "stderr": [
+    "Name a project: Main (or a label)."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

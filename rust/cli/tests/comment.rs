@@ -55,7 +55,11 @@ impl Drop for Sandbox {
 #[test]
 fn a_comment_without_an_author_is_signed_by_the_named_actor_and_the_human_stays_unnamed() {
     let sandbox = Sandbox::new("author");
-    let added = sandbox.run(None, &["ticket", "add", "--title", "discussed"]);
+    sandbox.run(None, &["project", "add", "--name", "Main"]);
+    let added = sandbox.run(
+        None,
+        &["ticket", "add", "--title", "discussed", "--project", "Main"],
+    );
     let id = added["id"].as_str().expect("an id").to_string();
 
     let author = |agent: Option<&str>, extra: &[&str]| {

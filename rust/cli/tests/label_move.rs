@@ -66,9 +66,10 @@ impl Drop for Sandbox {
 #[test]
 fn label_move_reorders_the_declared_labels() {
     let sandbox = Sandbox::new("reorder");
-    sandbox.json(&["label", "add", "--name", "A"]);
-    sandbox.json(&["label", "add", "--name", "B"]);
-    sandbox.json(&["label", "add", "--name", "C"]);
+    sandbox.json(&["project", "add", "--name", "P"]);
+    sandbox.json(&["label", "add", "--name", "A", "--project", "P"]);
+    sandbox.json(&["label", "add", "--name", "B", "--project", "P"]);
+    sandbox.json(&["label", "add", "--name", "C", "--project", "P"]);
 
     let moved = sandbox.json(&["label", "move", "--name", "C", "--index", "0"]);
     assert_eq!(
@@ -91,7 +92,8 @@ fn label_move_reorders_the_declared_labels() {
 #[test]
 fn label_move_names_an_unknown_label_and_the_fix() {
     let sandbox = Sandbox::new("unknown");
-    sandbox.json(&["label", "add", "--name", "A"]);
+    sandbox.json(&["project", "add", "--name", "P"]);
+    sandbox.json(&["label", "add", "--name", "A", "--project", "P"]);
     let output = sandbox.run(&["label", "move", "--name", "Nope", "--index", "0"]);
     assert_ne!(output.status.code(), Some(0), "an unknown label refuses");
     let message = String::from_utf8_lossy(&output.stderr).to_string();
@@ -106,9 +108,10 @@ fn label_move_names_an_unknown_label_and_the_fix() {
 
     // The epic labels use the same refusal at the CLI seam.
     let epic = Sandbox::new("unknown-epic");
-    epic.json(&["label", "add", "--name", "Tandem"]);
-    epic.json(&["label", "add", "--name", "ui"]);
-    epic.json(&["label", "add", "--name", "core"]);
+    epic.json(&["project", "add", "--name", "P"]);
+    epic.json(&["label", "add", "--name", "Tandem", "--project", "P"]);
+    epic.json(&["label", "add", "--name", "ui", "--project", "P"]);
+    epic.json(&["label", "add", "--name", "core", "--project", "P"]);
     let output = epic.run(&["label", "move", "--name", "docs", "--index", "0"]);
     assert_ne!(
         output.status.code(),
@@ -129,7 +132,8 @@ fn label_move_names_an_unknown_label_and_the_fix() {
 #[test]
 fn the_lane_verb_and_the_lane_flag_answer_as_unknown() {
     let sandbox = Sandbox::new("lane-is-gone");
-    sandbox.json(&["label", "add", "--name", "A"]);
+    sandbox.json(&["project", "add", "--name", "P"]);
+    sandbox.json(&["label", "add", "--name", "A", "--project", "P"]);
 
     for args in [
         &["lane", "list"][..],

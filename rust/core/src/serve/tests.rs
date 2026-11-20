@@ -150,16 +150,23 @@ fn by_title(board: &Board, title: &str) -> Ticket {
 
 fn setup_board(store: &Store) -> Board {
     let board = Board::with_actor(store.clone(), Actor::Human);
-    board.add_project("Alpha").expect("the project is added");
-    board.add_project("Beta").expect("the project is added");
     board
-        .add_label("alpha", Some("ALP"), Some("Alpha"))
+        .add_project("Alpha", None)
+        .expect("the project is added");
+    board
+        .add_project("Beta", None)
+        .expect("the project is added");
+    board
+        .add_project("Elsewhere", None)
+        .expect("the project is added");
+    board
+        .add_label("alpha", Some("Alpha"))
         .expect("the label is added");
     board
-        .add_label("shared", Some("SHA"), Some("Alpha"))
+        .add_label("shared", Some("Alpha"))
         .expect("the label is added");
     board
-        .add_label("beta", Some("BET"), Some("Beta"))
+        .add_label("beta", Some("Beta"))
         .expect("the label is added");
     board
         .add(
@@ -186,6 +193,7 @@ fn setup_board(store: &Store) -> Board {
         .add(
             "Loose",
             AddTicket {
+                project: Some("Elsewhere"),
                 status: Status::Backlog,
                 ..AddTicket::default()
             },
@@ -379,7 +387,7 @@ async fn post_tickets_adds_card_in_column_and_refuses_stale_revision_with_notice
     let before = store.revision().expect("the revision reads");
 
     let body = format!(
-        "title=First&status=ready&label=&expected_revision={before}&project=&show_all=&assignee=&text="
+        "title=First&status=ready&ticket_project=Alpha&ticket_label=&expected_revision={before}&project=&show_all=&assignee=&text="
     );
     let (status, _, page) = send(&app, form_request("/tickets", &body)).await;
     assert_eq!(status, StatusCode::OK, "the add answers the board: {page}");
@@ -401,7 +409,7 @@ async fn post_tickets_adds_card_in_column_and_refuses_stale_revision_with_notice
         .expect("the list reads")
         .len();
     let stale = format!(
-        "title=Second&status=backlog&label=&expected_revision={before}&project=&show_all=&assignee=&text="
+        "title=Second&status=backlog&ticket_project=Alpha&ticket_label=&expected_revision={before}&project=&show_all=&assignee=&text="
     );
     let (status, _, conflict) = send(&app, form_request("/tickets", &stale)).await;
     assert_eq!(status, StatusCode::OK, "a conflict still answers the board");
@@ -566,9 +574,13 @@ async fn post_routes_reject_missing_form_content_type_and_cross_origin_header() 
     let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("board-guards");
     let store = sandbox.store();
+    Board::with_actor(store.clone(), Actor::Human)
+        .add_project("Main", None)
+        .expect("the project is added");
     let app = router(context(store.clone()));
     let revision = store.revision().expect("the revision reads");
-    let body = format!("title=Guarded&status=backlog&expected_revision={revision}");
+    let body =
+        format!("title=Guarded&status=backlog&ticket_project=Main&expected_revision={revision}");
 
     let missing = Request::builder()
         .method("POST")
@@ -609,6 +621,129 @@ async fn post_routes_reject_missing_form_content_type_and_cross_origin_header() 
     let (status, _, page) = send(&app, same).await;
     assert_eq!(status, StatusCode::OK, "a same-origin POST lands: {page}");
     assert!(page.contains("Guarded"), "the guarded add landed");
+}
+
+#[tokio::test]
+async fn the_new_form_files_into_its_own_project_and_label_selects() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-new-form");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let app = router(context(store.clone()));
+
+    // No focus: the Project select starts empty and is required, the Label select
+    // is disabled, and every label carries its project for the page script.
+    let (_, _, page) = get(&app, "/").await;
+    assert!(
+        page.contains("<select class=\"new-form__status\" name=\"ticket_project\" aria-label=\"Project\" required>"),
+        "the Project select is required: {page}"
+    );
+    assert!(
+        page.contains("<option value=\"\" selected>Project</option>"),
+        "with no focus nothing is preset: {page}"
+    );
+    assert!(
+        page.contains("name=\"ticket_label\" aria-label=\"Label\" disabled"),
+        "the Label select waits for a project: {page}"
+    );
+    assert!(
+        page.contains("<option value=\"alpha\" data-project=\"Alpha\""),
+        "a label option names its project: {page}"
+    );
+
+    // Focused on a project: it is preset (zero extra clicks), only its labels
+    // show, and the filter's label of that project is preset too.
+    let (_, _, focused) = get(&app, "/?project=Alpha&label=alpha").await;
+    assert!(
+        focused.contains("<option value=\"Alpha\" selected>Alpha</option>"),
+        "the focused project is preset: {focused}"
+    );
+    assert!(
+        focused.contains("<option value=\"alpha\" data-project=\"Alpha\" selected>"),
+        "the filter's label is preset: {focused}"
+    );
+    assert!(
+        focused.contains("<option value=\"beta\" data-project=\"Beta\" hidden>"),
+        "another project's label is hidden without the script: {focused}"
+    );
+    assert!(
+        !focused.contains("name=\"ticket_label\" aria-label=\"Label\" disabled"),
+        "a chosen project enables the Label select"
+    );
+    let _ = board;
+
+    // Filing through the selects lands the ticket in that project and label.
+    let revision = store.revision().expect("the revision reads");
+    let body = format!(
+        "title=Filed&status=ready&ticket_project=Alpha&ticket_label=shared&expected_revision={revision}&project=&show_all=&assignee=&text="
+    );
+    let (status, _, page) = send(&app, form_request("/tickets", &body)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    let filed = by_title(&board, "Filed");
+    assert_eq!(filed.project, "Alpha");
+    assert_eq!(filed.label.as_deref(), Some("shared"));
+}
+
+#[tokio::test]
+async fn a_post_without_a_project_or_with_a_foreign_label_re_renders_with_a_notice() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-new-refused");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let app = router(context(store.clone()));
+    let count = || {
+        board
+            .list(&crate::domain::TicketQuery::default())
+            .expect("the list reads")
+            .len()
+    };
+    let before = count();
+
+    // The hidden filter fields are never read as the new ticket's project.
+    let revision = store.revision().expect("the revision reads");
+    let body = format!(
+        "title=Nowhere&status=ready&ticket_project=&ticket_label=&expected_revision={revision}&project=Alpha&show_all=&label=alpha&assignee=&text="
+    );
+    let (status, _, page) = send(&app, form_request("/tickets", &body)).await;
+    assert_eq!(status, StatusCode::OK, "a refusal still answers the board");
+    assert!(
+        page.contains("shell__notice") && page.contains("Name a project"),
+        "the refusal renders as the board's notice and names the recovery: {page}"
+    );
+    assert_eq!(count(), before, "nothing was written");
+
+    let revision = store.revision().expect("the revision reads");
+    let body = format!(
+        "title=Mismatch&status=ready&ticket_project=Beta&ticket_label=alpha&expected_revision={revision}&project=&show_all=&assignee=&text="
+    );
+    let (status, _, page) = send(&app, form_request("/tickets", &body)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        page.contains("shell__notice") && page.contains("belongs to project"),
+        "a label of another project is refused with the label's project named: {page}"
+    );
+    assert_eq!(count(), before);
+}
+
+#[tokio::test]
+async fn an_empty_home_draws_the_new_form_disabled_with_the_recovery() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-new-empty-home");
+    let store = sandbox.store();
+    let app = router(context(store));
+    let (_, _, page) = get(&app, "/").await;
+    assert!(
+        page.contains("name=\"title\" placeholder=\"Ticket title\" aria-label=\"Ticket title\" required disabled"),
+        "the title is disabled: {page}"
+    );
+    assert!(
+        page.contains("class=\"new-form__create\" type=\"submit\" disabled"),
+        "Create is disabled: {page}"
+    );
+    assert!(
+        page.contains("tandem-cli project add</code> first."),
+        "the hint names the recovery: {page}"
+    );
 }
 
 // MARK: - The write guard as a layer, and the request's context
@@ -924,6 +1059,8 @@ fn store_without_a_revision(name: &str) -> (PathBuf, Store) {
         .write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "probe",
+                key: "",
+                last_number: 0,
                 position: 0,
             })
         })
@@ -947,6 +1084,8 @@ fn store_with_a_revision(name: &str) -> (PathBuf, Store) {
         .write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "probe",
+                key: "",
+                last_number: 0,
                 position: 0,
             })
         })
@@ -1050,6 +1189,8 @@ fn a_write_from_another_store_reports_changed_quickly() {
         .write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "probe2",
+                key: "",
+                last_number: 0,
                 position: 0,
             })
         })
@@ -1433,7 +1574,7 @@ async fn post_ticket_label_moves_immediately_and_label_add_and_rename_update_cho
         "the label moves at once"
     );
 
-    let (status, _, answer) = send(&app, form_request("/labels", "name=gamma&abbr=GAM")).await;
+    let (status, _, answer) = send(&app, form_request("/labels", "name=gamma&project=Alpha")).await;
     assert_eq!(status, StatusCode::OK, "the label add answers: {answer}");
     assert!(
         board
@@ -1448,11 +1589,7 @@ async fn post_ticket_label_moves_immediately_and_label_add_and_rename_update_cho
         "the board's label menu carries the new label: {answer}"
     );
 
-    let (status, _, answer) = send(
-        &app,
-        form_request("/labels/gamma/rename", "to=delta&abbr=DEL"),
-    )
-    .await;
+    let (status, _, answer) = send(&app, form_request("/labels/gamma/rename", "to=delta")).await;
     assert_eq!(status, StatusCode::OK, "the label rename answers: {answer}");
     let labels = board.labels().expect("the labels read");
     assert!(
@@ -2499,7 +2636,7 @@ async fn a_ticket_add_logs_identifiers_and_never_the_title() {
     let _guard = captured.install();
 
     let body = format!(
-        "title=SecretTitleWords&status=ready&label=&expected_revision={before}&project=&show_all=&assignee=&text="
+        "title=SecretTitleWords&status=ready&ticket_project=Alpha&ticket_label=&expected_revision={before}&project=&show_all=&assignee=&text="
     );
     let (status, _, _) = send(&app, form_request("/tickets", &body)).await;
     assert_eq!(status, StatusCode::OK);
@@ -2633,7 +2770,7 @@ async fn a_control_character_in_a_user_value_stays_on_one_escaped_line() {
         &app,
         form_request(
             "/labels",
-            "name=a%0Ab%1B%5B31m&abbr=&project=&show_all=&assignee=&text=",
+            "name=a%0Ab%1B%5B31m&project=Alpha&show_all=&assignee=&text=",
         ),
     )
     .await;
@@ -2828,6 +2965,8 @@ fn the_watch_logs_the_attach_of_a_store_created_after_it_started() {
         .write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "first",
+                key: "",
+                last_number: 0,
                 position: 0,
             })
         })
@@ -2886,6 +3025,8 @@ fn the_watch_logs_its_attach_and_a_broadcast_and_no_tick() {
         .write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "second",
+                key: "",
+                last_number: 0,
                 position: 1,
             })
         })
@@ -4938,7 +5079,7 @@ async fn a_board_write_succeeds_while_an_export_is_streaming() {
 
     let before = store.revision().expect("the revision reads");
     let body = format!(
-        "title=During&status=ready&label=&expected_revision={before}&project=&show_all=&assignee=&text="
+        "title=During&status=ready&ticket_project=Alpha&ticket_label=&expected_revision={before}&project=&show_all=&assignee=&text="
     );
     let (status, _, page) = send(&app, form_request("/tickets", &body)).await;
     assert_eq!(status, StatusCode::OK, "{page}");
@@ -5030,6 +5171,10 @@ struct Team {
 }
 
 fn team(store: &Store) -> Team {
+    // A project to file into: a ticket always lives in one (TAN-339).
+    Board::with_actor(store.clone(), Actor::Human)
+        .add_project("Main", None)
+        .expect("the project is added");
     store
         .member_add("alice", crate::store::Role::Admin, NOW)
         .unwrap();
@@ -5113,7 +5258,7 @@ async fn sign_in_with(app: &Router, secret: &str) -> String {
 fn add_label_form(name: &str, cookie: &str) -> Request<Body> {
     remote_form(
         "/labels",
-        &format!("name={name}"),
+        &format!("name={name}&project=Main"),
         Some(REMOTE_ORIGIN),
         Some(cookie),
     )
@@ -5161,7 +5306,13 @@ async fn a_comment_without_an_author_is_signed_by_the_credentials_member() {
     let app = remote_app(store.clone(), TOKEN);
     let board = Board::with_actor(store.clone(), Actor::Human);
     let ticket = board
-        .add("Discussed", AddTicket::default())
+        .add(
+            "Discussed",
+            AddTicket {
+                project: Some("Main"),
+                ..AddTicket::default()
+            },
+        )
         .expect("the board changes");
     let id = ticket.id.to_string();
 
@@ -5879,7 +6030,13 @@ async fn a_removed_members_session_and_open_events_stream_stop() {
     // A board change after the removal must not reach the stream.
     let board = Board::with_actor(store.clone(), Actor::Human);
     board
-        .add("After the removal", AddTicket::default())
+        .add(
+            "After the removal",
+            AddTicket {
+                project: Some("Main"),
+                ..AddTicket::default()
+            },
+        )
         .expect("the board changes");
 
     let mut seen = String::new();

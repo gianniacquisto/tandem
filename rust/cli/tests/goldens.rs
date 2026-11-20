@@ -667,6 +667,33 @@ fn goldens_match_the_binary() {
         actual["stdout"] = stdout;
 
         let path = goldens.join(format!("{name}.json"));
+        // `TANDEM_BLESS=1` rewrites the golden from this run: a deliberate act,
+        // reviewed as a diff of the files it touches.
+        if std::env::var_os("TANDEM_BLESS").is_some() {
+            let mut blessed = actual.clone();
+            blessed["exit"] = json!(case["exit"].as_i64().unwrap_or(0));
+            // The committed goldens escape every non-ASCII character, as the
+            // capture did, so a bless leaves their bytes alone.
+            let mut text = String::new();
+            for character in serde_json::to_string_pretty(&blessed)
+                .expect("a golden serialises")
+                .chars()
+            {
+                if character.is_ascii() {
+                    text.push(character);
+                } else {
+                    let mut units = [0u16; 2];
+                    for unit in character.encode_utf16(&mut units) {
+                        text.push_str(&format!("\\u{unit:04x}"));
+                    }
+                }
+            }
+            text.push('\n');
+            fs::create_dir_all(path.parent().expect("a golden has a folder"))
+                .expect("the golden folder is creatable");
+            fs::write(&path, text).expect("the golden is writable");
+            continue;
+        }
         let Ok(text) = fs::read_to_string(&path) else {
             failures.push(format!("{name}: no golden at {}", path.display()));
             continue;

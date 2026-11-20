@@ -8,7 +8,7 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli note rename — a note's path, wikilinks rewritten.",
+    "tandem-cli note rename \u2014 a note's path, wikilinks rewritten.",
     "",
     "Usage:",
     "  tandem-cli note rename --from <path> --to <path>"

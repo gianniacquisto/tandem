@@ -1,6 +1,6 @@
 ---
 name: retro
-description: "Run a retrospective on a named coding session, on manual invocation only, and file what it finds as backlog tickets in the label of the project the pass ran in. Reach for it when the user asks for a retro or a retrospective, or asks what a pass should have done differently."
+description: "Run a retrospective on a named coding session, on manual invocation only, and file what it finds as backlog tickets in the project the pass ran in. Reach for it when the user asks for a retro or a retrospective, or asks what a pass should have done differently."
 ---
 
 Derived from the `retro` skill in [mattpocock/skills](https://github.com/mattpocock/skills) (MIT, see `NOTICE.txt`), adapted: the output is tickets on the board.
@@ -18,7 +18,7 @@ A finding is filed only with all three: an **anchor** (a `file:line`, an exact c
 
 ## File
 
-The label is the project's, derived as the sprint derives it (`skills/tandem-sprint/SKILL.md`, §1) from the directory the session ran in; `Retro` only for a finding no project owns. Dedupe with `ticket_list` and `text`, then `ticket_add` with `title` "Retro: <one specific sentence>", `status` backlog, `origin` retro, `label`, and a `description` of `Filed by retro (<session id>).` then **Why** (anchor and cost), **What**, and **Done when** where the session shows it. No options, no recommendation, and no edit to the code the session touched.
+The project is derived as the sprint derives it (`skills/tandem-sprint/SKILL.md`, §1) from the directory the session ran in; `Retro` only for a finding no project owns (a project named Retro). Dedupe with `ticket_list` and `text`, then `ticket_add` with `title` "Retro: <one specific sentence>", `status` backlog, `origin` retro, `project`, and a `description` of `Filed by retro (<session id>).` then **Why** (anchor and cost), **What**, and **Done when** where the session shows it. No options, no recommendation, and no edit to the code the session touched.
 
 ## Report
 

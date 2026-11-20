@@ -25,6 +25,7 @@
         "link": null,
         "number": 2,
         "origin": "human",
+        "project": "Cycle",
         "ref": "CYC-2",
         "status": "backlog",
         "title": "Second ticket"
@@ -44,6 +45,7 @@
         "link": null,
         "number": 1,
         "origin": "human",
+        "project": "Cycle",
         "ref": "CYC-1",
         "status": "done",
         "title": "Fixture ticket"

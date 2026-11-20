@@ -16,7 +16,8 @@ use tandem_core::domain::{AddTicket, Board, DescriptionBody, DomainError, Filter
 fn store(titles: &[&str]) -> (Sandbox, Board, HashMap<String, Ticket>) {
     let sandbox = Sandbox::new("deps");
     let board = sandbox.board();
-    board.add_label("Tandem", None, None).unwrap();
+    board.add_project("Tandem", None).unwrap();
+    board.add_label("Tandem", Some("Tandem")).unwrap();
     let mut made = HashMap::new();
     // Added in the order given, so `titles[0]` carries `TAN-1`: the number follows
     // the write, not the row's place on the board.
@@ -437,9 +438,9 @@ fn deleting_a_ticket_removes_its_edges_on_both_ends() {
 }
 
 #[test]
-fn a_ticket_moved_to_another_label_keeps_its_edge_and_the_ref_follows_the_label_key() {
+fn a_ticket_moved_to_another_label_keeps_its_edge_and_its_ref() {
     let (_sandbox, board, made) = store(&["waits", "finishes"]);
-    board.add_label("Fleet", None, None).unwrap();
+    board.add_label("Fleet", Some("Tandem")).unwrap();
     board
         .block(&reference(&made, "waits"), &reference(&made, "finishes"))
         .unwrap();
@@ -457,8 +458,8 @@ fn a_ticket_moved_to_another_label_keeps_its_edge_and_the_ref_follows_the_label_
     assert_eq!(dependent.blocked_by[0].id, made["finishes"].id);
     assert_eq!(
         dependent.blocked_by[0].reference.as_deref(),
-        Some("FLE-1"),
-        "the ref is the display, and it moved"
+        Some(reference(&made, "finishes").as_str()),
+        "a label move inside the project keeps the ref"
     );
     assert!(dependent.blocked());
 }
@@ -496,7 +497,8 @@ fn a_body_that_mentions_the_heading_inline_is_not_a_reason() {
 fn the_tickets_blocked_reason_is_the_bodys_section_read_not_copied() {
     let sandbox = Sandbox::new("deps-reason");
     let board = sandbox.board();
-    board.add_label("Tandem", None, None).unwrap();
+    board.add_project("Tandem", None).unwrap();
+    board.add_label("Tandem", Some("Tandem")).unwrap();
     board
         .add(
             "waits",

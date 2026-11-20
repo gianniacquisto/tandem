@@ -54,5 +54,5 @@ pub use ordering::TicketOrdering;
 pub use query::{Archived, AssigneeAxis, Filter, HUMAN, LabelAxis, TicketQuery};
 pub use ticket::{Status, Ticket, TicketBlock};
 pub use ticket_label::{
-    Label, LabelDeletion, LabelKey, Project, ProjectDeletion, ProjectWithLabels, TicketRef,
+    Label, LabelDeletion, Project, ProjectDeletion, ProjectKey, ProjectWithLabels, TicketRef,
 };

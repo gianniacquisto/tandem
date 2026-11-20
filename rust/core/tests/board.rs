@@ -143,8 +143,8 @@ fn archived_tickets_are_the_callers_decision_not_the_boards() {
 fn a_drop_sets_the_label_and_the_status_in_one_write() {
     let sandbox = Sandbox::new("board-place");
     let board = sandbox.board();
-    board.add_label("Board", None, None).unwrap();
-    let ticket = board.add("carry it", AddTicket::default()).unwrap();
+    board.add_label("Board", Some(support::PROJECT)).unwrap();
+    let ticket = board.add("carry it", support::ticket()).unwrap();
 
     let placed = board
         .place(
@@ -171,7 +171,7 @@ fn a_drop_into_in_review_persists_and_draws_in_the_in_review_column() {
     let sandbox = Sandbox::new("board-review");
     let board = sandbox.board();
     let ticket = board
-        .add("waiting for a reader", AddTicket::default())
+        .add("waiting for a reader", support::ticket())
         .unwrap();
 
     let placed = board
@@ -202,7 +202,7 @@ fn a_drop_into_in_review_persists_and_draws_in_the_in_review_column() {
 fn a_drop_appends_to_its_label_by_default_and_takes_an_index_when_given_one() {
     let sandbox = Sandbox::new("board-index");
     let board = sandbox.board();
-    board.add_label("Board", None, None).unwrap();
+    board.add_label("Board", Some(support::PROJECT)).unwrap();
     board
         .add(
             "one",
@@ -259,7 +259,7 @@ fn a_drop_appends_to_its_label_by_default_and_takes_an_index_when_given_one() {
 fn dropping_into_done_stamps_completed_at_and_dropping_out_of_it_clears_it() {
     let sandbox = Sandbox::new("board-done");
     let board = sandbox.board();
-    let ticket = board.add("finish it", AddTicket::default()).unwrap();
+    let ticket = board.add("finish it", support::ticket()).unwrap();
 
     let done = board
         .place(&ticket.id.to_string(), None, Status::Done, usize::MAX)
@@ -278,8 +278,8 @@ fn dropping_into_done_stamps_completed_at_and_dropping_out_of_it_clears_it() {
 fn a_drop_that_lands_the_ticket_where_it_already_was_changes_nothing() {
     let sandbox = Sandbox::new("board-noop");
     let board = sandbox.board();
-    board.add("a", AddTicket::default()).unwrap();
-    let moving = board.add("b", AddTicket::default()).unwrap();
+    board.add("a", support::ticket()).unwrap();
+    let moving = board.add("b", support::ticket()).unwrap();
 
     let same = board
         .place(&moving.id.to_string(), None, Status::Backlog, 0)
@@ -295,7 +295,7 @@ fn a_drop_that_lands_the_ticket_where_it_already_was_changes_nothing() {
 fn an_unknown_label_or_id_is_rejected_and_the_store_is_left_alone() {
     let sandbox = Sandbox::new("board-rejects");
     let board = sandbox.board();
-    let ticket = board.add("a", AddTicket::default()).unwrap();
+    let ticket = board.add("a", support::ticket()).unwrap();
     let before = board.list_filter(tandem_core::domain::Filter::All).unwrap();
 
     assert!(
@@ -343,7 +343,8 @@ fn an_unknown_label_or_id_is_rejected_and_the_store_is_left_alone() {
 fn two_writers_over_one_home_keep_every_row_and_issue_every_ref_once() {
     let sandbox = Sandbox::new("board-writers");
     let board = sandbox.board();
-    board.add_label("Tandem", Some("TAN"), None).unwrap();
+    board.add_project("Tandem", Some("TAN")).unwrap();
+    board.add_label("Tandem", Some("Tandem")).unwrap();
     let store = sandbox.store();
 
     std::thread::scope(|scope| {
@@ -444,7 +445,8 @@ fn a_write_that_fails_for_another_reason_is_not_retried() {
 fn a_concurrent_edit_is_not_reverted_by_another_writers_snapshot() {
     let sandbox = Sandbox::new("board-revert");
     let board = sandbox.board();
-    board.add_label("Tandem", Some("TAN"), None).unwrap();
+    board.add_project("Tandem", Some("TAN")).unwrap();
+    board.add_label("Tandem", Some("Tandem")).unwrap();
     let edited = board
         .add(
             "original",

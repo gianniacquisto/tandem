@@ -8,12 +8,13 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli project rename \u2014 a project's name, its labels moving with it.",
+    "tandem-cli project rename \u2014 a project's name and key, its labels and tickets moving with it.",
     "",
     "Usage:",
-    "  tandem-cli project rename --from <name> --to <name>",
+    "  tandem-cli project rename --from <name> --to <name> [--abbr <key>]",
     "",
-    "Label names, keys, numbers and refs are unchanged; only the parent moves."
+    "Label names, ticket numbers and refs are unchanged; only the parent moves.",
+    "`--abbr` moves the key, and is refused once the project has issued a number."
   ],
   "stdoutKind": "text"
 }

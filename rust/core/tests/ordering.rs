@@ -45,9 +45,9 @@ fn drop_on(board: &Board, moving: &str, anchor: &str, after: bool) -> bool {
 fn dropping_on_a_rows_lower_half_moves_the_ticket_just_past_it() {
     let sandbox = Sandbox::new("order-down");
     let board = sandbox.board();
-    board.add("c", AddTicket::default()).unwrap();
-    board.add("b", AddTicket::default()).unwrap();
-    board.add("a", AddTicket::default()).unwrap();
+    board.add("c", support::ticket()).unwrap();
+    board.add("b", support::ticket()).unwrap();
+    board.add("a", support::ticket()).unwrap();
     assert_eq!(titles(&board, Filter::All), ["a", "b", "c"]);
 
     drop_on(&board, "a", "c", true);
@@ -58,9 +58,9 @@ fn dropping_on_a_rows_lower_half_moves_the_ticket_just_past_it() {
 fn dropping_on_a_rows_upper_half_moves_the_ticket_just_above_it() {
     let sandbox = Sandbox::new("order-up");
     let board = sandbox.board();
-    board.add("c", AddTicket::default()).unwrap();
-    board.add("b", AddTicket::default()).unwrap();
-    board.add("a", AddTicket::default()).unwrap();
+    board.add("c", support::ticket()).unwrap();
+    board.add("b", support::ticket()).unwrap();
+    board.add("a", support::ticket()).unwrap();
 
     drop_on(&board, "a", "c", false);
     assert_eq!(titles(&board, Filter::All), ["b", "a", "c"]);
@@ -70,8 +70,8 @@ fn dropping_on_a_rows_upper_half_moves_the_ticket_just_above_it() {
 fn a_row_dropped_on_itself_is_a_no_op() {
     let sandbox = Sandbox::new("order-self");
     let board = sandbox.board();
-    board.add("b", AddTicket::default()).unwrap();
-    board.add("a", AddTicket::default()).unwrap();
+    board.add("b", support::ticket()).unwrap();
+    board.add("a", support::ticket()).unwrap();
 
     let tickets = all(&board);
     let id = tickets[0].id;
@@ -83,8 +83,8 @@ fn a_row_dropped_on_itself_is_a_no_op() {
 fn dropping_a_default_ticket_onto_a_label_row_files_it_into_that_label() {
     let sandbox = Sandbox::new("order-into");
     let board = sandbox.board();
-    board.add_label("Work", None, None).unwrap();
-    board.add("d1", AddTicket::default()).unwrap();
+    board.add_label("Work", Some(support::PROJECT)).unwrap();
+    board.add("d1", support::ticket()).unwrap();
     board
         .add(
             "w1",
@@ -125,9 +125,9 @@ fn dropping_a_default_ticket_onto_a_label_row_files_it_into_that_label() {
 fn dropping_a_label_ticket_onto_a_default_row_returns_it_to_the_default_area() {
     let sandbox = Sandbox::new("order-out");
     let board = sandbox.board();
-    board.add_label("Work", None, None).unwrap();
-    board.add("d1", AddTicket::default()).unwrap();
-    board.add("d2", AddTicket::default()).unwrap();
+    board.add_label("Work", Some(support::PROJECT)).unwrap();
+    board.add("d1", support::ticket()).unwrap();
+    board.add("d2", support::ticket()).unwrap();
     board
         .add(
             "w1",
@@ -155,9 +155,9 @@ fn dropping_a_label_ticket_onto_a_default_row_returns_it_to_the_default_area() {
 fn a_done_ticket_hidden_by_the_open_filter_still_anchors_the_drop_correctly() {
     let sandbox = Sandbox::new("order-hidden");
     let board = sandbox.board();
-    board.add("c", AddTicket::default()).unwrap();
-    let done = board.add("b", AddTicket::default()).unwrap();
-    board.add("a", AddTicket::default()).unwrap();
+    board.add("c", support::ticket()).unwrap();
+    let done = board.add("b", support::ticket()).unwrap();
+    board.add("a", support::ticket()).unwrap();
     board.complete(&done.id.to_string()).unwrap();
     // Stored (all): [a, b(done), c]; visible under Open: [a, c].
 

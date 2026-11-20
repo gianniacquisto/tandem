@@ -17,7 +17,7 @@ use tandem_core::domain::{AddTicket, Board, CommentRead, DomainError, Edit, SetF
 fn board_with_ticket() -> (Sandbox, Board, uuid::Uuid) {
     let sandbox = Sandbox::new("comments");
     let board = sandbox.board();
-    let ticket = board.add("A ticket", AddTicket::default()).unwrap();
+    let ticket = board.add("A ticket", support::ticket()).unwrap();
     (sandbox, board, ticket.id)
 }
 
@@ -99,7 +99,8 @@ fn a_ticket_with_no_comments_answers_an_empty_list() {
 fn an_unknown_id_on_list_is_the_domain_failure_not_an_empty_log() {
     let sandbox = Sandbox::new("comments-unknown");
     let board = sandbox.board();
-    board.add_label("Probe", Some("PRB"), None).unwrap();
+    board.add_project("Probe", Some("PRB")).unwrap();
+    board.add_label("Probe", Some("Probe")).unwrap();
     let ticket = board
         .add(
             "A ticket",
@@ -137,7 +138,8 @@ fn an_unknown_id_on_list_is_the_domain_failure_not_an_empty_log() {
 fn list_resolves_a_ref_to_the_tickets_log_in_either_case() {
     let sandbox = Sandbox::new("comments-ref");
     let board = sandbox.board();
-    board.add_label("Probe", Some("PRB"), None).unwrap();
+    board.add_project("Probe", Some("PRB")).unwrap();
+    board.add_label("Probe", Some("Probe")).unwrap();
     let ticket = board
         .add(
             "A ticket",

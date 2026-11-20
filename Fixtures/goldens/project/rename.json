@@ -13,8 +13,9 @@
   "stdout": {
     "projects": [
       {
-        "name": "Beta",
-        "labels": []
+        "key": "ALP",
+        "labels": [],
+        "name": "Beta"
       }
     ]
   },

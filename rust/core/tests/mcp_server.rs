@@ -54,6 +54,17 @@ fn tool_call(id: i64, name: &str, arguments: Value) -> String {
     )
 }
 
+/// Declare a label in the seed project through the tool, with no `detail`: the
+/// label tools do not carry one, and a stray argument is refused (TAN-339).
+fn declare_label(store: &tandem_core::store::Store, name: &str) {
+    let answer = call(
+        store,
+        &tool_call(1, "label_add", json!({"name": name, "project": "Main"})),
+    )
+    .expect("the call answers");
+    tool_text(&answer);
+}
+
 fn tool_text(answer: &Value) -> String {
     assert!(
         answer["error"].is_null(),
@@ -72,7 +83,10 @@ fn tool_text(answer: &Value) -> String {
 #[test]
 fn initialize_negotiates_the_protocol_version() {
     let sandbox = Sandbox::new("mcp-initialize");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
 
     let asked = call(
         &store,
@@ -118,7 +132,10 @@ fn initialize_negotiates_the_protocol_version() {
 #[test]
 fn initialize_carries_a_small_health_block() {
     let sandbox = Sandbox::new("mcp-initialize-health");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
 
     let asked = call(
         &store,
@@ -155,7 +172,10 @@ fn initialize_carries_a_small_health_block() {
 #[test]
 fn initialize_reports_the_release_version_or_the_crate_version() {
     let sandbox = Sandbox::new("mcp-release-version");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
 
     let answered = call(
         &store,
@@ -178,7 +198,10 @@ fn initialize_reports_the_release_version_or_the_crate_version() {
 #[test]
 fn a_notification_is_answered_with_silence() {
     let sandbox = Sandbox::new("mcp-notification");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
 
     let initialized = mcp::handle_mcp(
         r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
@@ -199,7 +222,10 @@ fn a_notification_is_answered_with_silence() {
 #[test]
 fn tools_list_names_the_31_tools_with_object_schemas() {
     let sandbox = Sandbox::new("mcp-tools-list");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
 
     let listed = call(&store, &request(json!(1), "tools/list", json!({}))).expect("tools answer");
     let tools = listed["result"]["tools"]
@@ -235,7 +261,10 @@ fn tools_list_names_the_31_tools_with_object_schemas() {
 #[test]
 fn the_label_tools_replace_the_lane_tools_and_the_label_argument_replaces_lane() {
     let sandbox = Sandbox::new("mcp-label-tools");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
 
     let listed = call(&store, &request(json!(1), "tools/list", json!({}))).expect("tools answer");
     let tools = listed["result"]["tools"]
@@ -279,12 +308,19 @@ fn the_label_tools_replace_the_lane_tools_and_the_label_argument_replaces_lane()
 #[test]
 fn tools_call_files_reads_sets_and_completes_a_ticket() {
     let sandbox = Sandbox::new("mcp-ticket-loop");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
 
     let added: Value = serde_json::from_str(&tool_text(
         &call(
             &store,
-            &tool_call(1, "ticket_add", json!({"title": "First"})),
+            &tool_call(
+                1,
+                "ticket_add",
+                json!({"project": "Main", "title": "First"}),
+            ),
         )
         .expect("the call answers"),
     ))
@@ -323,7 +359,10 @@ fn tools_call_files_reads_sets_and_completes_a_ticket() {
 #[test]
 fn a_domain_refusal_is_a_tool_error_not_a_wire_error() {
     let sandbox = Sandbox::new("mcp-domain");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
 
     let refused = call(&store, &tool_call(1, "ticket_show", json!({"id": "nope"})))
         .expect("the call answers");
@@ -344,7 +383,10 @@ fn a_domain_refusal_is_a_tool_error_not_a_wire_error() {
 #[test]
 fn an_unknown_tool_is_an_invalid_params_error() {
     let sandbox = Sandbox::new("mcp-unknown-tool");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
 
     let refused = call(&store, &tool_call(1, "ticket_bogus", json!({}))).expect("the call answers");
     assert_eq!(refused["id"], 1);
@@ -361,7 +403,10 @@ fn an_unknown_tool_is_an_invalid_params_error() {
 #[test]
 fn an_unknown_method_names_itself_and_a_batch_is_refused() {
     let sandbox = Sandbox::new("mcp-unknown-method");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
 
     let refused = call(&store, &request(json!(4), "ticket.bogus", json!({}))).expect("it answers");
     assert_eq!(refused["id"], 4);
@@ -396,7 +441,10 @@ fn an_unknown_method_names_itself_and_a_batch_is_refused() {
 #[test]
 fn a_frame_that_is_not_a_request_answers_a_parse_error() {
     let sandbox = Sandbox::new("mcp-parse");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
 
     let refused = call(&store, "{ not json").expect("it answers");
     assert!(refused["id"].is_null());
@@ -409,12 +457,19 @@ fn a_frame_that_is_not_a_request_answers_a_parse_error() {
 #[test]
 fn tools_call_drives_a_ticket_and_the_note_tools() {
     let sandbox = Sandbox::new("mcp-notes");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
 
     let added: Value = serde_json::from_str(&tool_text(
         &call(
             &store,
-            &tool_call(1, "ticket_add", json!({"title": "Batch"})),
+            &tool_call(
+                1,
+                "ticket_add",
+                json!({"project": "Main", "title": "Batch"}),
+            ),
         )
         .expect("the call answers"),
     ))
@@ -540,13 +595,20 @@ impl std::io::Write for Captured {
 fn a_tool_call_logs_name_outcome_and_latency_and_never_the_arguments() {
     let _serial = ONE_AT_A_TIME.lock().unwrap_or_else(|p| p.into_inner());
     let sandbox = Sandbox::new("log-call");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     let captured = Captured::default();
     let _guard = captured.install(tracing::Level::INFO);
 
     let added = call_unlocked(
         &store,
-        &tool_call(1, "ticket_add", json!({"title": "secretword title"})),
+        &tool_call(
+            1,
+            "ticket_add",
+            json!({"project": "Main", "title": "secretword title"}),
+        ),
     )
     .expect("an answer");
     assert!(added["result"]["isError"].is_null());
@@ -582,7 +644,10 @@ fn a_tool_call_logs_name_outcome_and_latency_and_never_the_arguments() {
 fn a_bad_frame_logs_one_warn_and_still_answers_and_quiet_methods_log_nothing_at_warn() {
     let _serial = ONE_AT_A_TIME.lock().unwrap_or_else(|p| p.into_inner());
     let sandbox = Sandbox::new("log-warn");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     let frames = [
         "{not json".to_string(),
         "[]".to_string(),
@@ -612,7 +677,10 @@ fn a_bad_frame_logs_one_warn_and_still_answers_and_quiet_methods_log_nothing_at_
 fn a_hostile_tool_name_is_logged_escaped_on_one_line() {
     let _serial = ONE_AT_A_TIME.lock().unwrap_or_else(|p| p.into_inner());
     let sandbox = Sandbox::new("log-hostile");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     let captured = Captured::default();
     let _guard = captured.install(tracing::Level::WARN);
 
@@ -654,7 +722,7 @@ fn a_newer_store_is_named_in_the_health_block_and_on_a_tool_call() {
     let sandbox = Sandbox::new("mcp-newer-store");
     sandbox
         .board()
-        .add("seed", tandem_core::domain::AddTicket::default())
+        .add("seed", support::ticket())
         .expect("the seed lands");
     let ahead = stamp_newer(&sandbox.database());
     let store = sandbox.store();
@@ -726,7 +794,7 @@ fn filed(store: &tandem_core::store::Store) -> String {
     let (_, added) = lean_of(
         store,
         "ticket_add",
-        json!({"title": "Carries a brief", "description": SECRET_BRIEF}),
+        json!({"project": "Main", "title": "Carries a brief", "description": SECRET_BRIEF}),
     );
     added["ticket"]["id"].as_str().expect("an id").to_string()
 }
@@ -734,9 +802,17 @@ fn filed(store: &tandem_core::store::Store) -> String {
 #[test]
 fn no_write_tool_echoes_the_description_it_was_sent_and_a_comment_does_not_echo_its_body() {
     let sandbox = Sandbox::new("mcp-lean-writes");
-    let store = sandbox.store();
-    lean_of(&store, "label_add", json!({"name": "epic"}));
-    let other = lean_of(&store, "ticket_add", json!({"title": "Other"})).1["ticket"]["id"]
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
+    declare_label(&store, "epic");
+    let other = lean_of(
+        &store,
+        "ticket_add",
+        json!({"project": "Main", "title": "Other"}),
+    )
+    .1["ticket"]["id"]
         .as_str()
         .expect("an id")
         .to_string();
@@ -745,7 +821,7 @@ fn no_write_tool_echoes_the_description_it_was_sent_and_a_comment_does_not_echo_
     let calls = [
         (
             "ticket_add",
-            json!({"title": "Again", "description": SECRET_BRIEF}),
+            json!({"project": "Main", "title": "Again", "description": SECRET_BRIEF}),
         ),
         (
             "ticket_set",
@@ -795,8 +871,15 @@ fn no_write_tool_echoes_the_description_it_was_sent_and_a_comment_does_not_echo_
 #[test]
 fn a_receipt_names_the_title_only_when_the_write_could_have_changed_it() {
     let sandbox = Sandbox::new("mcp-lean-title");
-    let store = sandbox.store();
-    let (_, added) = lean_of(&store, "ticket_add", json!({"title": "  Trim me  "}));
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
+    let (_, added) = lean_of(
+        &store,
+        "ticket_add",
+        json!({"project": "Main", "title": "  Trim me  "}),
+    );
     assert_eq!(added["ticket"]["title"], "Trim me", "the stored title");
     let id = added["ticket"]["id"].as_str().expect("an id").to_string();
     let (_, moved) = lean_of(&store, "ticket_set", json!({"id": id, "status": "ready"}));
@@ -808,16 +891,28 @@ fn a_receipt_names_the_title_only_when_the_write_could_have_changed_it() {
 #[test]
 fn a_default_open_row_drops_its_defaults_and_a_busy_row_keeps_its_own() {
     let sandbox = Sandbox::new("mcp-lean-rows");
-    let store = sandbox.store();
-    lean_of(&store, "ticket_add", json!({"title": "Plain"}));
-    let plain = lean_of(&store, "ticket_add", json!({"title": "Blocker"})).1["ticket"]["id"]
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
+    lean_of(
+        &store,
+        "ticket_add",
+        json!({"project": "Main", "title": "Plain"}),
+    );
+    let plain = lean_of(
+        &store,
+        "ticket_add",
+        json!({"project": "Main", "title": "Blocker"}),
+    )
+    .1["ticket"]["id"]
         .as_str()
         .expect("an id")
         .to_string();
     let busy = lean_of(
         &store,
         "ticket_add",
-        json!({"title": "Busy", "assignee": "builder", "status": "ready"}),
+        json!({"project": "Main", "title": "Busy", "assignee": "builder", "status": "ready"}),
     )
     .1["ticket"]["id"]
         .as_str()
@@ -850,7 +945,8 @@ fn a_default_open_row_drops_its_defaults_and_a_busy_row_keeps_its_own() {
     ] {
         assert!(plain_row.get(dropped).is_none(), "{dropped}: {plain_row}");
     }
-    assert!(plain_row.get("id").is_some(), "no ref keeps its id");
+    assert!(plain_row.get("ref").is_some(), "every ticket has a ref");
+    assert!(plain_row.get("project").is_some(), "and a project");
 
     let busy_row = row("Busy");
     assert_eq!(busy_row["assignee"], "builder");
@@ -874,9 +970,16 @@ fn a_default_open_row_drops_its_defaults_and_a_busy_row_keeps_its_own() {
 #[test]
 fn limit_cuts_the_list_and_total_says_how_many_matched() {
     let sandbox = Sandbox::new("mcp-limit");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     for title in ["A", "B", "C"] {
-        result_of(&store, "ticket_add", json!({"title": title}));
+        result_of(
+            &store,
+            "ticket_add",
+            json!({"project": "Main", "title": title}),
+        );
     }
     let (_, cut) = result_of(&store, "ticket_list", json!({"limit": 2}));
     assert_eq!(cut["tickets"].as_array().map(Vec::len), Some(2));
@@ -892,9 +995,16 @@ fn limit_cuts_the_list_and_total_says_how_many_matched() {
 #[test]
 fn limit_zero_returns_no_rows_and_the_total() {
     let sandbox = Sandbox::new("mcp-limit-zero");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     for title in ["A", "B"] {
-        result_of(&store, "ticket_add", json!({"title": title}));
+        result_of(
+            &store,
+            "ticket_add",
+            json!({"project": "Main", "title": title}),
+        );
     }
     let (_, none) = result_of(&store, "ticket_list", json!({"limit": 0}));
     assert_eq!(none["tickets"].as_array().map(Vec::len), Some(0));
@@ -904,11 +1014,14 @@ fn limit_zero_returns_no_rows_and_the_total() {
 #[test]
 fn an_absent_detail_answers_full_and_lean_is_opt_in() {
     let sandbox = Sandbox::new("mcp-default-full");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     let (_, added) = result_of(
         &store,
         "ticket_add",
-        json!({"title": "T", "description": SECRET_BRIEF}),
+        json!({"project": "Main", "title": "T", "description": SECRET_BRIEF}),
     );
     assert_eq!(added["ticket"]["description"], SECRET_BRIEF);
     let id = added["ticket"]["id"].as_str().expect("an id").to_string();
@@ -922,9 +1035,17 @@ fn an_absent_detail_answers_full_and_lean_is_opt_in() {
 #[test]
 fn detail_full_answers_the_whole_shape_for_every_affected_tool() {
     let sandbox = Sandbox::new("mcp-full");
-    let store = sandbox.store();
-    result_of(&store, "label_add", json!({"name": "epic"}));
-    let other = result_of(&store, "ticket_add", json!({"title": "Other"})).1["ticket"]["id"]
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
+    declare_label(&store, "epic");
+    let other = result_of(
+        &store,
+        "ticket_add",
+        json!({"project": "Main", "title": "Other"}),
+    )
+    .1["ticket"]["id"]
         .as_str()
         .expect("an id")
         .to_string();
@@ -960,7 +1081,7 @@ fn detail_full_answers_the_whole_shape_for_every_affected_tool() {
     let writes = [
         (
             "ticket_add",
-            json!({"title": "W", "description": SECRET_BRIEF}),
+            json!({"project": "Main", "title": "W", "description": SECRET_BRIEF}),
         ),
         ("ticket_set", json!({"id": id, "status": "ready"})),
         ("ticket_move", json!({"id": id, "label": "epic"})),
@@ -1015,11 +1136,12 @@ fn detail_full_answers_the_whole_shape_for_every_affected_tool() {
             "link",
             "number",
             "origin",
+            "project",
             "ref",
             "status",
             "title"
         ],
-        "a full row is the 17 fields"
+        "a full row is the 18 fields"
     );
     assert!(listed.get("total").is_none());
 }
@@ -1027,7 +1149,10 @@ fn detail_full_answers_the_whole_shape_for_every_affected_tool() {
 #[test]
 fn an_unknown_detail_is_an_invalid_params_error_and_a_tool_without_one_ignores_it() {
     let sandbox = Sandbox::new("mcp-detail-bad");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     let refused = call(
         &store,
         &tool_call(1, "ticket_list", json!({"detail": "everything"})),
@@ -1064,7 +1189,7 @@ fn add_with_body(store: &tandem_core::store::Store, description: &str) -> String
             &tool_call(
                 1,
                 "ticket_add",
-                json!({"title": "Brief", "description": description}),
+                json!({"project": "Main", "title": "Brief", "description": description}),
             ),
         )
         .expect("the call answers"),
@@ -1076,7 +1201,10 @@ fn add_with_body(store: &tandem_core::store::Store, description: &str) -> String
 #[test]
 fn append_description_adds_to_the_body_and_reads_back_combined() {
     let sandbox = Sandbox::new("mcp-append");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     let id = add_with_body(&store, "The brief.");
 
     let appended = call(
@@ -1103,7 +1231,10 @@ fn append_description_adds_to_the_body_and_reads_back_combined() {
 #[test]
 fn an_empty_append_description_is_refused_and_the_body_stays() {
     let sandbox = Sandbox::new("mcp-append-empty");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     let id = add_with_body(&store, "The brief.");
 
     let refused = call(
@@ -1123,7 +1254,10 @@ fn an_empty_append_description_is_refused_and_the_body_stays() {
 #[test]
 fn description_with_append_description_is_refused_and_nothing_is_written() {
     let sandbox = Sandbox::new("mcp-append-both");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     let id = add_with_body(&store, "The brief.");
 
     let refused = call(
@@ -1149,7 +1283,10 @@ fn description_with_append_description_is_refused_and_nothing_is_written() {
 #[test]
 fn note_write_with_the_hash_it_read_lands_and_a_stale_hash_is_refused_in_words() {
     let sandbox = Sandbox::new("mcp-note-hash");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
 
     let (_, created) = result_of(
         &store,
@@ -1210,7 +1347,10 @@ fn seed(store: &tandem_core::store::Store, path: &str, text: &str) {
 #[test]
 fn note_search_answers_a_hit_with_a_snippet_an_empty_query_with_no_rows_and_cuts_at_limit() {
     let sandbox = Sandbox::new("mcp-note-search");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     seed(
         &store,
         "Plan.md",
@@ -1251,7 +1391,10 @@ fn note_search_answers_a_hit_with_a_snippet_an_empty_query_with_no_rows_and_cuts
 #[test]
 fn note_search_does_not_follow_a_link_out_of_the_vault() {
     let sandbox = Sandbox::new("mcp-note-search-link");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     seed(&store, "Inside.md", "Title\nbody");
     let outside = sandbox.root().join("outside");
     std::fs::create_dir_all(&outside).unwrap();
@@ -1265,7 +1408,10 @@ fn note_search_does_not_follow_a_link_out_of_the_vault() {
 #[test]
 fn note_backlinks_answers_a_row_per_linking_note() {
     let sandbox = Sandbox::new("mcp-note-backlinks");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     seed(&store, "Target.md", "Target\n");
     seed(&store, "Source.md", "Source\nsee [[Target]] here");
     let (_, back) = result_of(&store, "note_backlinks", json!({"path": "Target.md"}));
@@ -1282,7 +1428,10 @@ fn note_backlinks_answers_a_row_per_linking_note() {
 #[test]
 fn note_edit_replaces_one_match_and_answers_the_path_and_hash_only() {
     let sandbox = Sandbox::new("mcp-note-edit");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     seed(&store, "Plan.md", "Title\nstatus: draft\nowner: ann\n");
     let (text, edited) = result_of(
         &store,
@@ -1319,7 +1468,10 @@ fn note_edit_replaces_one_match_and_answers_the_path_and_hash_only() {
 #[test]
 fn note_edit_refuses_zero_and_two_matches_and_leaves_the_bytes_alone() {
     let sandbox = Sandbox::new("mcp-note-edit-refuse");
-    let store = sandbox.store();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
     seed(&store, "Plan.md", "Title\ntodo\ntodo\n");
     let on_disk = sandbox.home().directory().join("bikeshed").join("Plan.md");
     let before = std::fs::read(&on_disk).unwrap();

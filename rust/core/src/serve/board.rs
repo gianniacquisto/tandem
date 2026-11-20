@@ -11,13 +11,13 @@ fn visible<'a>(
     projects: &[crate::domain::ProjectWithLabels],
     filters: &Filters,
 ) -> Option<Vec<&'a Ticket>> {
-    let focus: Option<Vec<String>> = if filters.show_all || filters.project.is_empty() {
+    let focus: Option<&str> = if filters.show_all || filters.project.is_empty() {
         None
     } else {
         projects
             .iter()
             .find(|project| project.name == filters.project)
-            .map(|project| project.labels.clone())
+            .map(|project| project.name.as_str())
     };
     let label = filters.label_axis();
     let assignee = filters.assignee_axis();
@@ -29,11 +29,8 @@ fn visible<'a>(
                 if ticket.archived {
                     return false;
                 }
-                if let Some(labels) = &focus
-                    && !ticket
-                        .label
-                        .as_ref()
-                        .is_some_and(|label| labels.contains(label))
+                if let Some(project) = focus
+                    && ticket.project != project
                 {
                     return false;
                 }
@@ -85,6 +82,15 @@ struct BoardView {
     label_options: Vec<LabelOption>,
     assignee_options: Vec<AssigneeOption>,
     label_rows: Vec<LabelRow>,
+    /// The New form's Project select: every project, the focused one chosen.
+    new_projects: Vec<NewProjectOption>,
+    /// The New form's Label select: every label with its project, so the page
+    /// script can show only the chosen project's.
+    new_labels: Vec<NewLabelOption>,
+    /// Whether the New form's Project select starts on a project.
+    project_chosen: bool,
+    /// An empty home: there is no project to file into.
+    no_projects: bool,
     show_all: bool,
     empty: Option<EmptyView>,
     columns: Vec<ColumnView>,
@@ -117,6 +123,20 @@ pub(super) struct LabelOption {
     pub(super) value: String,
     pub(super) label: String,
     pub(super) selected: bool,
+}
+
+struct NewProjectOption {
+    name: String,
+    selected: bool,
+}
+
+struct NewLabelOption {
+    name: String,
+    project: String,
+    selected: bool,
+    /// Not the preset project's: hidden until the script shows it, so a page
+    /// without the script still draws one project's labels.
+    hidden: bool,
 }
 
 struct AssigneeOption {
@@ -313,6 +333,15 @@ fn render_board(
             },
         ];
         for label in &labels {
+            // With a project in focus the filter offers that project's labels.
+            if !filters.show_all
+                && let Some(focused) = projects
+                    .iter()
+                    .find(|project| project.name == filters.project)
+                && !focused.labels.contains(label)
+            {
+                continue;
+            }
             options.push(LabelOption {
                 value: label.clone(),
                 label: label.clone(),
@@ -321,6 +350,37 @@ fn render_board(
         }
         options
     };
+
+    // The New form files into its own Project and Label selects. The Project
+    // starts on the focused project (zero extra clicks); with "All projects" in
+    // focus it starts empty and `required` stops a submit. The Label starts on
+    // the filter's label when it belongs to that project, else "No label".
+    let preset: Option<&str> = if filters.show_all {
+        None
+    } else {
+        projects
+            .iter()
+            .find(|project| project.name == filters.project)
+            .map(|project| project.name.as_str())
+    };
+    let new_projects: Vec<NewProjectOption> = projects
+        .iter()
+        .map(|project| NewProjectOption {
+            name: project.name.clone(),
+            selected: Some(project.name.as_str()) == preset,
+        })
+        .collect();
+    let new_labels: Vec<NewLabelOption> = projects
+        .iter()
+        .flat_map(|project| {
+            project.labels.iter().map(|label| NewLabelOption {
+                name: label.clone(),
+                project: project.name.clone(),
+                selected: Some(project.name.as_str()) == preset && filters.label == *label,
+                hidden: Some(project.name.as_str()) != preset,
+            })
+        })
+        .collect();
 
     let assignee_options = {
         let mut names: Vec<String> = Vec::new();
@@ -422,6 +482,10 @@ fn render_board(
         project_options,
         label_options,
         assignee_options,
+        new_projects,
+        new_labels,
+        project_chosen: preset.is_some(),
+        no_projects: projects.is_empty(),
         label_rows: labels
             .iter()
             .map(|label| LabelRow {
@@ -577,12 +641,25 @@ pub(super) async fn add_ticket(
         Ok(status) => status,
         Err(error) => return bad_request(&error.message()),
     };
-    let label = filters.add_label();
+    // The New form's own selects name the ticket's project and label; the hidden
+    // filter fields only carry the view for the re-render.
+    let project = field(&params, "ticket_project");
+    let label = field(&params, "ticket_label");
     let title = field(&params, "title");
+    let refused = |error: DomainError| {
+        render_response(
+            &context,
+            &filters,
+            Some(error.message()),
+            &headers,
+            StatusCode::OK,
+        )
+    };
     match context.board().add(
         title,
         AddTicket {
-            label: label.as_deref(),
+            project: Some(project),
+            label: Some(label),
             status,
             assignee: None,
             description: None,
@@ -603,7 +680,7 @@ pub(super) async fn add_ticket(
             filters.selected = Some(ticket.id.to_string());
             render_response(&context, &filters, None, &headers, StatusCode::OK)
         }
-        Err(error) => bad_request(&error.message()),
+        Err(error) => refused(error),
     }
 }
 
@@ -675,9 +752,10 @@ pub(super) async fn add_label(
         return bad_request("the form could not be read");
     };
     let filters = Filters::parse(&params);
-    let abbr = field(&params, "abbr").trim();
-    let key = if abbr.is_empty() { None } else { Some(abbr) };
-    let outcome = context.board().add_label(field(&params, "name"), key, None);
+    // A label lives in a project: the board's project focus names it, and with
+    // no focus the refusal lists the projects.
+    let project = Some(filters.project.as_str()).filter(|name| !name.is_empty());
+    let outcome = context.board().add_label(field(&params, "name"), project);
     if outcome.is_ok() {
         tracing::info!(
             actor = ?context.actor.as_str(),
@@ -700,10 +778,8 @@ pub(super) async fn rename_label(
         return bad_request("the form could not be read");
     };
     let mut filters = Filters::parse(&params);
-    let abbr = field(&params, "abbr").trim();
-    let key = if abbr.is_empty() { None } else { Some(abbr) };
     let to = field(&params, "to");
-    let outcome = context.board().rename_label(&name, to, key, None);
+    let outcome = context.board().rename_label(&name, to, None);
     if outcome.is_ok() {
         tracing::info!(
             actor = ?context.actor.as_str(),

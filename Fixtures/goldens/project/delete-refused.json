@@ -7,7 +7,7 @@
   ],
   "exit": 1,
   "stderr": [
-    "Project \"Cycle\" still holds labels: Cycle. Re-parent them first, then delete."
+    "Project \"Cycle\" still holds labels: Cycle. A project cannot be deleted while it holds labels or tickets."
   ],
   "stdin": "",
   "stdout": [],

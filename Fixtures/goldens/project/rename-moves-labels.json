@@ -13,10 +13,11 @@
   "stdout": {
     "projects": [
       {
-        "name": "Beta",
+        "key": "CYC",
         "labels": [
           "Cycle"
-        ]
+        ],
+        "name": "Beta"
       }
     ]
   },

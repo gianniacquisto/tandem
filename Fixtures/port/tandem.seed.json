@@ -2,11 +2,18 @@
   "schema": {
     "appliedAt": "2026-10-30T00:00:00Z"
   },
-  "labels": [
+  "projects": [
     {
       "name": "Fixture",
       "key": "FIX",
       "lastNumber": 2,
+      "position": 0
+    }
+  ],
+  "labels": [
+    {
+      "name": "Fixture",
+      "project": "Fixture",
       "position": 0
     }
   ],
@@ -16,6 +23,7 @@
       "title": "the board",
       "status": "ready",
       "archived": false,
+      "project": "Fixture",
       "label": "Fixture",
       "number": 1,
       "origin": "human",
@@ -30,6 +38,7 @@
       "title": "the records",
       "status": "done",
       "archived": false,
+      "project": "Fixture",
       "label": "Fixture",
       "number": 2,
       "origin": "human",

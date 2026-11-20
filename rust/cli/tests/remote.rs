@@ -144,9 +144,26 @@ fn remote_verbs_print_what_the_local_verbs_print() {
     let server = Server::start(&sandbox, "served", "127.0.0.1", None);
 
     for args in [
-        &["ticket", "add", "--title", "Over the wire"][..],
+        &["project", "add", "--name", "Main"][..],
+        &[
+            "ticket",
+            "add",
+            "--title",
+            "Over the wire",
+            "--project",
+            "Main",
+        ][..],
         &["ticket", "list"][..],
-        &["ticket", "add", "--title", "Second", "--status", "ready"][..],
+        &[
+            "ticket",
+            "add",
+            "--title",
+            "Second",
+            "--status",
+            "ready",
+            "--project",
+            "Main",
+        ][..],
     ] {
         let (code, remote, stderr) = stdout_of({
             let mut command = sandbox.cli("elsewhere", Some(&server.url), None);
@@ -315,7 +332,8 @@ fn remote_stdout_matches_local_stdout_for_the_verbs_with_a_lean_tool_answer() {
     let sandbox = Sandbox::new("lean-parity");
     let server = Server::start(&sandbox, "served", "127.0.0.1", None);
     let script: &[&[&str]] = &[
-        &["label", "add", "--name", "epic", "--abbr", "LN"],
+        &["project", "add", "--name", "Main", "--abbr", "LN"],
+        &["label", "add", "--name", "epic", "--project", "Main"],
         &[
             "ticket",
             "add",
@@ -331,6 +349,8 @@ fn remote_stdout_matches_local_stdout_for_the_verbs_with_a_lean_tool_answer() {
             "add",
             "--title",
             "Unlabelled",
+            "--project",
+            "Main",
             "--assignee",
             "builder",
         ],
@@ -391,7 +411,18 @@ fn append_description_runs_remotely_and_appends_to_the_served_body() {
         stdout_of(command)
     };
 
-    let (code, added, stderr) = run(&["ticket", "add", "--title", "T", "--description", "Brief."]);
+    let (code, _, stderr) = run(&["project", "add", "--name", "Main"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    let (code, added, stderr) = run(&[
+        "ticket",
+        "add",
+        "--title",
+        "T",
+        "--project",
+        "Main",
+        "--description",
+        "Brief.",
+    ]);
     assert_eq!(code, Some(0), "{stderr}");
     let id = serde_json::from_str::<Value>(added.trim()).expect("JSON")["id"]
         .as_str()

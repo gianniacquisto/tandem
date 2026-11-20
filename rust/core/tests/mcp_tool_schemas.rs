@@ -96,7 +96,7 @@ fn tools_list_is_pinned_flag_by_flag_and_field_by_field() {
         "ticket_comment_add --- id,body",
         "ticket_comment_list R-I id",
         "label_list R-I -",
-        "label_add --- name",
+        "label_add --- name,project",
         "label_rename --- from,to",
         "label_delete -D- name",
         "label_move --- name",
@@ -243,4 +243,68 @@ fn the_enums_equal_the_domains_sets() {
     // ticket_list.status is a comma-separated set, so it stays a plain string.
     let list = tools.iter().find(|t| t["name"] == "ticket_list").unwrap();
     assert!(list["inputSchema"]["properties"]["status"]["enum"].is_null());
+}
+
+/// The property names a tool's schema advertises.
+fn properties_of(store: &tandem_core::store::Store, tool: &str) -> Vec<String> {
+    listed(store)
+        .iter()
+        .find(|candidate| candidate["name"] == tool)
+        .unwrap_or_else(|| panic!("{tool} is served"))["inputSchema"]["properties"]
+        .as_object()
+        .expect("properties")
+        .keys()
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn the_key_belongs_to_the_project_so_only_project_add_and_rename_carry_abbr() {
+    let sandbox = Sandbox::new("mcp-schema-abbr");
+    let store = sandbox.store();
+    assert!(!properties_of(&store, "label_add").contains(&"abbr".to_string()));
+    assert!(!properties_of(&store, "label_rename").contains(&"abbr".to_string()));
+    assert!(properties_of(&store, "project_add").contains(&"abbr".to_string()));
+    assert!(properties_of(&store, "project_rename").contains(&"abbr".to_string()));
+    assert!(properties_of(&store, "ticket_add").contains(&"project".to_string()));
+    assert!(properties_of(&store, "ticket_list").contains(&"project".to_string()));
+}
+
+#[test]
+fn a_stale_abbr_on_label_add_is_refused_out_loud_and_writes_nothing() {
+    let sandbox = Sandbox::new("mcp-schema-stale-abbr");
+    let board = sandbox.board();
+    let store = sandbox.store();
+    let before = store.revision().expect("the revision reads");
+    let answer = frame(
+        &store,
+        "tools/call",
+        json!({"name": "label_add",
+               "arguments": {"name": "epic", "project": "Main", "abbr": "EPC"}}),
+    );
+    assert_eq!(answer["result"]["isError"], json!(true), "{answer}");
+    let text = answer["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or("");
+    assert!(
+        text.contains("abbr"),
+        "the refusal names the stale field: {text}"
+    );
+    assert_eq!(store.revision().expect("the revision reads"), before);
+    assert!(board.labels().unwrap().is_empty());
+
+    // A label without a project is refused, naming the projects to pick from.
+    let answer = frame(
+        &store,
+        "tools/call",
+        json!({"name": "label_add", "arguments": {"name": "epic"}}),
+    );
+    assert_eq!(answer["result"]["isError"], json!(true), "{answer}");
+    assert!(
+        answer["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Main"),
+        "{answer}"
+    );
 }

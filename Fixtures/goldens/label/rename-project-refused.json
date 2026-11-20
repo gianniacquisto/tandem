@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "label",
+    "rename",
+    "--from",
+    "Cycle",
+    "--to",
+    "Loop",
+    "--project",
+    "Alpha"
+  ],
+  "exit": 1,
+  "stderr": [
+    "Label \"Cycle\" holds 1 tickets, so it cannot move from project \"Cycle\" to \"Alpha\". Move or unlabel them first (ticket move), then re-parent."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

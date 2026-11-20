@@ -297,10 +297,32 @@ fn next_event(receiver: &Receiver<i64>, wanted: impl Fn(i64) -> bool, within: Du
     }
 }
 
-fn add_through_cli(sandbox: &Sandbox, title: &str) -> String {
+/// Declare the project the cases file into: a ticket lives in a project.
+fn declare_project(sandbox: &Sandbox) {
     let output = sandbox
         .command()
-        .args(["ticket", "add", "--title", title])
+        .args(["project", "add", "--name", "Main"])
+        .stdin(Stdio::null())
+        .output()
+        .expect("the CLI writes the same home");
+    assert!(
+        output.status.success(),
+        "the project is declared: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn add_through_cli(sandbox: &Sandbox, title: &str) -> String {
+    // A ticket lives in a project (TAN-339): the first call declares one, a later
+    // call finds it there and the refusal is ignored.
+    let _ = sandbox
+        .command()
+        .args(["project", "add", "--name", "Main"])
+        .stdin(Stdio::null())
+        .output();
+    let output = sandbox
+        .command()
+        .args(["ticket", "add", "--title", title, "--project", "Main"])
         .stdin(Stdio::null())
         .output()
         .expect("the CLI writes the same home");
@@ -538,6 +560,7 @@ fn mcp_over_a_real_socket_handshakes_lists_tools_and_answers_frames() {
 fn mcp_writes_land_in_the_store_a_cli_in_the_same_home_reads() {
     let sandbox = Sandbox::new("mcp-ticket-loop");
     let server = Server::start(&sandbox);
+    declare_project(&sandbox);
     let added = request(
         server.port,
         "POST",
@@ -547,7 +570,7 @@ fn mcp_writes_land_in_the_store_a_cli_in_the_same_home_reads() {
             ("X-Tandem-Agent", "builder"),
         ],
         Some(
-            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ticket_add","arguments":{"title":"Over HTTP"}}}"#,
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ticket_add","arguments":{"title":"Over HTTP","project":"Main"}}}"#,
         ),
     );
     assert_eq!(added.status, 200, "{}", added.body);
@@ -625,11 +648,13 @@ fn a_serve_session_renders_board_adds_ticket_and_streams_sse_changed_events() {
         );
     }
 
+    declare_project(&sandbox);
     let stream = events(server.port);
+    let revision = revision_of(server.port);
     let answer = form(
         server.port,
         "/tickets",
-        "title=First&status=ready&label=&expected_revision=0",
+        &format!("title=First&status=ready&ticket_project=Main&expected_revision={revision}"),
     );
     assert_eq!(
         answer.status, 200,
@@ -791,10 +816,12 @@ fn a_serve_session_drives_the_sheet_and_notes_faces() {
     let sandbox = Sandbox::new("sheet-notes");
     let server = Server::start(&sandbox);
 
+    declare_project(&sandbox);
+    let revision = revision_of(server.port);
     let answer = form(
         server.port,
         "/tickets",
-        "title=Sheet&status=ready&label=&expected_revision=0",
+        &format!("title=Sheet&status=ready&ticket_project=Main&expected_revision={revision}"),
     );
     assert_eq!(answer.status, 200, "the add answers: {}", answer.body);
 
@@ -881,7 +908,7 @@ fn a_serve_session_drives_the_sheet_and_notes_faces() {
     form(
         server.port,
         "/tickets",
-        &format!("title=Later&status=backlog&label=&expected_revision={revision}"),
+        &format!("title=Later&status=backlog&ticket_project=Main&expected_revision={revision}"),
     );
     let current = revision_of(server.port);
     next_event(&stream, |revision| revision == current, EVENT_WAIT);

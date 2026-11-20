@@ -21,31 +21,32 @@ use rusqlite::{Connection, params};
 
 use super::{Actor, Result};
 
-/// A label: its name, its key (the ref prefix), its issued-number counter,
-/// its render position and its parent project.
+/// A label: its name, its render position and its parent project. The label
+/// owns no key and no counter: the project does.
 pub struct NewLabel<'a> {
     pub name: &'a str,
-    pub key: &'a str,
-    pub last_number: i64,
     pub position: i64,
     pub project: &'a str,
 }
 
-/// One project: its name and its render position. Add appends, there is no
-/// move verb, and a rename keeps its position.
+/// One project: its name, its ref key, its issued-number counter and its render
+/// position. Add appends, there is no move verb, and a rename keeps its position.
 pub struct NewProject<'a> {
     pub name: &'a str,
+    pub key: &'a str,
+    pub last_number: i64,
     pub position: i64,
 }
 
-/// A ticket. The ref is not a column: it is the label's key and `number`, read
-/// together, so a label move cannot leave a second truth behind.
+/// A ticket. The ref is not a column: it is the project's key and `number`, read
+/// together, so a rename cannot leave a second truth behind.
 pub struct NewTicket<'a> {
     pub id: &'a str,
     pub title: &'a str,
     pub description: Option<&'a str>,
     pub status: &'a str,
     pub archived: bool,
+    pub project: &'a str,
     pub label: Option<&'a str>,
     pub number: Option<i64>,
     pub origin: &'a str,
@@ -99,12 +100,10 @@ impl Write<'_> {
     pub fn insert_label(&self, label: NewLabel<'_>) -> Result<()> {
         self.before_mutation()?;
         self.execute(
-            "INSERT INTO labels (name, key, last_number, position, project, author)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO labels (name, position, project, author)
+             VALUES (?1, ?2, ?3, ?4)",
             params![
                 label.name,
-                label.key,
-                label.last_number,
                 label.position,
                 label.project,
                 self.actor.as_str()
@@ -115,8 +114,15 @@ impl Write<'_> {
     pub fn insert_project(&self, project: NewProject<'_>) -> Result<()> {
         self.before_mutation()?;
         self.execute(
-            "INSERT INTO projects (name, position, author) VALUES (?1, ?2, ?3)",
-            params![project.name, project.position, self.actor.as_str()],
+            "INSERT INTO projects (name, key, last_number, position, author)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                project.name,
+                project.key,
+                project.last_number,
+                project.position,
+                self.actor.as_str()
+            ],
         )
     }
 
@@ -125,8 +131,8 @@ impl Write<'_> {
         self.execute(
             "INSERT INTO tickets
                 (id, title, description, status, archived, label, number, origin,
-                 assignee, link, position, created_at, completed_at, author)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                 assignee, link, position, created_at, completed_at, author, project)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 ticket.id,
                 ticket.title,
@@ -142,6 +148,7 @@ impl Write<'_> {
                 ticket.created_at,
                 ticket.completed_at,
                 self.actor.as_str(),
+                ticket.project,
             ],
         )
     }

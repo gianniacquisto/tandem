@@ -713,15 +713,6 @@ impl Filters {
         }
     }
 
-    /// The add form files into the label filter's label, or the default area when
-    /// the filter is off (the board's rule).
-    fn add_label(&self) -> Option<String> {
-        match self.label_axis() {
-            LabelAxis::Named(name) => Some(name),
-            _ => None,
-        }
-    }
-
     /// The filters as a query string, so a link that opens a sheet or lands
     /// back on the board carries them.
     fn query(&self) -> String {
