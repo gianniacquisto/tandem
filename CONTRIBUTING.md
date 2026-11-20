@@ -52,6 +52,64 @@ cargo fmt --all --check
 cargo clippy --all-targets -- -D warnings
 ```
 
+## Run from source
+
+To try a change in the real board, build the `tandem` binary and serve a
+throwaway home. The installed release binary in `~/.local/bin` is not your
+source build: run the one under `rust/target/` by its path.
+
+In `rust/`:
+
+```sh
+cargo build -p tandem
+TANDEM_HOME="$(mktemp -d)" ./target/debug/tandem serve --open
+```
+
+This binds loopback (`127.0.0.1`) on port 7700 and opens the board in your
+browser. Pass `--port <n>` to use another port, for example when an installed
+`tandem serve` already holds 7700. A fresh `TANDEM_HOME` keeps your real
+`~/.tandem` out of the test.
+
+### Team mode from source
+
+The team features (members, sign-in keys, the People screen) need a little
+more setup. A home enters team mode when its first member is added, and a
+browser signs in only in token mode, which applies only to a non-loopback
+bind: on loopback `TANDEM_TOKEN` is ignored.
+
+**A non-loopback bind is reachable from your network.** Use a throwaway home
+and a throwaway port, and stop the server when you are done.
+
+```sh
+export TANDEM_TOKEN='<owner token, at least 32 characters>'
+export TANDEM_OPERATOR_KEY='<operator key, at least 32 characters, not the token>'
+TANDEM_HOME="$(mktemp -d)" ./target/debug/tandem serve --host 0.0.0.0 --port 7799
+```
+
+`--host` also takes a LAN address. Either way, open the board at
+`http://localhost:7799`, not at the LAN address: the session cookie is
+`Secure`, so the browser keeps it only on localhost or over HTTPS. The login
+form also refuses a page loaded from another origin ("the request came from
+another origin"), so load it from `localhost` or `127.0.0.1` on the serve's
+port.
+
+Add the first member, who must be an admin, through the operator interface
+([docs/operator.md](docs/operator.md)):
+
+```sh
+curl -X POST http://localhost:7799/operator/v1/members \
+  -H "Authorization: Bearer $TANDEM_OPERATOR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "ada", "role": "admin"}'
+```
+
+Without `TANDEM_OPERATOR_KEY` set the operator routes answer `404`; the
+owner can instead add the first admin on the People screen. To add other
+people, sign in at the login page with `TANDEM_TOKEN` as the owner and open
+People at `/people`. Adding a person shows their sign-in key once: paste it
+into the login page to use the board as that person. See
+[docs/cli.md](docs/cli.md) for the rest of team mode.
+
 ## Conventions
 
 - Branch off `main`, and target pull requests at `main`. `main` is the trunk:
