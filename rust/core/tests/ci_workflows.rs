@@ -133,7 +133,7 @@ fn repo_root() -> PathBuf {
 /// binary inside it, and one aggregator that keeps the required check name
 /// `release`. Adding a target is one matrix row, so the job is defined once.
 #[test]
-fn the_release_workflow_builds_three_platform_archives() {
+fn the_release_workflow_builds_five_platform_archives() {
     // A Windows checkout may carry CRLF line endings.
     let text = std::fs::read_to_string(workflows().join("release.yml"))
         .expect("release.yml reads")
@@ -155,19 +155,23 @@ fn the_release_workflow_builds_three_platform_archives() {
     );
     for row in [
         "target: darwin-arm64",
+        "target: darwin-x86_64",
         "target: linux-x86_64",
+        "target: linux-arm64",
         "target: windows-x86_64",
     ] {
         assert!(text.contains(row), "the build matrix has the row `{row}`");
     }
     assert_eq!(
         text.matches("target: ").count(),
-        3,
-        "the build matrix has exactly three rows"
+        5,
+        "the build matrix has exactly five rows"
     );
     for archive in [
         "tandem-$version-darwin-arm64.tar.gz",
+        "tandem-$version-darwin-x86_64.tar.gz",
         "tandem-$version-linux-x86_64.tar.gz",
+        "tandem-$version-linux-arm64.tar.gz",
         "tandem-$version-windows-x86_64.zip",
     ] {
         assert!(text.contains(archive), "release.yml verifies `{archive}`");
