@@ -82,7 +82,6 @@ and a throwaway port, and stop the server when you are done.
 
 ```sh
 export TANDEM_TOKEN='<owner token, at least 32 characters>'
-export TANDEM_OPERATOR_KEY='<operator key, at least 32 characters, not the token>'
 TANDEM_HOME="$(mktemp -d)" ./target/debug/tandem serve --host 0.0.0.0 --port 7799
 ```
 
@@ -93,8 +92,18 @@ form also refuses a page loaded from another origin ("the request came from
 another origin"), so load it from `localhost` or `127.0.0.1` on the serve's
 port.
 
-Add the first member, who must be an admin, through the operator interface
-([docs/operator.md](docs/operator.md)):
+Bootstrap the first admin as the owner: sign in at the login page with
+`TANDEM_TOKEN`, open `http://localhost:7799/people` by typing it (the menu
+does not link it before the first person exists), and add a person with the
+role admin. The next page shows their sign-in key once: sign out and paste it
+into the login page to use the board as that person. Add more people the same
+way. The full walk-through, with the credentials and the failure symptoms, is
+[docs/self-hosting.md](docs/self-hosting.md).
+
+To test the operator interface instead, start the serve with
+`TANDEM_OPERATOR_KEY` set too (at least 32 characters, not the token) and add
+the person with it ([docs/operator.md](docs/operator.md)). The serve speaks
+plain HTTP, so use `http://`:
 
 ```sh
 curl -X POST http://localhost:7799/operator/v1/members \
@@ -103,12 +112,8 @@ curl -X POST http://localhost:7799/operator/v1/members \
   -d '{"name": "ada", "role": "admin"}'
 ```
 
-Without `TANDEM_OPERATOR_KEY` set the operator routes answer `404`; the
-owner can instead add the first admin on the People screen. To add other
-people, sign in at the login page with `TANDEM_TOKEN` as the owner and open
-People at `/people`. Adding a person shows their sign-in key once: paste it
-into the login page to use the board as that person. See
-[docs/cli.md](docs/cli.md) for the rest of team mode.
+The operator issues no sign-in key, so the person cannot sign in yet: sign in
+as the owner, open them on `/people` and choose Reissue key.
 
 ## Conventions
 

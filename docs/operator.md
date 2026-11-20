@@ -4,6 +4,8 @@
 
 The interface is versioned by its path. A change that breaks a shape or a status code is a new prefix, `/operator/v2`.
 
+**A member added here cannot sign in yet.** The operator never issues a sign-in key, so the reply is only `{"id", "name", "role"}`. To get them in, the owner (signed in with `TANDEM_TOKEN`) or an admin opens `/people`, opens the person, chooses Reissue key and hands them the `tdk_` key it shows once. A self-hoster does not need this interface at all: the owner adds the first admin on `/people` directly. The whole flow is in [self-hosting.md](self-hosting.md).
+
 ## The key
 
 The operator key is a credential of its own, held in the serve process's environment:
