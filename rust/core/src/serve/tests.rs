@@ -3621,7 +3621,11 @@ async fn a_right_token_at_login_sets_the_session_cookie_with_its_attributes() {
     )
     .await;
     assert_eq!(status, StatusCode::SEE_OTHER);
-    assert_eq!(headers[header::LOCATION], "/notes");
+    assert_eq!(
+        headers[header::LOCATION],
+        "/login?signed-in=1&next=%2Fnotes",
+        "a sign-in goes on through the cookie check"
+    );
     assert_eq!(headers[header::CACHE_CONTROL], "no-store");
     let line = set_cookie_line(&headers);
     assert!(line.starts_with("__Host-tandem_session="), "{line}");
@@ -3642,6 +3646,47 @@ async fn a_right_token_at_login_sets_the_session_cookie_with_its_attributes() {
         .map(|(_, value)| value)
         .expect("a value");
     assert_eq!(value.len(), 64, "32 bytes in hex: {line}");
+}
+
+#[tokio::test]
+async fn the_cookie_check_goes_on_to_the_target_when_the_browser_kept_the_session() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("login-cookie-kept");
+    let app = remote_app(sandbox.store(), TOKEN);
+    let cookie = sign_in(&app).await;
+
+    let (status, headers, _) = send(
+        &app,
+        remote_get("/login?signed-in=1&next=%2Fnotes", Some(&cookie)),
+    )
+    .await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(headers[header::LOCATION], "/notes");
+}
+
+#[tokio::test]
+async fn the_cookie_check_says_so_when_the_browser_dropped_the_session() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("login-cookie-dropped");
+    let app = remote_app(sandbox.store(), TOKEN);
+
+    // A browser on plain http at an address that is not localhost drops the
+    // `Secure` cookie, so it comes back to the check with no session.
+    let (status, headers, body) =
+        send(&app, remote_get("/login?signed-in=1&next=%2Fnotes", None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+    assert!(body.contains("did not keep the sign-in"), "{body}");
+    assert!(body.contains("localhost"), "{body}");
+    assert!(body.contains("role=\"alert\""), "{body}");
+    assert!(
+        body.contains("value=\"/notes\""),
+        "the return target is kept"
+    );
+
+    // The plain login page says nothing of it.
+    let (_, _, plain) = send(&app, remote_get("/login", None)).await;
+    assert!(!plain.contains("did not keep the sign-in"), "{plain}");
 }
 
 #[tokio::test]
@@ -3847,9 +3892,17 @@ async fn the_return_target_is_a_same_origin_path_or_the_root() {
     .await;
     assert_eq!(
         headers[header::LOCATION],
-        "/",
-        "a hostile target lands on the root"
+        "/login?signed-in=1&next=%2F",
+        "a hostile target lands on the root, through the cookie check"
     );
+    // The check reads its target through the same guard.
+    let cookie = session_cookie_pair(&headers).expect("a right token sets the cookie");
+    let (_, headers, _) = send(
+        &app,
+        remote_get("/login?signed-in=1&next=%2F%2Fevil.example", Some(&cookie)),
+    )
+    .await;
+    assert_eq!(headers[header::LOCATION], "/");
 }
 
 #[tokio::test]
@@ -5082,6 +5135,70 @@ async fn a_personal_token_reaches_mcp_and_records_its_member_as_the_actor() {
 
     let (status, _, _) = send(&app, bearer_get("/health", &team.alice_token)).await;
     assert_eq!(status, StatusCode::OK, "a token reaches /health");
+}
+
+#[tokio::test]
+async fn a_comment_without_an_author_is_signed_by_the_credentials_member() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-comment");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store.clone(), TOKEN);
+    let board = Board::with_actor(store.clone(), Actor::Human);
+    let ticket = board
+        .add("Discussed", AddTicket::default())
+        .expect("the board changes");
+    let id = ticket.id.to_string();
+
+    for (author, body) in [(None, "unsigned"), (Some("  "), "blank")] {
+        let mut arguments = serde_json::json!({ "id": id, "body": body });
+        if let Some(author) = author {
+            arguments["author"] = serde_json::json!(author);
+        }
+        let (status, _, reply) = send(
+            &app,
+            bearer_mcp(
+                &team.bob_token,
+                None,
+                &tool_call_body("ticket_comment_add", arguments),
+            ),
+        )
+        .await;
+        assert_eq!(
+            (status, is_ok_frame(&reply)),
+            (StatusCode::OK, true),
+            "{reply}"
+        );
+    }
+    // A named author is the caller's to give, as before.
+    let (_, _, reply) = send(
+        &app,
+        bearer_mcp(
+            &team.bob_token,
+            None,
+            &tool_call_body(
+                "ticket_comment_add",
+                serde_json::json!({ "id": id, "author": "builder", "body": "signed" }),
+            ),
+        ),
+    )
+    .await;
+    assert!(is_ok_frame(&reply), "{reply}");
+
+    let authors: Vec<(String, String)> = board
+        .comments(&id)
+        .expect("the log reads")
+        .into_iter()
+        .map(|comment| (comment.author, comment.body))
+        .collect();
+    assert_eq!(
+        authors,
+        [
+            ("bob".to_string(), "unsigned".to_string()),
+            ("bob".to_string(), "blank".to_string()),
+            ("builder".to_string(), "signed".to_string()),
+        ]
+    );
 }
 
 /// Every route of `routes()`, with a concrete path for each template.

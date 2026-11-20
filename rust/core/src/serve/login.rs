@@ -30,6 +30,16 @@ const SIGN_IN_FAILED: &str = "Signing in failed on the server. Try again in a mo
 const SIGNED_OUT: &str = "You are signed out.";
 const REMOVED: &str = "You were removed from this workspace.";
 const ROLE_CHANGED: &str = "Your role changed. Sign in again to continue.";
+const COOKIE_NOT_KEPT: &str = "You signed in, but this browser did not keep the sign-in. \
+It keeps it only over HTTPS or at localhost: open the board at its https:// address, \
+or at http://localhost on the machine that runs it.";
+
+/// The query flag a right credential's redirect carries. The browser comes back
+/// to the login page with it: holding a session, it goes on to its target; with
+/// none, the cookie was dropped (plain http at an address that is not
+/// localhost drops a `Secure` cookie) and the page says so, instead of a login
+/// that silently lands on itself.
+const SIGNED_IN_FLAG: &str = "signed-in";
 
 /// The shared wait list for wrong tokens.
 #[derive(Debug, Clone)]
@@ -60,6 +70,7 @@ struct LoginView {
     next: String,
     error: Option<&'static str>,
     notice: Option<&'static str>,
+    warning: Option<&'static str>,
 }
 
 fn login_page(
@@ -68,12 +79,19 @@ fn login_page(
     notice: Option<&'static str>,
     status: StatusCode,
 ) -> Response {
-    let view = LoginView {
-        assets: assets::urls(),
-        next: guard::return_target(next),
-        error,
-        notice,
-    };
+    draw(
+        LoginView {
+            assets: assets::urls(),
+            next: guard::return_target(next),
+            error,
+            notice,
+            warning: None,
+        },
+        status,
+    )
+}
+
+fn draw(view: LoginView, status: StatusCode) -> Response {
     let mut response = match view.render() {
         Ok(html) => html_response(html, status),
         Err(error) => {
@@ -108,6 +126,19 @@ pub(super) async fn login_page_get(
     let next = field(&params, "next");
     if session.is_some() {
         return see_other(&guard::return_target(next));
+    }
+    if params.contains_key(SIGNED_IN_FLAG) {
+        tracing::warn!("a sign-in was accepted but the browser came back without its cookie");
+        return draw(
+            LoginView {
+                assets: assets::urls(),
+                next: guard::return_target(next),
+                error: None,
+                notice: None,
+                warning: Some(COOKIE_NOT_KEPT),
+            },
+            StatusCode::OK,
+        );
     }
     let notice = match field(&params, "notice") {
         "signed-out" => Some(SIGNED_OUT),
@@ -175,12 +206,20 @@ pub(super) async fn login_post(
         }
     };
     tracing::info!("login accepted");
-    let mut response = see_other(&guard::return_target(&next));
+    let mut response = see_other(&cookie_check(&guard::return_target(&next)));
     response.headers_mut().append(
         header::SET_COOKIE,
         guard::session_cookie(&guard::hex(&id), SESSION_IDLE_SECONDS),
     );
     response
+}
+
+/// The login page's cookie check for a sign-in bound for `target`.
+fn cookie_check(target: &str) -> String {
+    match serde_urlencoded::to_string([(SIGNED_IN_FLAG, "1"), ("next", target)]) {
+        Ok(query) => format!("{}?{query}", guard::LOGIN_ROUTE),
+        Err(_) => target.to_string(),
+    }
 }
 
 /// The member a sign-in key belongs to, when the value is one that is live.

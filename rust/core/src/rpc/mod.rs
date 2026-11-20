@@ -175,10 +175,21 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
             }
         },
         Method::TicketCommentAdd(params) => {
+            // An absent or blank author is the named actor the write runs as
+            // (a member's credential, `X-Tandem-Agent`, `TANDEM_AGENT`), so a
+            // comment is not left unsigned when the caller is known. The plain
+            // human actor keeps the unnamed author, as before.
+            let author = match params.author.as_deref().map(str::trim) {
+                Some(given) if !given.is_empty() => given,
+                _ => match actor {
+                    Actor::Agent(name) => name.as_str(),
+                    Actor::Human => "",
+                },
+            };
             let comment = board
                 .append_comment(
                     named(&params.id),
-                    params.author.as_deref().unwrap_or(""),
+                    author,
                     params.body.as_deref().unwrap_or(""),
                 )
                 .map_err(domain)?;

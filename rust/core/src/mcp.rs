@@ -722,7 +722,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_comment_add",
             method_tag: "ticket.comment.add",
-            description: "Append to the ticket's discussion log. Write the role out as the author. Echoes the comment; detail \"lean\" answers the time and author, not the body.",
+            description: "Append to the ticket's discussion log. Write the role out as the author; left out, it is the caller's own name (a member's token, or the X-Tandem-Agent name). Echoes the comment; detail \"lean\" answers the time and author, not the body.",
             input_schema: with_detail(CommentAddParams::schema()),
             annotations: Annotations::WRITE,
             method: Method::TicketCommentAdd(CommentAddParams::default()),

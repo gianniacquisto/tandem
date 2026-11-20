@@ -145,7 +145,7 @@ TANDEM_HOME="$(mktemp -d)" tandem serve --host 0.0.0.0 --port 7799
 
 Then follow steps 2 to 5 with `http://localhost:7799` in place of `https://board.example.com`, and leave out `--public-origin`.
 
-- **Open it at `http://localhost:7799`.** Not at `http://0.0.0.0:7799` and not at your LAN address. The session cookie is `Secure`, and a browser keeps it only over HTTPS or on `localhost`. Anywhere else the login is accepted and you land straight back on the login page, with no error shown.
+- **Open it at `http://localhost:7799`.** Not at `http://0.0.0.0:7799` and not at your LAN address. The session cookie is `Secure`, and a browser keeps it only over HTTPS or on `localhost`. Anywhere else the login is accepted, then the login page comes back saying the browser did not keep the sign-in.
 - `0.0.0.0` is reachable from your network. Use a throwaway home, and stop the server when you are done.
 - The `mktemp` home is temporary: the people you add go with it.
 
@@ -162,7 +162,7 @@ A person added through it has **no sign-in key yet**: the operator never holds a
 | `tandem serve: ... is not a loopback address. Set TANDEM_TOKEN ...`, exit 2 | No owner token on a non-loopback bind | Set `TANDEM_TOKEN` (32 or more characters) in the server's environment. |
 | `TANDEM_TOKEN must be at least 32 characters`, exit 2 | The token is too short | Make one with `openssl rand -hex 32`. |
 | No login page, and `/people` answers `404` | The server is on loopback, so token mode is off | Start it with `--host 0.0.0.0` (or another non-loopback address). |
-| The login is accepted, then you are back on the login page | The `Secure` cookie was dropped: the board was opened over plain HTTP on an address that is not `localhost` | Open it over HTTPS, or at `http://localhost:<port>` when trying it locally. |
+| The login page says "this browser did not keep the sign-in" | The `Secure` cookie was dropped: the board was opened over plain HTTP on an address that is not `localhost` | Open it over HTTPS, or at `http://localhost:<port>` when trying it locally. |
 | Browser writes answer `403` "the request came from another origin" | `--public-origin` does not match the address bar, or is unset behind a proxy | See [reverse-proxy.md](reverse-proxy.md#symptoms). |
 | `curl: (35) Send failure: Broken pipe` | `https://` sent straight to `tandem serve`, which speaks plain HTTP | Use `http://` against the serve, or go through the proxy. |
 | An agent gets `403` on `/mcp` with a personal token | `X-Tandem-Agent` names someone other than the token's member | Drop the header. |
