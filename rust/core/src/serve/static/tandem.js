@@ -241,6 +241,52 @@
     }
   });
 
+  // The description reads rendered; Edit swaps to the box. Without this script
+  // the box shows, so the plain form still saves. An empty description has no
+  // rendered block and keeps the box.
+  function growField(field) {
+    if (window.CSS && CSS.supports && CSS.supports('field-sizing', 'content')) return;
+    field.style.height = 'auto';
+    field.style.height = field.scrollHeight + 'px';
+  }
+
+  function setUpSheet() {
+    var section = document.querySelector('[data-description]');
+    if (section && section.querySelector('[data-description-view]')) {
+      section.classList.add('is-reading');
+    }
+    var fields = document.querySelectorAll('.sheet__title, .sheet__description-field');
+    for (var i = 0; i < fields.length; i++) growField(fields[i]);
+  }
+
+  document.addEventListener('click', function (event) {
+    var button = closest(event.target, '[data-description-edit]');
+    if (!button) return;
+    var section = closest(button, '[data-description]');
+    section.classList.remove('is-reading');
+    var box = section.querySelector('.sheet__description-field');
+    growField(box);
+    box.focus();
+  });
+
+  document.addEventListener('input', function (event) {
+    if (closest(event.target, '.sheet__title, .sheet__description-field')) {
+      growField(event.target);
+    }
+  });
+
+  // Enter in the title saves; a title is one line.
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter' || event.isComposing) return;
+    if (!closest(event.target, '.sheet__title')) return;
+    event.preventDefault();
+    var form = document.getElementById('sheet-save');
+    if (form) htmxPost(form, '#board-root');
+  });
+
+  document.addEventListener('DOMContentLoaded', setUpSheet);
+  document.addEventListener('htmx:afterSettle', setUpSheet);
+
   // MARK: - The notes editor
 
   // The autosave writes without swapping the pane: a swap would replace the
