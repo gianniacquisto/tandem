@@ -49,6 +49,8 @@ struct SheetView {
     status_options: Vec<SheetStatusOption>,
     label_options: Vec<LabelOption>,
     description: String,
+    /// The description drawn by the comments' renderer; none when empty.
+    description_html: Option<askama::filters::Safe<String>>,
     comment_refusal: Option<String>,
     notice: Option<String>,
     comments: Vec<SheetComment>,
@@ -159,6 +161,13 @@ fn render_sheet(
     let (labels, _) = board.labels_snapshot().map_err(|error| error.message())?;
 
     let description = ticket.description.clone().unwrap_or_default();
+    let description_html = if description.trim().is_empty() {
+        None
+    } else {
+        Some(askama::filters::Safe(markdown::document(
+            &TicketMarkdown::blocks(Some(&description)),
+        )))
+    };
 
     let comments = comments
         .into_iter()
@@ -200,6 +209,7 @@ fn render_sheet(
         status_options,
         label_options: sheet_label_options(&ticket, &labels),
         description,
+        description_html,
         comment_refusal,
         notice,
         comments,
@@ -295,7 +305,10 @@ pub(super) async fn save_ticket(
             &headers,
         );
     }
-    let title = field(&params, "title");
+    // A title is one line: a pasted line break becomes a space.
+    let title = field(&params, "title")
+        .replace("\r\n", " ")
+        .replace(['\r', '\n'], " ");
     if title.trim().is_empty() {
         return sheet_response(
             &context,
@@ -329,7 +342,7 @@ pub(super) async fn save_ticket(
     let outcome = context.board().set(
         &id,
         SetFields {
-            title: Edit::Set(title),
+            title: Edit::Set(&title),
             status: Edit::Set(status),
             assignee: Edit::Set(Some(assignee)),
             description,

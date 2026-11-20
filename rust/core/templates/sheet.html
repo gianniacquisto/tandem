@@ -28,8 +28,8 @@
 
       <div class="sheet__sticky">
         <div class="sheet__title-row">
-          <input class="sheet__title" form="sheet-save" name="title" aria-label="Title"
-                 value="{{ title }}" required>
+          <textarea class="sheet__title" form="sheet-save" name="title" aria-label="Title"
+                    rows="1" required>{{ title }}</textarea>
           <input type="hidden" form="sheet-save" name="expected_revision" value="{{ revision }}">
           <button class="sheet__save" form="sheet-save" type="submit">Save</button>
         </div>
@@ -117,8 +117,16 @@
     </section>
       {% endif %}
 
-      <section class="sheet__description" aria-label="Description">
-        <h2 class="sheet__section-title">Description</h2>
+      <section class="sheet__description" aria-label="Description" data-description>
+        <div class="sheet__section-header">
+          <h2 class="sheet__section-title">Description</h2>
+          {% if description_html.is_some() %}
+          <button class="sheet__edit" type="button" data-description-edit>Edit</button>
+          {% endif %}
+        </div>
+        {% if let Some(html) = description_html %}
+        <div class="sheet__description-view" data-description-view>{{ html }}</div>
+        {% endif %}
         <textarea class="sheet__description-field" form="sheet-save" name="description"
                   aria-label="Description" rows="6"
                   placeholder="Add a more detailed description…">
