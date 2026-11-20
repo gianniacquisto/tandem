@@ -4642,6 +4642,7 @@ async fn every_route_and_refusal_carries_the_security_headers() {
         "/notes",
         "/notes/view",
         "/notes/edit",
+        "/notes/open",
         "/tickets/none",
         "/static/missing.css",
         "/no/such/route",
@@ -5319,6 +5320,7 @@ const ROUTE_TABLE: &[(&str, &str, &str)] = &[
     ("GET", "/notes", "/notes"),
     ("GET", "/notes/view", "/notes/view"),
     ("GET", "/notes/edit", "/notes/edit"),
+    ("GET", "/notes/open", "/notes/open"),
     ("POST", "/notes/preview", "/notes/preview"),
     ("POST", "/notes/save", "/notes/save"),
     ("POST", "/notes/create", "/notes/create"),
@@ -8622,4 +8624,114 @@ async fn the_people_screens_log_no_key_token_or_cookie() {
     ] {
         assert!(!text.contains(needle), "{needle} reached the log: {text}");
     }
+}
+
+fn wikilink_vault(notes: &crate::bikeshed::Bikeshed, text: &str) {
+    for path in ["A.md", "B.md", "x/Dup.md", "y/Dup.md"] {
+        notes.create(path).expect("the note is created");
+    }
+    notes
+        .write("A.md", text, None)
+        .expect("the note is written");
+}
+
+#[tokio::test]
+async fn the_read_view_draws_plain_wikilinks_as_links_and_broken_ones_as_spans() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-wikilinks");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    wikilink_vault(
+        &notes,
+        "[[B]] [[b|Bee]] [[Missing]] [[Dup]] [[project:Tandem]] `[[B]]`",
+    );
+    let app = router(context(store));
+
+    let (status, _, body) = send(&app, page_get("/notes?path=A.md&mode=read")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("<a class=\"wikilink\" href=\"/notes?project=&amp;path=B.md\""),
+        "{body}"
+    );
+    assert!(body.contains("title=\"B.md\">B</a>"), "{body}");
+    assert!(body.contains("title=\"B.md\">Bee</a>"), "{body}");
+    assert!(
+        body.contains(
+            "wikilink wikilink--broken\" title=\"No single note named Missing\">Missing</span>"
+        ),
+        "{body}"
+    );
+    assert!(body.contains("note named Dup\">Dup</span>"), "{body}");
+    assert!(body.contains("[[project:Tandem]]"), "{body}");
+    assert!(
+        body.contains("<code class=\"markdown__inline-code\">[[B]]</code>"),
+        "{body}"
+    );
+    assert_eq!(body.matches("class=\"wikilink\"").count(), 2, "{body}");
+}
+
+#[tokio::test]
+async fn a_hostile_wikilink_is_escaped_in_the_read_view() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-wikilinks-hostile");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    wikilink_vault(&notes, "[[<script>x|\"><img src=x>]]");
+    let app = router(context(store));
+
+    let (_, _, body) = send(&app, page_get("/notes?path=A.md&mode=read")).await;
+    assert!(!body.contains("<script>x"), "{body}");
+    assert!(!body.contains("<img src=x>"), "{body}");
+    assert!(body.contains("&lt;script&gt;x"), "{body}");
+}
+
+#[tokio::test]
+async fn notes_open_follows_a_resolved_target_and_banners_a_broken_one() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-open");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    wikilink_vault(&notes, "[[B]]");
+    notes.write("B.md", "bee body", None).expect("written");
+    let app = router(context(store));
+
+    let (status, _, body) = send(&app, page_get("/notes/open?target=b&from=A.md")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("bee body"), "{body}");
+    assert!(!body.contains("No single note named"), "{body}");
+
+    let (_, _, body) = send(&app, page_get("/notes/open?target=Missing&from=A.md")).await;
+    assert!(
+        body.contains("No single note named Missing: none exists, or two notes share the name."),
+        "{body}"
+    );
+    assert!(body.contains("\"/notes?project=&#38;path=A.md\""), "{body}");
+
+    let (status, _, body) = send(
+        &app,
+        page_get("/notes/open?target=..%2F..%2Fetc%2Fpasswd&from=A.md"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("No single note named ../../etc/passwd"),
+        "{body}"
+    );
+    assert!(!body.contains("root:"), "{body}");
+}
+
+#[tokio::test]
+async fn the_edit_view_lists_the_targets_that_resolve_broken() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-broken-links");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    wikilink_vault(&notes, "[[B]] [[Missing]] [[Dup]] [[project:Tandem]]");
+    let app = router(context(store));
+
+    let (_, _, body) = send(&app, page_get("/notes/edit?path=A.md")).await;
+    assert!(
+        body.contains("data-broken-links=\"[&#34;dup&#34;,&#34;missing&#34;]\""),
+        "{body}"
+    );
 }

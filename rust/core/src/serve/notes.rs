@@ -4,6 +4,7 @@
 use super::board::ProjectOption;
 use super::sheet::sheet_handle;
 use super::*;
+use crate::bikeshed::wikilink::LinkResolution;
 
 // MARK: - The bikeshed notes
 
@@ -83,6 +84,8 @@ struct NotesView {
     /// A just-created note puts the cursor in its title.
     focus_title: bool,
     note: Option<NotePane>,
+    /// The lowercased targets that resolve broken at load, as JSON, for the editor.
+    broken_links: String,
     backlinks: Vec<BacklinkRow>,
     backlink_count: usize,
     linked: Vec<LinkedTicket>,
@@ -254,6 +257,7 @@ fn render_notes(
     let mut crumbs = Vec::new();
     let mut backlinks = Vec::new();
     let mut linked = Vec::new();
+    let mut broken_links = "[]".to_string();
     let mut render_error = error;
 
     if let Some(note_path) = &path {
@@ -283,13 +287,49 @@ fn render_notes(
                     });
                 }
                 crumbs = crumbs_out;
+                // One resolver (ADR 0005): the bikeshed resolves every link in
+                // the text, and the renderer looks each target up here.
+                let occurrences = vault.links(&content.text);
+                let resolved: HashMap<String, LinkResolution> = occurrences
+                    .iter()
+                    .map(|occurrence| {
+                        (
+                            occurrence.link.target.clone(),
+                            occurrence.resolution.clone(),
+                        )
+                    })
+                    .collect();
+                let mut broken: Vec<String> = occurrences
+                    .iter()
+                    .filter(|occurrence| occurrence.resolution == LinkResolution::Broken)
+                    .map(|occurrence| occurrence.link.target.to_lowercase())
+                    .filter(|target| {
+                        let target = target.trim();
+                        !target.starts_with("project:") && !target.starts_with("label:")
+                    })
+                    .collect();
+                broken.sort();
+                broken.dedup();
+                broken_links = serde_json::to_string(&broken).unwrap_or_else(|_| "[]".to_string());
+                let resolve = |target: &str| {
+                    resolved
+                        .get(target)
+                        .cloned()
+                        .unwrap_or_else(|| vault.resolve(target))
+                };
+                let href = |path: &str| notes_href(&project, show_all, Some(path), None);
+                let html = markdown::document_with_links(
+                    &TicketMarkdown::blocks(Some(&content.text)),
+                    &markdown::Wikilinks {
+                        resolve: &resolve,
+                        href: &href,
+                    },
+                );
                 note = Some(NotePane {
                     path: note_path.clone(),
                     text: content.text.clone(),
                     baseline_hash: content.hash,
-                    html: askama::filters::Safe(markdown::document(&TicketMarkdown::blocks(Some(
-                        &content.text,
-                    )))),
+                    html: askama::filters::Safe(html),
                 });
                 match vault.backlinks(note_path) {
                     Ok(read) => {
@@ -356,6 +396,7 @@ fn render_notes(
             .map_or(String::new(), |(folder, _)| folder.to_string()),
         focus_title: field(params, "rename") == "1",
         note,
+        broken_links,
         backlink_count: backlinks.len(),
         backlinks,
         linked_count: linked.len(),
@@ -450,6 +491,35 @@ pub(super) async fn note_view(
 ) -> Response {
     params.insert("mode".to_string(), "read".to_string());
     notes_response(&context, &params, None, None, None, &headers)
+}
+
+/// Follow a wikilink the editor drew: resolve `target` through the bikeshed and
+/// open the note it names, else stay on `from` with the banner. The target
+/// never builds a path; only a path the bikeshed resolved is opened.
+pub(super) async fn note_open(
+    context: Context,
+    Query(mut params): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    let target = field(&params, "target").to_string();
+    let from = field(&params, "from").to_string();
+    params.remove("path");
+    match context.bikeshed().resolve(&target) {
+        LinkResolution::Resolved(path) => {
+            params.insert("path".to_string(), path);
+            params.insert("mode".to_string(), "edit".to_string());
+            notes_response(&context, &params, None, None, None, &headers)
+        }
+        LinkResolution::Broken => {
+            if !from.is_empty() {
+                params.insert("path".to_string(), from);
+            }
+            params.insert("mode".to_string(), "edit".to_string());
+            let banner =
+                format!("No single note named {target}: none exists, or two notes share the name.");
+            notes_response(&context, &params, None, Some(banner), None, &headers)
+        }
+    }
 }
 
 pub(super) async fn note_edit(
