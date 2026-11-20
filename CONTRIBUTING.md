@@ -113,7 +113,7 @@ curl -X POST http://localhost:7799/operator/v1/members \
 ```
 
 The operator issues no sign-in key, so the person cannot sign in yet: sign in
-as the owner, open them on `/people` and choose Reissue key.
+as the owner, open `/people` and use Reissue sign-in key on their row.
 
 ## Conventions
 

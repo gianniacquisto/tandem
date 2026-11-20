@@ -55,7 +55,7 @@ Point the proxy at `http://127.0.0.1:7700` (or the server's address). It must fo
 
 ## 2. Sign in as the owner
 
-Open `https://board.example.com`. You land on the login page. Paste the owner token and sign in.
+Open `https://board.example.com`. You land on the login page. It has one field, **Access token**: paste the owner token there and sign in. The same field takes a person's `tdk_` sign-in key later.
 
 **You should see** the board, empty. You are signed in as the owner, who is not a person on the board: the owner exists to set the team up and to recover it.
 
@@ -79,9 +79,9 @@ Signed in as an admin, open People from the menu. For each person:
 2. Copy the sign-in key from the page that shows it.
 3. Send it to them over a private channel, with the board's address.
 
-They open the board, paste the key into the login page, and are in as themselves. Their browser stays signed in for 30 days since its last use.
+They open the board, paste the key into the **Access token** field of the login page, and are in as themselves. Their browser stays signed in for 30 days since its last use.
 
-On the same screen an admin reissues a key (the old one stops at once), changes a role, removes a person (which signs them out and ends their keys and tokens at once), revokes someone's personal token, and reads the access record. The last admin cannot be removed or demoted.
+On the same screen an admin reissues a key with the **Reissue sign-in key** link on a row (the old one stops at once), changes a role, removes a person (which signs them out and ends their keys and tokens at once), revokes someone's personal token, and reads the access record. The last admin cannot be removed or demoted.
 
 ## 5. Connect each person's agent
 
@@ -145,7 +145,7 @@ TANDEM_HOME="$(mktemp -d)" tandem serve --host 0.0.0.0 --port 7799
 
 Then follow steps 2 to 5 with `http://localhost:7799` in place of `https://board.example.com`, and leave out `--public-origin`.
 
-- **Open it at `http://localhost:7799`.** Not at `http://0.0.0.0:7799` and not at your LAN address. The session cookie is `Secure`, and a browser keeps it only over HTTPS or on `localhost`. Anywhere else the login is accepted and you land straight back on the login page.
+- **Open it at `http://localhost:7799`.** Not at `http://0.0.0.0:7799` and not at your LAN address. The session cookie is `Secure`, and a browser keeps it only over HTTPS or on `localhost`. Anywhere else the login is accepted and you land straight back on the login page, with no error shown.
 - `0.0.0.0` is reachable from your network. Use a throwaway home, and stop the server when you are done.
 - The `mktemp` home is temporary: the people you add go with it.
 
@@ -153,7 +153,7 @@ Then follow steps 2 to 5 with `http://localhost:7799` in place of `https://board
 
 You do not need it to self-host. `/operator/v1` is for a hosting service, or your own provisioning script, to add and remove people without a browser. It is off unless `TANDEM_OPERATOR_KEY` is set when the server starts.
 
-A person added through it has **no sign-in key yet**: the operator never holds a credential that signs in as someone. To get them in, the owner or an admin opens `/people`, opens that person and chooses **Reissue key**, then hands the key over as in step 4. Routes and rules: [operator.md](operator.md).
+A person added through it has **no sign-in key yet**: the operator never holds a credential that signs in as someone. To get them in, the owner or an admin opens `/people`, uses the **Reissue sign-in key** link on that person's row and confirms, then hands the key over as in step 4. Routes and rules: [operator.md](operator.md).
 
 ## When it goes wrong
 
