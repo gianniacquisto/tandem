@@ -34,6 +34,8 @@ tandem doctor         # check that the install and your data are healthy
 
 Your data lives in `~/.tandem`.
 
+**Run from source.** These commands use the installed release binary. To build and run your own checkout instead, including the team mode test setup, see [Run from source](CONTRIBUTING.md#run-from-source).
+
 ## Connect your agent
 
 `tandem serve` is also the MCP server: agents reach it at `POST http://127.0.0.1:7700/mcp`. Start it by hand and leave it running; an agent session has no Tandem tools while it is down. Register the endpoint with your agent host once.
