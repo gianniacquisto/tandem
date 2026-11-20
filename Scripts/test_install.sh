@@ -131,9 +131,19 @@ case "$out3" in
 esac
 if [ -e "$t3/apps/tandem" ]; then no "unsupported platform writes nothing"; else ok "unsupported platform writes nothing"; fi
 
-# --- a valid archive installs on Darwin arm64 and on Linux x86_64 ---
+# --- an uncovered Linux arch exits 1 before downloading ---
 
-for target in "Darwin arm64 darwin-arm64.tar.gz" "Linux x86_64 linux-x86_64.tar.gz"; do
+t3b=$(mktemp -d); mkdir -p "$t3b/apps"
+out3b=$(run_installer "$t3b/apps" "$t3b/none" Linux riscv64 --version 9.9.9; echo "exit=$?")
+case "$out3b" in
+  *"exit=1"*) ok "Linux riscv64 is refused" ;;
+  *) no "Linux riscv64 is refused: $out3b" ;;
+esac
+if [ -e "$t3b/apps/tandem" ]; then no "Linux riscv64 writes nothing"; else ok "Linux riscv64 writes nothing"; fi
+
+# --- a valid archive installs on every covered pair ---
+
+for target in "Darwin arm64 darwin-arm64.tar.gz" "Darwin x86_64 darwin-x86_64.tar.gz" "Linux x86_64 linux-x86_64.tar.gz" "Linux aarch64 linux-arm64.tar.gz" "Linux arm64 linux-arm64.tar.gz"; do
   set -- $target
   os=$1
   arch=$2
