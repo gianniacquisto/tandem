@@ -65,3 +65,5 @@ curl -X POST https://workspace.example/operator/v1/members \
 curl -H "Authorization: Bearer $TANDEM_OPERATOR_KEY" \
   https://workspace.example/operator/v1/members/count
 ```
+
+The examples use `https://` because a hosted workspace sits behind a TLS proxy. `tandem serve` itself speaks plain HTTP: against a local serve (for example `tandem serve --port 7799`) use `http://localhost:7799/operator/v1/...`. Sending `https://` to it fails with `curl: (35) Send failure: Broken pipe`.
