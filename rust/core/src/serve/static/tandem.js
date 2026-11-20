@@ -1055,6 +1055,9 @@
   // below it that sit deeper, up to the next row at its own depth or shallower.
   // Which folders are shut is kept per browser.
   var COLLAPSED_KEY = 'tandem.collapsed';
+  // Present once the human has chosen a layout; until then every folder is shut
+  // except the ancestors of the open note.
+  var CHOSEN_KEY = 'tandem.collapsedSet';
 
   function collapsedFolders() {
     try {
@@ -1064,9 +1067,72 @@
     }
   }
 
+  function layoutChosen() {
+    try {
+      return window.localStorage.getItem(CHOSEN_KEY) !== null ||
+        window.localStorage.getItem(COLLAPSED_KEY) !== null;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function saveShut(shut) {
+    try {
+      window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(shut));
+      window.localStorage.setItem(CHOSEN_KEY, '1');
+    } catch (error) {
+      // Private mode: the fold holds until the next redraw.
+    }
+  }
+
+  function folderPaths() {
+    var rows = document.querySelectorAll('.tree__row[data-kind="folder"]');
+    var paths = [];
+    for (var i = 0; i < rows.length; i += 1) paths.push(rows[i].getAttribute('data-path'));
+    return paths;
+  }
+
+  function openNotePath() {
+    var row = document.querySelector('.tree__row[aria-selected="true"]');
+    return row ? row.getAttribute('data-path') : null;
+  }
+
+  // The folder paths above a note path: 'a/b/c.md' gives 'a' and 'a/b'.
+  function ancestorsOf(path) {
+    var parts = (path || '').split('/');
+    var found = [];
+    for (var i = 1; i < parts.length; i += 1) found.push(parts.slice(0, i).join('/'));
+    return found;
+  }
+
+  function withoutAncestors(shut, path) {
+    var above = ancestorsOf(path);
+    return shut.filter(function (entry) { return above.indexOf(entry) < 0; });
+  }
+
+  // The shut list to draw: the stored one once chosen, else every folder but
+  // the open note's ancestors.
+  function effectiveShut() {
+    if (layoutChosen()) return collapsedFolders();
+    return withoutAncestors(folderPaths(), openNotePath());
+  }
+
+  // A note that has just opened shows its ancestors: the stored list drops
+  // them. Collapse all on the same note is not undone by a later redraw.
+  var revealedPath = null;
+  function revealOpenNote() {
+    var open = openNotePath();
+    if (open === revealedPath) return;
+    revealedPath = open;
+    if (!layoutChosen()) return;
+    var shut = collapsedFolders();
+    var next = withoutAncestors(shut, open);
+    if (next.length !== shut.length) saveShut(next);
+  }
+
   function applyTree() {
     var items = document.querySelectorAll('.tree > li');
-    var shut = collapsedFolders();
+    var shut = effectiveShut();
     var hideBelow = null;
     for (var i = 0; i < items.length; i += 1) {
       var row = items[i].querySelector('.tree__row');
@@ -1084,26 +1150,28 @@
         var closed = shut.indexOf(row.getAttribute('data-path')) >= 0;
         row.setAttribute('aria-expanded', closed ? 'false' : 'true');
         var twisty = row.querySelector('.tree__twisty');
-        if (twisty) twisty.textContent = closed ? '▸' : '▾';
+        if (twisty) twisty.textContent = closed ? '\u25b8' : '\u25be';
         if (closed) hideBelow = level;
       }
     }
   }
 
   document.addEventListener('click', function (event) {
+    var tool = closest(event.target, '[data-tree-action]');
+    if (tool) {
+      saveShut(tool.getAttribute('data-tree-action') === 'collapse' ? folderPaths() : []);
+      applyTree();
+      return;
+    }
     if (closest(event.target, '.row-menu')) return;
     var row = closest(event.target, '.tree__row[data-kind="folder"]');
     if (!row) return;
     var path = row.getAttribute('data-path');
-    var shut = collapsedFolders();
+    var shut = effectiveShut();
     var at = shut.indexOf(path);
     if (at >= 0) shut.splice(at, 1);
     else shut.push(path);
-    try {
-      window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(shut));
-    } catch (error) {
-      // Private mode: the fold holds until the next redraw.
-    }
+    saveShut(shut);
     applyTree();
   });
 
@@ -1121,6 +1189,7 @@
     }
     initLive();
     focusTitle();
+    revealOpenNote();
     applyTree();
   }
 
