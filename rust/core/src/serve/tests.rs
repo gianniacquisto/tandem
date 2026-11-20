@@ -734,6 +734,16 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
             "{path} carries its type"
         );
         assert!(!body.is_empty(), "{path} carries its bytes");
+        if path == "/static/tandem.js" {
+            for key in [
+                "tandem.collapsed",
+                "tandem.collapsedSet",
+                "data-tree-action",
+                "revealedPath === undefined",
+            ] {
+                assert!(body.contains(key), "tandem.js carries {key}");
+            }
+        }
     }
 
     let (status, headers, body) = get(&app, "/").await;
@@ -1514,6 +1524,11 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
         "Tickets",
         "Café alpha",
         "data-live",
+        "aria-label=\"Tree\"",
+        "data-tree-action=\"expand\"",
+        "data-tree-action=\"collapse\"",
+        "aria-label=\"Expand all\"",
+        "aria-label=\"Collapse all\"",
     ] {
         assert!(
             body.contains(marker),

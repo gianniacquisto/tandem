@@ -81,6 +81,10 @@
 
       <div class="tree__vault" data-drop-into="">
         <span class="tree__vault-name">Bikeshed</span>
+        <div class="tree__tools" role="group" aria-label="Tree">
+          <button class="tree__tool" type="button" data-tree-action="expand" title="Expand all" aria-label="Expand all"><svg class="tree__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg></button>
+          <button class="tree__tool" type="button" data-tree-action="collapse" title="Collapse all" aria-label="Collapse all"><svg class="tree__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></svg></button>
+        </div>
       </div>
       <form class="tree__daily" method="post" action="/notes/daily" hx-post="/notes/daily"
             hx-target="#notes-root" hx-swap="outerHTML">
