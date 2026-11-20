@@ -47,6 +47,21 @@ Built on parts 1 to 3; where this section and an earlier line differ, this secti
 - **The label is bounded where the token is made.** `member_token_issue_by` refuses a label that is empty, longer than 60 characters, or holds a control character, a line or paragraph separator or a character that hides or reorders text, and a member already holding 20 live tokens, before it writes anything; the form's sentences are a face over those refusals. The label is stored as given, in the token row and in the access record's `detail`; the value and its digest are in neither.
 - **One `401` for a revoked token.** A request to `/mcp` whose bearer starts with `tdm_` and is not accepted (revoked, removed, unknown or malformed) answers `401` with one body, "This token has been revoked or does not exist.", so a tool user knows what to do and the body does not say which of the four it was. Any other refused bearer, and a request with none, keep the plain body. This replaces part 1's "one `401` body" for the personal-token shape only.
 
+## Part 5: the People screen's existence (CUT-42)
+
+Built on parts 1 to 4; where this section and an earlier line differ, this section wins.
+
+- **The rule.** `/people` answers a request that holds `manage-people` when a sign-in key can be used on that run: team mode, or the owner's session in token mode, where the login page exists. Every other request answers `404`, including loopback without a token, a solo owner in open mode, and the operator key. This replaces the CUT-42 brief's line "Outside team mode `/people` answers `404`", quoted here so the record stays honest about what changed.
+- **Bootstrap and recovery are one door.** The owner's session adds the first admin on the People screen. Before the first member exists, that session is the only one that reaches the screen. After it, the owner keeps the same access as the recovery path in part 1. There is no first-visitor path, no variable that mints an admin on start, and no separate bootstrap route.
+- **The owner's act is recorded as the owner.** An owner act writes an access row with the actor `owner`, not a member's name, so the trail shows who added the first admin without inventing a member for it. The store refuses a first member who is not an admin, whichever door is used (part 2).
+- **Why the owner's session may reach the screen.** The owner's credential already holds every permission (`permits`), so the exception adds a screen, not reach. The test is whether a sign-in key can be used on this run, not whether a member row exists: a key works only where the login page exists, which is token mode.
+- **Rejected.**
+  - A strict 404 with the bootstrap through the operator interface. The operator door never acts as a member and issues no sign-in key ([operator.md](../operator.md)), so this would make it hold an admin credential.
+  - A CLI verb that adds a member. It writes past `serve`, the single door (ADR 0047), or it would need a people tool on `/mcp`, which widens the MCP surface.
+  - A separate first-admin route. It is the same power under another path, with a second add-and-reveal code path to keep honest.
+  - The owner as an admin record. The owner is not a member, and recovery cannot depend on the row it is meant to recover.
+- **The known risk.** A leaked `TANDEM_TOKEN` before team mode lets an attacker make an admin whose sign-in key survives a token rotation, because a key is not tied to the token. Every option above has this risk. The mitigation is the access record and rotation: after a rotation, read the access record for owner acts and reissue or remove any member key the rotation was meant to end.
+
 ## Supersedes
 
 By quotation, in the same change, with the text checked against the files:
