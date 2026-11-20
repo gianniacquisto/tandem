@@ -1118,10 +1118,16 @@
   }
 
   // A note that has just opened shows its ancestors: the stored list drops
-  // them. Collapse all on the same note is not undone by a later redraw.
-  var revealedPath = null;
+  // them. Collapse all on the same note is not undone by a later redraw, and
+  // the page's first load only records the open note: a stored layout is kept
+  // exactly across a reload.
+  var revealedPath;
   function revealOpenNote() {
     var open = openNotePath();
+    if (revealedPath === undefined) {
+      revealedPath = open;
+      return;
+    }
     if (open === revealedPath) return;
     revealedPath = open;
     if (!layoutChosen()) return;

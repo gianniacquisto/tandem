@@ -739,6 +739,7 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 "tandem.collapsed",
                 "tandem.collapsedSet",
                 "data-tree-action",
+                "revealedPath === undefined",
             ] {
                 assert!(body.contains(key), "tandem.js carries {key}");
             }
