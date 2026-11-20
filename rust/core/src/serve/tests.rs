@@ -8312,6 +8312,15 @@ async fn the_owner_session_adds_the_first_admin_and_no_unauthenticated_path_does
         store.member_find("ana").unwrap().unwrap().role,
         crate::store::Role::Admin
     );
+    // The owner's act is recorded as the owner, not as a member invented for it.
+    let added = store
+        .access_record()
+        .unwrap()
+        .into_iter()
+        .find(|row| row.target.as_deref() == Some("ana"))
+        .expect("the first admin's add is recorded");
+    assert_eq!(added.actor, "owner");
+    assert_eq!(added.credential, "owner");
 }
 
 #[tokio::test]
@@ -8345,6 +8354,28 @@ async fn people_answers_404_outside_team_mode_and_the_shell_shows_no_people_link
     }
     let (_, _, board) = send(&team, cookie_get("/board", &bob)).await;
     assert!(!board.contains("href=\"/people\""), "{board}");
+}
+
+#[tokio::test]
+async fn the_owner_keeps_the_people_screen_in_team_mode_and_the_operator_key_never_reaches_it() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("people-owner-team");
+    let store = sandbox.store();
+    store
+        .member_add("alice", crate::store::Role::Admin, NOW)
+        .unwrap();
+    let app = remote_app(store.clone(), TOKEN);
+    let owner = sign_in_with(&app, TOKEN).await;
+    let (status, _, page) = send(&app, cookie_get("/people", &owner)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    // The operator key is a hosting door, not a browser credential: it gets no People page.
+    let operator = operator_app(store.clone(), OPERATOR_KEY, None);
+    let (status, _, _) = send(
+        &operator,
+        operator_request("GET", "/people", Some(OPERATOR_KEY), None),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]

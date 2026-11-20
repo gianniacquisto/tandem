@@ -63,9 +63,11 @@ impl Who {
     }
 }
 
-/// The first checks every handler makes: team mode, or the owner's session in
-/// token mode (the bootstrap), else `404`; then the principal. The guard has
-/// already refused a member and a token on this screen's routes.
+/// The first checks every handler makes. The screen answers where a sign-in key
+/// can be used: team mode, or the owner's session in token mode, where the login
+/// page exists. Bootstrap and recovery are that one door (ADR 0052, part 5);
+/// every other request gets `404`. Then the principal. The guard has already
+/// refused a member and a token on this screen's routes.
 // The rejection is the response the request gets, the shape every extractor
 // answers a refusal in; a box would only move it a layer out.
 #[allow(clippy::result_large_err)]
