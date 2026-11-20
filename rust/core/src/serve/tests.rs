@@ -1246,6 +1246,10 @@ async fn get_ticket_sheet_renders_markdown_blocks_metadata_row_and_comments() {
         "name=\"label\"",
         "Café alpha",
         "sheet__description-field",
+        "sheet__description-view",
+        "data-description-edit",
+        "<h",
+        "<code",
         "## Why",
         "A first comment",
         "Blocked by",
@@ -1269,6 +1273,60 @@ async fn get_ticket_sheet_renders_markdown_blocks_metadata_row_and_comments() {
         "the board sits behind the sheet"
     );
     assert!(page.contains("sheet-backdrop"), "the sheet is open");
+}
+
+#[tokio::test]
+async fn a_sheet_without_a_description_draws_the_box_and_no_rendered_block() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-empty-description");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let app = router(context(store));
+    let (status, _, body) = send(&app, sheet_get(&format!("/tickets/{}", ticket.id))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("sheet__description-field"),
+        "the box shows: {body}"
+    );
+    assert!(
+        !body.contains("sheet__description-view") && !body.contains("data-description-edit"),
+        "no empty rendered block: {body}"
+    );
+}
+
+#[tokio::test]
+async fn a_title_line_break_saves_as_a_space() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-title-newline");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let id = ticket.id.to_string();
+    let revision = store.revision().expect("the revision reads");
+    let app = router(context(store));
+    let body = format!(
+        "title=One%0ATwo%0D%0AThree&status={}&assignee=&expected_revision={revision}",
+        ticket.status.as_str()
+    );
+    let (status, _, answer) = send(&app, form_request(&format!("/tickets/{id}"), &body)).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert_eq!(board.ticket(&id).expect("reads").title, "One Two Three");
+}
+
+#[tokio::test]
+async fn the_sheet_width_rule_is_the_wide_one() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-width");
+    let app = router(context(sandbox.store()));
+    let (_, _, css) = get(&app, "/static/app.css").await;
+    assert!(css.contains("width: min(920px, 100%)"), "the sheet is wide");
+    assert!(
+        !css.contains(".sheet {\n  width: 640px")
+            && !css
+                .contains(".sheet {\n  display: flex;\n  flex-direction: column;\n  width: 580px"),
+        "no narrow sheet width is left"
+    );
 }
 
 #[tokio::test]
