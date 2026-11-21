@@ -11,7 +11,7 @@ Agents normally use the [MCP tools](mcp.md) instead. Every agent verb below has 
 - **Tickets** are named with `--id`, which takes a ref (`TAN-42`, any case) or a UUID.
 - **Reading from stdin.** A flag documented as `<string|->` reads its value from stdin when given `-`, for long or multi-line text.
 - **`self`.** Where a flag takes `self`, it means the name in `TANDEM_AGENT`. It is refused when `TANDEM_AGENT` is unset.
-- **Empty string.** `--assignee ""` clears the assignee and `--label ""` means no label.
+- **Empty string.** `--assignee ""` clears the assignee. On `ticket list`, `--assignee ""` and `--label ""` select the tickets with no assignee or no label.
 - **Help.** `tandem-cli --help` prints every verb; `--help` after any verb or group prints that one's usage, such as `tandem-cli ticket set --help`.
 - **Home.** Every verb takes `--home <path>`. See [configuration](configuration.md#the-home).
 - **Remote.** With `TANDEM_SERVER` set, verbs run against a running server. See [remote target](#remote-target).
@@ -155,10 +155,12 @@ tandem-cli ticket move --id <id> [--label <name>] [--index <number>]
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--label` | the current label | A label of the ticket's own project, or `""` for no label. A label of another project is refused. |
+| `--label` | no label | The label to move the ticket to: a label of the ticket's own project. A label of another project is refused, and so is `""`. |
 | `--index` | the end | The 0-based position inside the label. |
 
 Answers the ticket.
+
+> **Warning:** leaving out `--label` moves the ticket to **no label**, even when you only mean to reorder it. To change a ticket's position inside its label, name that label too: `tandem-cli ticket move --id TAN-42 --label frontend --index 0`. The `ticket_move` MCP tool behaves the same way when `label` is left out. This is a known issue and will change in a later release, so that leaving out the label keeps the current one.
 
 ### ticket block, ticket unblock
 
@@ -236,7 +238,7 @@ tandem-cli label move --name <name> [--index <number>]
 | `label delete` | Deletes a label. Its tickets lose the label and stay in their project with their refs. |
 | `label move` | Moves a label to a 0-based position in the list; leaving out `--index` moves it to the end. |
 
-Each write answers the label list.
+Each write answers the label list. `label delete` also answers `moved`, the number of tickets that lost the label.
 
 ## Notes
 
