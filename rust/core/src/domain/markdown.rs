@@ -172,11 +172,13 @@ fn convert<'a>(node: &'a AstNode<'a>) -> Option<MarkdownBlock> {
                     AlertType::Important => "important",
                     AlertType::Warning => "warning",
                     AlertType::Caution => "caution",
+                    // comrak marks the enum non-exhaustive: a new kind reads as a note.
+                    _ => "note",
                 },
                 blocks: children(node),
             },
             NodeValue::Table(_) => table(node),
-            NodeValue::ThematicBreak => MarkdownBlock::Rule,
+            NodeValue::ThematicBreak(_) => MarkdownBlock::Rule,
             // The app loads no remote content and draws no HTML: a raw block is
             // literal text, monospaced like code, so nothing is silently swallowed.
             NodeValue::HtmlBlock(html) => MarkdownBlock::Code {
@@ -214,7 +216,7 @@ fn table<'a>(node: &'a AstNode<'a>) -> MarkdownBlock {
     let mut rows: Vec<Vec<String>> = Vec::new();
     for row in node.children() {
         let is_header = match &row.data.borrow().value {
-            NodeValue::TableRow(header) => *header,
+            NodeValue::TableRow(row) => row.header,
             _ => false,
         };
         let cells: Vec<String> = row.children().map(cell_text).collect();
@@ -281,17 +283,17 @@ fn collect<'a>(
                     styles: styles.clone(),
                     link: link.map(str::to_string),
                 }),
-                NodeValue::Strong => {
+                NodeValue::Strong(_) => {
                     let mut styles = styles.clone();
                     styles.insert(InlineStyle::Bold);
                     collect(child, &styles, link, runs);
                 }
-                NodeValue::Emph => {
+                NodeValue::Emph(_) => {
                     let mut styles = styles.clone();
                     styles.insert(InlineStyle::Italic);
                     collect(child, &styles, link, runs);
                 }
-                NodeValue::Strikethrough => {
+                NodeValue::Strikethrough(_) => {
                     let mut styles = styles.clone();
                     styles.insert(InlineStyle::Strikethrough);
                     collect(child, &styles, link, runs);
