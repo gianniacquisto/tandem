@@ -559,6 +559,20 @@ async fn a_card_move_keeps_the_filters_the_board_was_drawn_with() {
         css.contains(".note-tabs__tab[aria-selected=\"true\"]"),
         "the stylesheet draws the active note tab"
     );
+    for selector in [
+        ".tree__label:focus-visible",
+        ".sheet:focus-visible",
+        ".button:focus-visible",
+        ".relations-toggle:focus-visible",
+        ".relations__close:focus-visible",
+        ".relations__summary:focus-visible",
+        ".relations__row:focus-visible",
+    ] {
+        assert!(
+            css.contains(&format!("{selector},")) || css.contains(&format!("{selector} {{")),
+            "the stylesheet keeps the accent focus ring on {selector}"
+        );
+    }
 }
 
 #[tokio::test]

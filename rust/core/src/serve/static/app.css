@@ -1706,6 +1706,13 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   background: var(--sand);
 }
 
+.tree__label:focus-visible,
+.sheet:focus-visible,
+.button:focus-visible {
+  outline: var(--hairline) solid var(--accent);
+  outline-offset: -1px;
+}
+
 /* The ticket sheet: one dialog over whichever face opened it, at a fixed
  * wide single column (the late block below states the width), held inside
  * the 760 pt floor.
@@ -4861,6 +4868,14 @@ a.menu__option {
 .relations__close:hover,
 .relations-toggle:hover {
   background: var(--sand);
+}
+
+.relations-toggle:focus-visible,
+.relations__close:focus-visible,
+.relations__summary:focus-visible,
+.relations__row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .relations-toggle__count {
