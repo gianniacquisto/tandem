@@ -9,7 +9,7 @@ A maintenance pass over the whole board. It opens no sprint and refines nothing.
 
 ## 1. Orient
 
-In one round: `ticket_list` with `filter` open across every label; `ticket_comment_list` for each ticket whose state is in doubt; `git log` in each project's checkout, since the board is shared and the evidence is local.
+In one round: `ticket_list` with `filter` open across every project; `ticket_comment_list` for each ticket whose state is in doubt; `git log` in each project's checkout, since the board is shared and the evidence is local.
 
 ## 2. Dead claims
 
@@ -33,4 +33,4 @@ An escalated ticket (`in-review`, `human`, a PR in the log) is settled by the PR
 
 Report-only, for the human to rule on: duplicates (two open tickets, one subject), and tickets whose named blocker landed and are ripe to draw.
 
-Then one block per label: completed with evidence, claims recovered, archived count, and left alone with the reason. Done when every open ticket appears in the report.
+Then one block per project: completed with evidence, claims recovered, archived count, and left alone with the reason. Done when every open ticket appears in the report.

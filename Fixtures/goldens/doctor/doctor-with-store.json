@@ -28,12 +28,12 @@
         "ok": true
       },
       {
-        "detail": "27 page(s) of 4096 bytes, 2 free; WAL 0 bytes",
+        "detail": "31 page(s) of 4096 bytes, 0 free; WAL 0 bytes",
         "name": "space",
         "ok": true
       },
       {
-        "detail": "binary 2.0.0; this build writes schema v15; store schema v15",
+        "detail": "binary 2.0.0; this build writes schema v16; store schema v16",
         "name": "versions",
         "ok": true
       },

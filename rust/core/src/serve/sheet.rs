@@ -158,7 +158,14 @@ fn render_sheet(
     let (comments, _) = board
         .comments_snapshot(id)
         .map_err(|error| error.message())?;
-    let (labels, _) = board.labels_snapshot().map_err(|error| error.message())?;
+    // A ticket never changes project, so the label select offers its own
+    // project's labels only.
+    let (projects, _) = board.projects_snapshot().map_err(|error| error.message())?;
+    let labels: Vec<String> = projects
+        .iter()
+        .find(|project| project.name == ticket.project)
+        .map(|project| project.labels.clone())
+        .unwrap_or_default();
 
     let description = ticket.description.clone().unwrap_or_default();
     let description_html = if description.trim().is_empty() {

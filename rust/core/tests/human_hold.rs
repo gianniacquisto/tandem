@@ -4,14 +4,14 @@
 mod support;
 
 use support::Sandbox;
-use tandem_core::domain::{AddTicket, Edit, SetFields, Status};
+use tandem_core::domain::{Edit, SetFields, Status};
 
 const BRIEF: &str = "## Why\n\nWhich option?\n\n## What\n\nPick one.";
 
 fn human_hold() -> (Sandbox, tandem_core::domain::Board, uuid::Uuid) {
     let sandbox = Sandbox::new("human-hold");
     let board = sandbox.board();
-    let id = board.add("Which option?", AddTicket::default()).unwrap().id;
+    let id = board.add("Which option?", support::ticket()).unwrap().id;
     board
         .set(
             &id.to_string(),

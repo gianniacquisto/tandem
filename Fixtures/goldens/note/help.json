@@ -7,7 +7,7 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli note — the bikeshed's agent face.",
+    "tandem-cli note \u2014 the bikeshed's agent face.",
     "",
     "Usage:",
     "  tandem-cli note rename --from <path> --to <path>",

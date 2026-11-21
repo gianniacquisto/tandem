@@ -2,7 +2,7 @@
 //!
 //! **Stored order is the order.** The ticket vector's position is authoritative
 //! (new tickets land on top by default); it is never recomputed from `created_at`.
-//! It is kept **grouped by label**: the default (unnamed) area first, then each
+//! It is kept **grouped by label**: the unlabelled tickets first, then each
 //! declared label in its declared order, so a reader can walk it once and a
 //! hand-edited store stays legible.
 //!
@@ -14,14 +14,15 @@ use std::collections::HashMap;
 
 use uuid::Uuid;
 
-use crate::store::board_rows::{BoardRows, EdgeRow, LabelRow, TicketRow};
+use crate::store::board_rows::{BoardRows, EdgeRow, LabelRow, ProjectRow, TicketRow};
 use crate::store::{decode, encode};
 
 use super::error::DomainError;
 use super::ticket::{Status, Ticket, TicketBlock};
-use super::ticket_label::{Label, LabelKey, Project, TicketRef};
+use super::ticket_label::{Label, Project, ProjectKey, TicketRef};
 
-/// The store's contents: the ordered labels and the tickets, in stored order.
+/// The store's contents: the ordered labels and projects, and the tickets, in
+/// stored order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Contents {
     pub labels: Vec<Label>,
@@ -29,21 +30,24 @@ pub struct Contents {
     pub tickets: Vec<Ticket>,
     /// Every dependency edge: (dependent, blocker), in the order it was set.
     pub edges: Vec<(Uuid, Uuid)>,
+    /// The refs the v16 re-key retired (`CUT-34`, upper case) and the ticket each
+    /// still names. Read-only: the migration writes them, nothing else does.
+    pub aliases: Vec<(String, Uuid)>,
 }
 
 impl Contents {
-    /// The board as the store holds it, with the refs, the label keys and the
+    /// The board as the store holds it, with the refs, the project keys and the
     /// dependency halves made true: a read runs the same preparation a write does,
     /// and still writes nothing.
     pub(crate) fn from_rows(rows: &BoardRows) -> Result<Self, DomainError> {
         let mut labels: Vec<Label> = rows
             .labels
             .iter()
-            .map(|label| Label {
-                name: label.name.clone(),
-                key: label.key.clone(),
-                last_number: label.last_number,
-                project: label.project.clone().unwrap_or_else(|| label.name.clone()),
+            .map(|label| {
+                Label::new(
+                    label.name.clone(),
+                    label.project.clone().unwrap_or_else(|| label.name.clone()),
+                )
             })
             .collect();
         let projects: Vec<Project> = rows
@@ -51,6 +55,8 @@ impl Contents {
             .iter()
             .map(|project| Project {
                 name: project.name.clone(),
+                key: project.key.clone(),
+                last_number: project.last_number,
             })
             .collect();
         let tickets: Vec<Ticket> = rows
@@ -68,12 +74,22 @@ impl Contents {
                 ))
             })
             .collect::<Result<_, DomainError>>()?;
+        let aliases: Vec<(String, Uuid)> = rows
+            .aliases
+            .iter()
+            .map(|alias| {
+                Ok((
+                    alias.reference.to_uppercase(),
+                    row_id(&alias.ticket_id, "ticket_aliases.ticket_id")?,
+                ))
+            })
+            .collect::<Result<_, DomainError>>()?;
         // A label a ticket names but the label list does not carry (a hand edit) is
-        // declared so it can be keyed and numbered, in first-appearance order.
+        // declared in the ticket's project, in first-appearance order.
         for ticket in &tickets {
             let Some(name) = &ticket.label else { continue };
             if !labels.iter().any(|label| &label.name == name) {
-                labels.push(Label::new(name.clone(), ""));
+                labels.push(Label::new(name.clone(), ticket.project.clone()));
             }
         }
         let mut contents = Self {
@@ -81,23 +97,10 @@ impl Contents {
             projects,
             tickets,
             edges,
+            aliases,
         };
         contents.normalize();
         contents.prepare();
-        // Empty projects stay listed: `projects` started as the rows' stored
-        // order, and `declare_projects` only appends, so a project no label
-        // names deletes explicitly, never by losing its last label in passing.
-        // A project row the labels no longer name but the table still carries
-        // keeps its place, in row order.
-        for row in &rows.projects {
-            if !contents
-                .projects
-                .iter()
-                .any(|project| project.name == row.name)
-            {
-                contents.projects.push(Project::new(row.name.clone()));
-            }
-        }
         Ok(contents)
     }
 
@@ -110,8 +113,6 @@ impl Contents {
                 .enumerate()
                 .map(|(position, label)| LabelRow {
                     name: label.name.clone(),
-                    key: label.key.clone(),
-                    last_number: label.last_number,
                     position: position as i64,
                     project: Some(label.project.clone()),
                 })
@@ -120,8 +121,10 @@ impl Contents {
                 .projects
                 .iter()
                 .enumerate()
-                .map(|(position, project)| crate::store::board_rows::ProjectRow {
+                .map(|(position, project)| ProjectRow {
                     name: project.name.clone(),
+                    key: project.key.clone(),
+                    last_number: project.last_number,
                     position: position as i64,
                 })
                 .collect(),
@@ -139,12 +142,20 @@ impl Contents {
                     depends_on_id: blocker.to_string(),
                 })
                 .collect(),
+            aliases: self
+                .aliases
+                .iter()
+                .map(|(reference, ticket)| crate::store::board_rows::AliasRow {
+                    reference: reference.clone(),
+                    ticket_id: ticket.to_string(),
+                })
+                .collect(),
         }
     }
 
-    /// Every label key in render order: the default area, the declared labels, then
-    /// any name that appears only on a ticket (a hand edit), in first-appearance
-    /// order, so a hand-edited store loses no grouping.
+    /// Every label key in render order: the unlabelled group first, the declared
+    /// labels, then any name that appears only on a ticket (a hand edit), in
+    /// first-appearance order, so a hand-edited store loses no grouping.
     pub fn ordered_keys(&self) -> Vec<Option<String>> {
         let mut keys: Vec<Option<String>> = vec![None];
         for label in &self.labels {
@@ -169,18 +180,23 @@ impl Contents {
     }
 
     /// Every project in render order: the stored order, plus any parent a label
-    /// names but the table does not yet carry (a hand edit), in label order.
+    /// or a ticket names but the table does not yet carry (a hand edit).
     pub fn known_projects(&self) -> Vec<String> {
         let mut known: Vec<String> = self.projects.iter().map(|p| p.name.clone()).collect();
-        for label in &self.labels {
-            if !known.iter().any(|name| name == &label.project) {
-                known.push(label.project.clone());
+        for name in self
+            .labels
+            .iter()
+            .map(|label| &label.project)
+            .chain(self.tickets.iter().map(|ticket| &ticket.project))
+        {
+            if !name.is_empty() && !known.iter().any(|known| known == name) {
+                known.push(name.clone());
             }
         }
         known
     }
 
-    /// Every project with its labels, in render order: projects in stored
+    /// Every project with its key and labels, in render order: projects in stored
     /// order, their labels beneath in label order.
     pub fn projects_with_labels(&self) -> Vec<super::ticket_label::ProjectWithLabels> {
         self.known_projects()
@@ -192,7 +208,8 @@ impl Contents {
                     .filter(|label| label.project == name)
                     .map(|label| label.name.clone())
                     .collect();
-                super::ticket_label::ProjectWithLabels { name, labels }
+                let key = self.project_key(&name).unwrap_or_default().to_string();
+                super::ticket_label::ProjectWithLabels { name, key, labels }
             })
             .collect()
     }
@@ -234,71 +251,70 @@ impl Contents {
         self.refresh_blocked();
     }
 
-    /// Make the ref scheme true for contents that predate it, idempotently: every
-    /// ticket's label is declared, every label has a key, and a ticket in a label
-    /// without a number gets the label's next one in `created_at` order (ties by
-    /// id). Every label has exactly one parent project: a hand-added label
-    /// declares the project named for it the same way it already declares the
-    /// label itself.
+    /// Make the ref scheme true for contents a hand edit left short, idempotently:
+    /// every project has a key, every label and ticket names a declared project,
+    /// and a ticket without a number gets its project's next one in `created_at`
+    /// order (ties by id).
     pub fn prepare(&mut self) {
-        self.assign_keys();
         self.declare_projects();
+        self.assign_keys();
         self.number_unnumbered();
         self.refresh_refs();
         self.refresh_blocked();
     }
 
-    /// Every label without a key gets one, in render order, among the keys already
-    /// taken.
+    /// Every project without a key gets one, in render order, among the keys
+    /// already taken (a project's, or a retired ref's prefix).
     fn assign_keys(&mut self) {
         let mut taken: Vec<String> = self
-            .labels
+            .projects
             .iter()
-            .map(|label| label.key.to_uppercase())
+            .map(|project| project.key.to_uppercase())
             .filter(|key| !key.is_empty())
             .collect();
-        for label in &mut self.labels {
-            if label.key.is_empty() {
-                let key = LabelKey::generate(&label.name, &taken);
+        taken.extend(self.alias_keys());
+        for project in &mut self.projects {
+            if project.key.is_empty() {
+                let key = ProjectKey::generate(&project.name, &taken);
                 taken.push(key.clone());
-                label.key = key;
+                project.key = key;
             }
         }
     }
 
-    /// A label without a parent declares the project named for it, in label order,
-    /// so a hand-edited store loses no grouping. An empty parent reads as
-    /// absent, never as a project named "".
+    /// A label without a parent declares the project named for it, and a project
+    /// a label or a ticket names is declared, in order, so a hand-edited store
+    /// loses no grouping. An empty parent reads as absent.
     fn declare_projects(&mut self) {
         for label in &mut self.labels {
             if label.project.trim().is_empty() {
                 label.project = label.name.clone();
             }
         }
-        for label in &self.labels.clone() {
-            if !self
-                .projects
-                .iter()
-                .any(|project| project.name == label.project)
-            {
-                self.projects.push(Project::new(label.project.clone()));
+        let names: Vec<String> = self
+            .labels
+            .iter()
+            .map(|label| label.project.clone())
+            .chain(self.tickets.iter().map(|ticket| ticket.project.clone()))
+            .collect();
+        for name in names {
+            if !name.is_empty() && !self.projects.iter().any(|project| project.name == name) {
+                self.projects.push(Project::new(name, ""));
             }
         }
     }
 
-    /// A ticket in a label without a number takes the label's next one, oldest
-    /// first: the backfill an installed board needs once.
+    /// A ticket without a number takes its project's next one, oldest first: the
+    /// backfill a hand edit needs.
     fn number_unnumbered(&mut self) {
-        for i in 0..self.labels.len() {
-            let name = self.labels[i].name.clone();
-            let mut highest = self.labels[i].last_number;
+        for i in 0..self.projects.len() {
+            let name = self.projects[i].name.clone();
+            let mut highest = self.projects[i].last_number;
             let mut missing: Vec<usize> = self
                 .tickets
                 .iter()
                 .enumerate()
-                .filter(|(_, ticket)| {
-                    ticket.label.as_deref() == Some(name.as_str()) && ticket.number.is_none()
-                })
+                .filter(|(_, ticket)| ticket.project == name && ticket.number.is_none())
                 .map(|(index, _)| index)
                 .collect();
             missing.sort_by(|left, right| {
@@ -311,25 +327,45 @@ impl Contents {
                 highest += 1;
                 self.tickets[index].number = Some(highest);
             }
-            self.labels[i].last_number = self.labels[i].last_number.max(highest);
+            let held = self
+                .tickets
+                .iter()
+                .filter(|ticket| ticket.project == name)
+                .filter_map(|ticket| ticket.number)
+                .max()
+                .unwrap_or(0);
+            self.projects[i].last_number = self.projects[i].last_number.max(highest).max(held);
         }
     }
 
-    /// The derived half: a ticket's `reference` is its label's key and its own
-    /// number, or `None` when either is missing (the default area has neither).
+    /// The prefixes of the retired refs (`CUT` of `CUT-34`), upper case, each
+    /// once: a project key may never reuse one.
+    pub fn alias_keys(&self) -> Vec<String> {
+        let mut keys: Vec<String> = Vec::new();
+        for (reference, _) in &self.aliases {
+            if let Some((key, _)) = reference.rsplit_once('-')
+                && !keys.iter().any(|known| known == key)
+            {
+                keys.push(key.to_string());
+            }
+        }
+        keys
+    }
+
+    /// The derived half: a ticket's `reference` is its project's key and its own
+    /// number, or `None` when either is missing.
     pub fn refresh_refs(&mut self) {
         let mut keys: HashMap<&str, &str> = HashMap::new();
-        for label in &self.labels {
-            if !label.key.is_empty() {
-                keys.insert(label.name.as_str(), label.key.as_str());
+        for project in &self.projects {
+            if !project.key.is_empty() {
+                keys.insert(project.name.as_str(), project.key.as_str());
             }
         }
         let rendered: Vec<Option<String>> = self
             .tickets
             .iter()
             .map(|ticket| {
-                let name = ticket.label.as_deref()?;
-                let key = keys.get(name)?;
+                let key = keys.get(ticket.project.as_str())?;
                 let number = ticket.number?;
                 Some(TicketRef::render(key, number))
             })
@@ -387,30 +423,38 @@ impl Contents {
         }
     }
 
-    /// Issue the label's next number: the counter rises and never goes back, so a
-    /// number a moved-away ticket used is not handed out again.
-    pub fn issue_number(&mut self, label: &str) -> i64 {
+    /// Issue the project's next number: the counter rises and never goes back, so
+    /// a number is never handed out twice.
+    pub fn issue_number(&mut self, project: &str) -> i64 {
         let Some(i) = self
-            .labels
+            .projects
             .iter()
-            .position(|candidate| candidate.name == label)
+            .position(|candidate| candidate.name == project)
         else {
             return 0;
         };
-        self.labels[i].last_number += 1;
-        self.labels[i].last_number
+        self.projects[i].last_number += 1;
+        self.projects[i].last_number
     }
 
-    /// The key a label files under, or `None` when the label is not declared.
-    pub fn key_of(&self, label: &str) -> Option<&str> {
-        self.labels
+    /// The key a project files under, or `None` when the project is not declared.
+    pub fn project_key(&self, project: &str) -> Option<&str> {
+        self.projects
             .iter()
-            .find(|candidate| candidate.name == label)
+            .find(|candidate| candidate.name == project)
             .map(|candidate| candidate.key.as_str())
     }
 
-    /// Guards a label argument: `None` (the default area) is always valid; any
-    /// other name must be a known label.
+    /// The project a label belongs to, or `None` when the label is not declared.
+    pub fn label_project(&self, label: &str) -> Option<&str> {
+        self.labels
+            .iter()
+            .find(|candidate| candidate.name == label)
+            .map(|candidate| candidate.project.as_str())
+    }
+
+    /// Guards a label argument: `None` (no label) is always valid; any other name
+    /// must be a known label.
     pub fn validate_label(&self, label: Option<&str>) -> Result<(), DomainError> {
         let Some(label) = label else { return Ok(()) };
         if self.known_labels().iter().any(|name| name == label) {
@@ -421,7 +465,9 @@ impl Contents {
     }
 
     /// The store's one rule for "which ticket is this id?": a full UUID, or the
-    /// ticket's ref (`TAN-42`, case-insensitive on the key), and its index.
+    /// ticket's ref (`TAN-42`, case-insensitive on the key), and its index. A live
+    /// ref resolves first, by project key and number; a ref the v16 re-key retired
+    /// then resolves through its alias to the ticket that holds it now.
     pub fn resolve_ticket(&self, raw: &str) -> Option<(Uuid, usize)> {
         if let Ok(id) = Uuid::parse_str(raw)
             && let Some(index) = self.tickets.iter().position(|ticket| ticket.id == id)
@@ -429,20 +475,28 @@ impl Contents {
             return Some((id, index));
         }
         let (key, number) = TicketRef::parse(raw)?;
-        let index = self.tickets.iter().position(|ticket| {
+        let live = self.tickets.iter().position(|ticket| {
             ticket.number == Some(number)
-                && ticket
-                    .label
-                    .as_deref()
-                    .and_then(|label| self.key_of(label))
-                    .is_some_and(|label_key| label_key.eq_ignore_ascii_case(&key))
-        })?;
-        Some((self.tickets[index].id, index))
+                && self
+                    .project_key(&ticket.project)
+                    .is_some_and(|project_key| project_key.eq_ignore_ascii_case(&key))
+        });
+        if let Some(index) = live {
+            return Some((self.tickets[index].id, index));
+        }
+        let retired = TicketRef::render(&key, number);
+        let (_, id) = self
+            .aliases
+            .iter()
+            .find(|(reference, _)| *reference == retired)?;
+        let index = self.tickets.iter().position(|ticket| ticket.id == *id)?;
+        Some((*id, index))
     }
 
     /// The ticket a handle names, or the failure every id-taking operation raises.
     /// A handle that looks like a ref but names nothing gets the ref-specific
-    /// failure: it names the label's real range, so the caller recovers in one turn.
+    /// failure: it names the project's real range, so the caller recovers in one
+    /// turn.
     pub fn require_ticket(&self, raw: &str) -> Result<(Uuid, usize), DomainError> {
         if let Some(found) = self.resolve_ticket(raw) {
             return Ok(found);
@@ -465,36 +519,36 @@ impl Contents {
     }
 
     /// What the unknown-ref failure says next: whether the key exists at all, and
-    /// the range the label has issued.
+    /// the range the project has issued.
     fn ref_hint(&self, key: &str) -> String {
-        let Some(label) = self
-            .labels
+        let Some(project) = self
+            .projects
             .iter()
-            .find(|label| label.key.eq_ignore_ascii_case(key))
+            .find(|project| project.key.eq_ignore_ascii_case(key))
         else {
             let keys: Vec<&str> = self
-                .labels
+                .projects
                 .iter()
-                .map(|label| label.key.as_str())
+                .map(|project| project.key.as_str())
                 .filter(|key| !key.is_empty())
                 .collect();
             if keys.is_empty() {
-                return "No label has that key, and no label carries a key yet.".to_string();
+                return "No project has that key, and no project carries a key yet.".to_string();
             }
             return format!(
-                "No label has the key \"{key}\". The keys in use: {}.",
+                "No project has the key \"{key}\". The keys in use: {}.",
                 keys.join(", ")
             );
         };
-        if label.last_number <= 0 {
+        if project.last_number <= 0 {
             return format!(
-                "Label \"{}\" ({}) has issued no numbers yet.",
-                label.name, label.key
+                "Project \"{}\" ({}) has issued no numbers yet.",
+                project.name, project.key
             );
         }
         format!(
-            "Label \"{}\" ({}) has issued {}-1 to {}-{}.",
-            label.name, label.key, label.key, label.key, label.last_number
+            "Project \"{}\" ({}) has issued {}-1 to {}-{}.",
+            project.name, project.key, project.key, project.key, project.last_number
         )
     }
 }
@@ -516,6 +570,16 @@ fn ticket_from_row(row: &TicketRow) -> Result<Ticket, DomainError> {
         description_length: row.description_length,
         assignee: row.assignee.clone(),
         origin: row.origin.clone(),
+        project: row
+            .project
+            .clone()
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| {
+                DomainError::Unreadable(format!(
+                    "ticket {} carries no project; the store is corrupt",
+                    row.id
+                ))
+            })?,
         label: row.label.clone(),
         number: row.number,
         reference: None,
@@ -546,6 +610,7 @@ fn ticket_to_row(ticket: &Ticket, position: i64) -> TicketRow {
         description: ticket.description.clone(),
         status: ticket.status.as_str().to_string(),
         archived: ticket.archived,
+        project: Some(ticket.project.clone()),
         label: ticket.label.clone(),
         number: ticket.number,
         origin: ticket.origin.clone(),

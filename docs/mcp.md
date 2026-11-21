@@ -11,11 +11,11 @@ The ticket tools answer the whole shape by default, every field as the CLI print
 The list below is generated from `tools()` in `rust/core/src/mcp.rs`, one line per tool with its parameter names. A test (`rust/core/tests/mcp_doc.rs`) fails when this page and the registry disagree. After a tool change, regenerate with `TANDEM_BLESS=1 cargo test -p tandem-core --test mcp_doc`.
 
 <!-- tools:begin -->
-- `ticket_list`: List the tickets in view, in stored order. Every filter is optional and they combine. Rows carry every field; detail "lean" omits null, false and empty fields. Params: `archived`, `assignee`, `blocked`, `detail`, `filter`, `label`, `limit`, `status`, `text`.
+- `ticket_list`: List the tickets in view, in stored order. Every filter is optional and they combine. Rows carry every field; detail "lean" omits null, false and empty fields. Params: `archived`, `assignee`, `blocked`, `detail`, `filter`, `label`, `limit`, `project`, `status`, `text`.
 - `ticket_show`: Read one ticket whole: the only read that carries the description. Answers every field; detail "lean" omits null, false and empty fields. Params: `detail`, `id` (required).
-- `ticket_add`: File a ticket. A title alone lands backlog, unowned, on top of the default area. Answers the whole ticket; detail "lean" answers a short receipt without the description. Params: `assignee`, `description`, `detail`, `label`, `origin`, `status`, `title` (required).
+- `ticket_add`: File a ticket. A ticket always lives in a project: name `project`, or a `label` alone implies its project; with neither it is refused and the projects are listed. A title and a project land backlog, unowned, unlabelled, on top of the project. Answers the whole ticket; detail "lean" answers a short receipt without the description. Params: `assignee`, `description`, `detail`, `label`, `origin`, `project`, `status`, `title` (required).
 - `ticket_set`: Change the fields named in one write; everything unnamed is left alone. To add to the description send appendDescription (the body is kept); description replaces the whole body, and the two cannot be sent together. Answers the whole ticket; detail "lean" answers a short receipt without the description. Params: `appendDescription`, `assignee`, `description`, `detail`, `id` (required), `status`, `title`.
-- `ticket_move`: Move between labels and/or within one. Omit the index to append. Answers the whole ticket; detail "lean" answers a short receipt. Params: `detail`, `id` (required), `index`, `label`.
+- `ticket_move`: Move between labels of the ticket's own project (or to no label) and/or within one; the ref never changes, and a label of another project is refused. Omit the index to append. Answers the whole ticket; detail "lean" answers a short receipt. Params: `detail`, `id` (required), `index`, `label`.
 - `ticket_block`: Record that one ticket waits on another, as an edge in the store. Answers the whole ticket; detail "lean" answers a short receipt. Params: `detail`, `id` (required), `on` (required).
 - `ticket_unblock`: Remove one edge, or every edge the ticket has when `on` is absent. Answers the whole ticket; detail "lean" answers a short receipt. Params: `detail`, `id` (required), `on`.
 - `ticket_complete`: The short path to done: idempotent, no reopen verb. Answers the whole ticket; detail "lean" answers a short receipt. Params: `detail`, `id` (required).
@@ -23,14 +23,14 @@ The list below is generated from `tools()` in `rust/core/src/mcp.rs`, one line p
 - `ticket_comment_add`: Append to the ticket's discussion log. Write the role out as the author; left out, it is the caller's own name (a member's token, or the X-Tandem-Agent name). Echoes the comment; detail "lean" answers the time and author, not the body. Params: `author`, `body` (required), `detail`, `id` (required).
 - `ticket_comment_list`: List the ticket's discussion log in append order. Params: `id` (required).
 - `label_list`: List every label, in render order. Params: none.
-- `label_add`: Declare a label. A label must exist before tickets move to it. Params: `abbr`, `name` (required), `project`.
-- `label_rename`: Rename a label, rewriting every ticket in it in one write. Params: `abbr`, `from` (required), `project`, `to` (required).
-- `label_delete`: Delete a label; members fall back to the default area, never deleted. Params: `name` (required).
+- `label_add`: Declare a label inside a project (project is required). A label must exist before tickets move to it. Params: `name` (required), `project` (required).
+- `label_rename`: Rename a label, rewriting every ticket in it in one write. A new project is refused while the label holds tickets. Params: `from` (required), `project`, `to` (required).
+- `label_delete`: Delete a label; its tickets lose the label and stay in their project with their refs, never deleted. Params: `name` (required).
 - `label_move`: Reorder the declared labels; the index is 0-based and clamps. Params: `index`, `name` (required).
-- `project_list`: List every project with its labels, in render order. Params: none.
-- `project_add`: Declare a project. A project must exist before labels name it as parent. Params: `name` (required).
-- `project_rename`: Rename a project, moving its labels with it. Params: `from` (required), `to` (required).
-- `project_delete`: Delete an empty project; refused while labels belong to it. Params: `name` (required).
+- `project_list`: List every project with its key and labels, in render order. Params: none.
+- `project_add`: Declare a project and the ref key it issues (abbr; omitted, the first three letters of the name). A project must exist before labels or tickets name it. Params: `abbr`, `name` (required).
+- `project_rename`: Rename a project, moving its labels and tickets with it; abbr moves the key until the project has issued a number. Params: `abbr`, `from` (required), `to` (required).
+- `project_delete`: Delete an empty project; refused while labels or tickets belong to it. Params: `name` (required).
 - `doctor_report`: Report where this machine's Tandem state lives and whether it is healthy. Params: none.
 - `note_tree`: Read the vault's folder tree: folders first, notes after, hidden entries skipped. Params: none.
 - `note_read`: Read one note: its whole text, the content hash a save compares and its mtime. Params: `path` (required).

@@ -26,7 +26,7 @@ fn append(board: &tandem_core::domain::Board, id: &str, text: &str) -> Result<St
 fn append_onto_an_empty_body_writes_bare_text() {
     let sandbox = Sandbox::new("append-empty");
     let board = sandbox.board();
-    let ticket = board.add("A ticket", AddTicket::default()).unwrap();
+    let ticket = board.add("A ticket", support::ticket()).unwrap();
     assert_eq!(ticket.description, None);
 
     let body = append(&board, &ticket.id.to_string(), "the addition").unwrap();
@@ -42,7 +42,7 @@ fn append_onto_a_body_adds_a_blank_line_after_it() {
             "A ticket",
             AddTicket {
                 description: Some("the brief"),
-                ..AddTicket::default()
+                ..support::ticket()
             },
         )
         .unwrap();
@@ -60,7 +60,7 @@ fn append_and_replace_differ() {
             "A ticket",
             AddTicket {
                 description: Some("the brief"),
-                ..AddTicket::default()
+                ..support::ticket()
             },
         )
         .unwrap();
@@ -105,7 +105,7 @@ fn two_appends_leave_both_paragraphs() {
             "A ticket",
             AddTicket {
                 description: Some("the brief"),
-                ..AddTicket::default()
+                ..support::ticket()
             },
         )
         .unwrap();
@@ -138,7 +138,7 @@ fn two_appends_from_two_boards_leave_both_paragraphs() {
             "A ticket",
             AddTicket {
                 description: Some("the brief"),
-                ..AddTicket::default()
+                ..support::ticket()
             },
         )
         .unwrap();
@@ -165,7 +165,7 @@ fn an_empty_or_whitespace_only_addition_is_refused_and_leaves_the_body() {
             "A ticket",
             AddTicket {
                 description: Some("the brief"),
-                ..AddTicket::default()
+                ..support::ticket()
             },
         )
         .unwrap();
@@ -202,7 +202,7 @@ fn naming_replace_and_append_together_is_refused_and_leaves_the_body() {
             "A ticket",
             AddTicket {
                 description: Some("the brief"),
-                ..AddTicket::default()
+                ..support::ticket()
             },
         )
         .unwrap();
@@ -230,7 +230,7 @@ fn naming_replace_and_append_together_is_refused_and_leaves_the_body() {
 fn the_append_trims_its_edges_like_a_body() {
     let sandbox = Sandbox::new("append-trim");
     let board = sandbox.board();
-    let ticket = board.add("A ticket", AddTicket::default()).unwrap();
+    let ticket = board.add("A ticket", support::ticket()).unwrap();
 
     let body = append(&board, &ticket.id.to_string(), "  the addition  \n").unwrap();
     assert_eq!(body, "the addition");
@@ -240,7 +240,7 @@ fn the_append_trims_its_edges_like_a_body() {
 fn the_list_still_reads_after_appends() {
     let sandbox = Sandbox::new("append-list");
     let board = sandbox.board();
-    let ticket = board.add("A ticket", AddTicket::default()).unwrap();
+    let ticket = board.add("A ticket", support::ticket()).unwrap();
     append(&board, &ticket.id.to_string(), "first").unwrap();
     append(&board, &ticket.id.to_string(), "second").unwrap();
     assert_eq!(board.list_filter(Filter::All).unwrap().len(), 1);

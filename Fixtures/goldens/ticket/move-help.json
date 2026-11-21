@@ -8,13 +8,13 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli ticket move — a ticket's label and position.",
+    "tandem-cli ticket move \u2014 a ticket's label and position inside its project.",
     "",
     "Usage:",
     "  tandem-cli ticket move --id <id> [--label <name>] [--index <number>]",
     "",
     "Values:",
-    "  label      a label name, or \"\" for the default area",
+    "  label     a label of the ticket's own project, or \"\" for no label; the ref never changes",
     "  index     0-based within the label; omitted appends to it"
   ],
   "stdoutKind": "text"

@@ -3,6 +3,8 @@
     "label",
     "add",
     "--name",
+    "Cycle",
+    "--project",
     "Cycle"
   ],
   "exit": 0,

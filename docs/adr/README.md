@@ -12,7 +12,7 @@ The records that explain the product as it is today:
 - [0018](0018-rolling-store-backup.md): the rolling backup beside it.
 - [0017](0017-the-ticket-model.md) and [0030](0030-one-entity-the-ticket.md): the ticket and its vocabulary.
 - [0035](0035-ticket-dependencies.md): the blocking edge.
-- [0039](0039-projects-own-lanes.md) and [0047, lanes are labels](0047-lanes-are-labels.md): projects and labels.
+- [0039](0039-projects-own-lanes.md), [0047, lanes are labels](0047-lanes-are-labels.md) and [0053](0053-one-prefix-per-project.md): projects and labels, and who owns the ref prefix.
 - [0004](0004-vault-protocol.md), [0005](0005-wikilink-rename-rewriting.md), [0008](0008-vault-path-rule.md) and [0022](0022-bikeshed-move.md): how notes are stored, named, renamed and moved.
 - [0033](0033-wiki-is-documentation.md): what the notes are for.
 - [0045](0045-the-board-and-notes-cut.md): what was cut, and what stayed.
@@ -71,7 +71,7 @@ The status comes from each record's own header and from the "Prior records" list
 | 0036 | [The tag bumps the tap](0036-the-tag-bumps-the-tap.md) | Superseded by 0046 | |
 | 0037 | [One stack: Rust core, Electron UI](0037-one-stack-rust-core-electron-ui.md) | Superseded by 0046 | The Rust core stands; the Electron shell retired. |
 | 0038 | [The harness home](0038-the-harness-home.md) | Superseded by 0040 | |
-| 0039 | [Projects own lanes](0039-projects-own-lanes.md) | In force as amended | Its "lane" is today's label (0047). The board no longer groups by project (0043). |
+| 0039 | [Projects own lanes](0039-projects-own-lanes.md) | In force as amended | Its "lane" is today's label (0047). The board no longer groups by project (0043). Refs are project-keyed and there is no default area (0053). |
 | 0040 | [No embedded agent loop](0040-no-embedded-agent-loop.md) | In force | Tandem runs no agent; orchestration stays outside it. |
 | 0041 | [Workflows are data](0041-workflows-are-data.md) | Superseded by 0045 in its data half | The workflow tables and custom stages retired. |
 | 0042 | [The bikeshed editor is a block editor](0042-the-bikeshed-editor-is-a-block-editor.md) | Superseded by 0045 | The served notes page has its own editor in `rust/core/src/serve/static/tandem.js`; no record describes it yet. |
@@ -79,13 +79,14 @@ The status comes from each record's own header and from the "Prior records" list
 | 0044 | [Agent, skill and lens](0044-agent-skill-lens.md) | In force, amended by 0045 | The lenses stand as examples under `examples/`. |
 | 0045 | [The board and notes cut](0045-the-board-and-notes-cut.md) | In force | |
 | 0046 | [Tandem serve and single-binary distribution](0046-tandem-serve-and-single-binary-distribution.md) | In force, amended by 0047 (single door) | Its "two server doors", "no HTTP JSON-RPC" and "loopback is the authentication" clauses are superseded. |
-| 0047 | [Lanes are labels](0047-lanes-are-labels.md) | In force | Schema v12. |
+| 0047 | [Lanes are labels](0047-lanes-are-labels.md) | In force as amended | Schema v12. The key and counter moved from the label to the project (0053). |
 | 0047 | [Tandem serve is the single door](0047-serve-is-the-single-door.md) | In force, amended (CUT-37, CUT-36) | MCP over HTTP on `tandem serve`; `tandem mcp` is retired. Shares its number with the record above: two branches took 0047 and both merged. Both stay as numbered, and the index check accepts the pair; a renumbering is a human call. |
 | 0048 | [Hosted Tandem is one `tandem serve` per workspace](0048-hosted-tandem-is-one-serve-per-workspace.md) | In force | The hosted product is the published binary, one serve and one home per workspace, behind a closed control plane that holds no content. Records the boundary; the siblings own their parts. |
 | 0049 | [A browser signs in to a token-guarded serve](0049-a-browser-signs-in-to-a-token-guarded-serve.md) | In force | A session cookie held by the instance, a keyed digest in `browser_sessions` (schema v13). Supersedes the browser-login half of 0047. |
 | 0050 | [The home leaves and arrives as one archive](0050-the-home-leaves-and-arrives-as-one-archive.md) | In force, amended (CUT-39) | `tandem export` and `tandem import`: one streamed `.tar.gz` of the store and the notes, no secrets, restored only into an empty home; one export permission check and a record line. Amends 0047's list of verbs with no remote form; 0018's "no restore verb" stands for the rolling `.bak`. |
 | 0051 | [A Claude Code plugin is the connector](0051-a-claude-code-plugin-is-the-connector.md) | In force | The repository is a Claude Code marketplace; the `tandem` plugin is `examples/` pinned to the latest release tag: it registers the MCP endpoint, ships the example skills and agents, and checks at session start that serve is up and current. No Tandem-owned installer (0045), serve still started by hand (0047). |
 | 0052 | [Members and personal tokens](0052-members-and-personal-tokens.md) | In force | Members (admin or member), personal tokens (`tdm_`, `/mcp` only) and sign-in keys (`tdk_`, `/login` only), stored as digests in schema v14; the actor comes from the credential, and team mode fails closed. Part 2 (CUT-39): one permission function, the last-admin rule, and the append-only access record (schema v15). Supersedes by quotation parts of 0047, 0049 and 0050. |
+| 0053 | [One prefix per project](0053-one-prefix-per-project.md) | In force | The project owns the ref key and the counter (schema v16); a ticket stores its project and never changes it; there is no default area; a label is optional inside one project; retired refs resolve through `ticket_aliases`. Amends 0039 and 0047. |
 
 ## Adding a record
 

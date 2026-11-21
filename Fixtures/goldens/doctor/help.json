@@ -7,7 +7,7 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli doctor — the machine's read-only diagnostic.",
+    "tandem-cli doctor \u2014 the machine's read-only diagnostic.",
     "",
     "Usage:",
     "  tandem-cli doctor"

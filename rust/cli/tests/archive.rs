@@ -55,8 +55,13 @@ impl Sandbox {
 
     /// A home with two tickets and a note.
     fn seed(&self, home: &str) {
+        let output = self.run(home, &["project", "add", "--name", "Main"]);
+        assert!(output.status.success(), "{}", text(&output.stderr));
         for title in ["first", "second"] {
-            let output = self.run(home, &["ticket", "add", "--title", title]);
+            let output = self.run(
+                home,
+                &["ticket", "add", "--title", title, "--project", "Main"],
+            );
             assert!(output.status.success(), "{}", text(&output.stderr));
         }
         let notes = self.home(home).join("bikeshed");

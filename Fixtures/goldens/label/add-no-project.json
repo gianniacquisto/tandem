@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "label",
+    "add",
+    "--name",
+    "Cycle"
+  ],
+  "exit": 1,
+  "stderr": [
+    "Name the label's project: Cycle."
+  ],
+  "stdin": "",
+  "stdout": [],
+  "stdoutKind": "text"
+}

@@ -101,12 +101,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
             "--abbr",
             "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
           ]
         },
         {
@@ -141,12 +151,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
             "--abbr",
             "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
           ]
         },
         {
@@ -191,7 +211,7 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
@@ -204,9 +224,29 @@
             "label",
             "add",
             "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
             "Port",
             "--abbr",
             "PRT"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Port",
+            "--project",
+            "Port"
           ]
         },
         {
@@ -243,12 +283,10 @@
       "setup": [
         {
           "argv": [
-            "ticket",
+            "project",
             "add",
-            "--title",
-            "Fixture ticket",
-            "--status",
-            "ready"
+            "--name",
+            "Main"
           ]
         },
         {
@@ -256,7 +294,21 @@
             "ticket",
             "add",
             "--title",
-            "Second ticket"
+            "Fixture ticket",
+            "--status",
+            "ready",
+            "--project",
+            "Main"
+          ]
+        },
+        {
+          "argv": [
+            "ticket",
+            "add",
+            "--title",
+            "Second ticket",
+            "--project",
+            "Main"
           ]
         }
       ],
@@ -273,12 +325,22 @@
       "setup": [
         {
           "argv": [
+            "project",
+            "add",
+            "--name",
+            "Main"
+          ]
+        },
+        {
+          "argv": [
             "ticket",
             "add",
             "--title",
             "Fixture ticket",
             "--assignee",
-            "self"
+            "self",
+            "--project",
+            "Main"
           ]
         },
         {
@@ -288,7 +350,9 @@
             "--title",
             "Second ticket",
             "--assignee",
-            "someone"
+            "someone",
+            "--project",
+            "Main"
           ]
         }
       ],
@@ -305,12 +369,30 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
+            "add",
+            "--name",
+            "Main"
+          ]
+        },
+        {
+          "argv": [
+            "project",
             "add",
             "--name",
             "Tandem",
             "--abbr",
             "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Tandem",
+            "--project",
+            "Tandem"
           ]
         },
         {
@@ -328,7 +410,9 @@
             "ticket",
             "add",
             "--title",
-            "Second ticket"
+            "Second ticket",
+            "--project",
+            "Main"
           ]
         }
       ],
@@ -345,12 +429,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Tandem",
             "--abbr",
             "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Tandem",
+            "--project",
+            "Tandem"
           ]
         },
         {
@@ -392,12 +486,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
             "--abbr",
             "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
           ]
         },
         {
@@ -443,12 +547,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
             "--abbr",
             "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
           ]
         },
         {
@@ -489,8 +603,41 @@
         "ticket",
         "add",
         "--title",
-        "Golden ticket"
+        "Golden ticket",
+        "--project",
+        "Main"
+      ],
+      "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Main"
+          ]
+        }
       ]
+    },
+    {
+      "group": "ticket",
+      "case": "add-no-project",
+      "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Main"
+          ]
+        }
+      ],
+      "argv": [
+        "ticket",
+        "add",
+        "--title",
+        "Golden ticket"
+      ],
+      "exit": 1
     },
     {
       "group": "ticket",
@@ -498,12 +645,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
             "--abbr",
             "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
           ]
         }
       ],
@@ -534,7 +691,19 @@
         "--title",
         "Stdin ticket",
         "--description",
-        "-"
+        "-",
+        "--project",
+        "Main"
+      ],
+      "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Main"
+          ]
+        }
       ]
     },
     {
@@ -555,9 +724,21 @@
         "--title",
         "Golden ticket",
         "--status",
-        "nope"
+        "nope",
+        "--project",
+        "Main"
       ],
-      "exit": 1
+      "exit": 1,
+      "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Main"
+          ]
+        }
+      ]
     },
     {
       "group": "ticket",
@@ -565,12 +746,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
             "--abbr",
             "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
           ]
         },
         {
@@ -603,12 +794,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Tandem",
             "--abbr",
             "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Tandem",
+            "--project",
+            "Tandem"
           ]
         },
         {
@@ -640,12 +841,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Tandem",
             "--abbr",
             "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Tandem",
+            "--project",
+            "Tandem"
           ]
         },
         {
@@ -676,12 +887,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
             "--abbr",
             "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
           ]
         },
         {
@@ -720,12 +941,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
             "--abbr",
             "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
           ]
         },
         {
@@ -752,12 +983,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
             "--abbr",
             "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
           ]
         },
         {
@@ -796,12 +1037,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
             "--abbr",
             "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
           ]
         },
         {
@@ -831,12 +1082,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
             "--abbr",
             "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
           ]
         },
         {
@@ -883,12 +1144,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Tandem",
             "--abbr",
             "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Tandem",
+            "--project",
+            "Tandem"
           ]
         },
         {
@@ -915,12 +1186,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Tandem",
             "--abbr",
             "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Tandem",
+            "--project",
+            "Tandem"
           ]
         },
         {
@@ -953,12 +1234,30 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
+            "add",
+            "--name",
+            "Main"
+          ]
+        },
+        {
+          "argv": [
+            "project",
             "add",
             "--name",
             "Tandem",
             "--abbr",
             "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Tandem",
+            "--project",
+            "Tandem"
           ]
         },
         {
@@ -976,7 +1275,9 @@
             "ticket",
             "add",
             "--title",
-            "Second ticket"
+            "Second ticket",
+            "--project",
+            "Main"
           ]
         },
         {
@@ -1001,12 +1302,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Tandem",
             "--abbr",
             "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Tandem",
+            "--project",
+            "Tandem"
           ]
         },
         {
@@ -1039,12 +1350,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Tandem",
             "--abbr",
             "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Tandem",
+            "--project",
+            "Tandem"
           ]
         },
         {
@@ -1074,12 +1395,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Tandem",
             "--abbr",
             "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Tandem",
+            "--project",
+            "Tandem"
           ]
         },
         {
@@ -1256,7 +1587,7 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
@@ -1269,9 +1600,29 @@
             "label",
             "add",
             "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
             "Port",
             "--abbr",
             "PRT"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Port",
+            "--project",
+            "Port"
           ]
         }
       ],
@@ -1287,33 +1638,31 @@
         "label",
         "add",
         "--name",
-        "Cycle"
-      ]
-    },
-    {
-      "group": "label",
-      "case": "add-abbr",
-      "argv": [
-        "label",
-        "add",
-        "--name",
         "Cycle",
-        "--abbr",
-        "CYC"
-      ]
-    },
-    {
-      "group": "label",
-      "case": "add-duplicate",
+        "--project",
+        "Cycle"
+      ],
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
-            "Cycle",
-            "--abbr",
-            "CYC"
+            "Cycle"
+          ]
+        }
+      ]
+    },
+    {
+      "group": "label",
+      "case": "add-no-project",
+      "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Cycle"
           ]
         }
       ],
@@ -1327,16 +1676,74 @@
     },
     {
       "group": "label",
-      "case": "rename",
+      "case": "add-abbr",
+      "argv": [
+        "label",
+        "add",
+        "--name",
+        "Cycle",
+        "--abbr",
+        "CYC"
+      ],
+      "exit": 2
+    },
+    {
+      "group": "label",
+      "case": "add-duplicate",
       "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Cycle",
+            "--abbr",
+            "CYC"
+          ]
+        },
         {
           "argv": [
             "label",
             "add",
             "--name",
             "Cycle",
+            "--project",
+            "Cycle"
+          ]
+        }
+      ],
+      "argv": [
+        "label",
+        "add",
+        "--name",
+        "Cycle",
+        "--project",
+        "Cycle"
+      ],
+      "exit": 1
+    },
+    {
+      "group": "label",
+      "case": "rename",
+      "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Cycle",
             "--abbr",
             "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
           ]
         }
       ],
@@ -1355,12 +1762,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
             "--abbr",
             "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
           ]
         }
       ],
@@ -1373,7 +1790,8 @@
         "Loop",
         "--abbr",
         "LOP"
-      ]
+      ],
+      "exit": 2
     },
     {
       "group": "label",
@@ -1394,12 +1812,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle",
             "--abbr",
             "CYC"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
           ]
         },
         {
@@ -1590,12 +2018,22 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Tandem",
             "--abbr",
             "TAN"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Tandem",
+            "--project",
+            "Tandem"
           ]
         },
         {
@@ -1660,6 +2098,34 @@
     },
     {
       "group": "project",
+      "case": "list-key",
+      "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Alpha",
+            "--abbr",
+            "alp"
+          ]
+        },
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Beta"
+          ]
+        }
+      ],
+      "argv": [
+        "project",
+        "list"
+      ]
+    },
+    {
+      "group": "project",
       "case": "list",
       "argv": [
         "project",
@@ -1668,7 +2134,7 @@
       "setup": [
         {
           "argv": [
-            "label",
+            "project",
             "add",
             "--name",
             "Cycle"
@@ -1679,6 +2145,26 @@
             "label",
             "add",
             "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Port"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Port",
+            "--project",
             "Port"
           ]
         }
@@ -1720,9 +2206,19 @@
       "setup": [
         {
           "argv": [
+            "project",
+            "add",
+            "--name",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
             "label",
             "add",
             "--name",
+            "Cycle",
+            "--project",
             "Cycle"
           ]
         }
@@ -1760,9 +2256,19 @@
       "setup": [
         {
           "argv": [
+            "project",
+            "add",
+            "--name",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
             "label",
             "add",
             "--name",
+            "Cycle",
+            "--project",
             "Cycle"
           ]
         }
@@ -1911,9 +2417,61 @@
       "setup": [
         {
           "argv": [
+            "project",
+            "add",
+            "--name",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
             "label",
             "add",
             "--name",
+            "Cycle",
+            "--project",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Alpha"
+          ]
+        }
+      ]
+    },
+    {
+      "group": "label",
+      "case": "rename-project-refused",
+      "argv": [
+        "label",
+        "rename",
+        "--from",
+        "Cycle",
+        "--to",
+        "Loop",
+        "--project",
+        "Alpha"
+      ],
+      "setup": [
+        {
+          "argv": [
+            "project",
+            "add",
+            "--name",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
+            "label",
+            "add",
+            "--name",
+            "Cycle",
+            "--project",
             "Cycle"
           ]
         },
@@ -1935,7 +2493,8 @@
             "Alpha"
           ]
         }
-      ]
+      ],
+      "exit": 1
     },
     {
       "group": "label",
@@ -1976,9 +2535,19 @@
       "setup": [
         {
           "argv": [
+            "project",
+            "add",
+            "--name",
+            "Cycle"
+          ]
+        },
+        {
+          "argv": [
             "label",
             "add",
             "--name",
+            "Cycle",
+            "--project",
             "Cycle"
           ]
         },

@@ -8,7 +8,7 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli ticket set — edit one ticket's fields in one write.",
+    "tandem-cli ticket set \u2014 edit one ticket's fields in one write.",
     "",
     "Usage:",
     "  tandem-cli ticket set --id <id> [--title <string>] [--status <value>]",

@@ -12,7 +12,7 @@
 //! **Derived, never stored:** `done` (`status == Done`), `blocked` (an edge whose
 //! blocker is not done) and `blocked_reason` (the body's `## Blocked on` section).
 //! The ref (`KEY-N`) is derived by [`Contents`](super::contents::Contents) from the
-//! label's key and the ticket's number on every read.
+//! project's key and the ticket's number on every read.
 //!
 //! Time is whole seconds since the Unix epoch: the store writes ISO-8601 UTC text,
 //! and whole seconds is that same fact without a parser in the middle. A ticket read
@@ -136,7 +136,7 @@ const RETIRED_ON_HOLD: &str = "refined";
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TicketBlock {
     pub id: Uuid,
-    /// The other ticket's ref (`TAN-42`), `None` in the default area.
+    /// The other ticket's ref (`TAN-42`), `None` until the ticket is numbered.
     pub reference: Option<String>,
     pub title: String,
     pub status: Status,
@@ -159,11 +159,15 @@ pub struct Ticket {
     pub assignee: Option<String>,
     /// Who filed the ticket. Written once, at add, and never changed (ADR 0020).
     pub origin: String,
-    /// The label, or `None` for the default (unnamed) area.
+    /// The project the ticket lives in: set at creation and never changed. Its
+    /// key is the ref's prefix.
+    pub project: String,
+    /// The label, an optional grouping inside the project, or `None` for no
+    /// label.
     pub label: Option<String>,
-    /// The ticket's number within its label, issued by the label's counter.
+    /// The ticket's number within its project, issued by the project's counter.
     pub number: Option<i64>,
-    /// `KEY-N`, the label's key and this ticket's number. Derived, never stored.
+    /// `KEY-N`, the project's key and this ticket's number. Derived, never stored.
     pub reference: Option<String>,
     /// A bikeshed-root-relative note path, or `None` for an unlinked ticket.
     pub link: Option<String>,
@@ -179,7 +183,7 @@ pub struct Ticket {
 
 impl Ticket {
     /// A ticket with the shape's defaults: backlog, unarchived, unassigned, filed
-    /// by the human, in the default area, created now.
+    /// by the human, created now. The project is the board's to set at add.
     pub fn new(title: impl Into<String>) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -190,6 +194,7 @@ impl Ticket {
             description_length: None,
             assignee: None,
             origin: "human".to_string(),
+            project: String::new(),
             label: None,
             number: None,
             reference: None,

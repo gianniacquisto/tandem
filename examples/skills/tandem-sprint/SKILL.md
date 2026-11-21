@@ -11,9 +11,9 @@ The sprint's runner is the `sprint` role. It dispatches the `builder` (`agents/b
 
 ## 1. Scope
 
-A sprint covers **one project**: the basename of the directory the pass runs in, with a `-wt-<slug>` worktree suffix stripped, matched case-insensitively against `label_list`. A label the human names overrides it. Use the label's stored spelling from then on. No match: ask the human, because adding a label is the human's call.
+A sprint covers **one project**: the basename of the directory the pass runs in, with a `-wt-<slug>` worktree suffix stripped, matched case-insensitively against `project_list`. A project the human names overrides it. Use the project's stored spelling from then on. No match: ask the human, because adding a project is the human's call.
 
-Read the board in one round: `ticket_list` for the label's open tickets, and `ticket_list` with `assignee` human. Another project's ticket belongs to that project's sprint.
+Read the board in one round: `ticket_list` with `project` for the project's open tickets, and `ticket_list` with `assignee` human. Another project's ticket belongs to that project's sprint.
 
 ## 2. Plan the batch
 
@@ -76,12 +76,12 @@ The close runs when every batch ticket has an exit state. There are four, and ev
 | **slipped** | `ready`, owner cleared, a comment saying why | the next sprint |
 | **parked** | `on-hold`, a `## Blocked on` section or the open question at the top | whoever the hold names |
 
-Settle the label as well: a dead claim outside the batch goes back to `ready` with a comment; `human` stays only where a question is open. One comment per ticket the close moves, signed `sprint`, carrying what landed, the outcome and next status, and any issues; none where nothing moved.
+Settle the project as well: a dead claim outside the batch goes back to `ready` with a comment; `human` stays only where a question is open. One comment per ticket the close moves, signed `sprint`, carrying what landed, the outcome and next status, and any issues; none where nothing moved.
 
 **The close report**, the last thing the sprint says:
 
 ```
-SPRINT: <label>: <n> landed, <n> escalated, <n> slipped, <n> parked
+SPRINT: <project>: <n> landed, <n> escalated, <n> slipped, <n> parked
 ```
 
 Then one line per batch ticket (`TAN-123 landed: PR #456`), one line per skipped ticket with its reason, and what waits on the human. A sprint that ends in the middle (the session dies, the human stops it) leaves dead claims, and the next sprint's §2 recovers them.

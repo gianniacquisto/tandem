@@ -8,7 +8,7 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli ticket complete — a ticket is done.",
+    "tandem-cli ticket complete \u2014 a ticket is done.",
     "",
     "Usage:",
     "  tandem-cli ticket complete --id <id>"

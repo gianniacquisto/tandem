@@ -82,7 +82,12 @@ impl Drop for Sandbox {
 fn probe(store: &Store, actor: &Actor, name: &str) {
     store
         .write(actor, |write| {
-            write.insert_project(NewProject { name, position: 0 })
+            write.insert_project(NewProject {
+                name,
+                key: "",
+                last_number: 0,
+                position: 0,
+            })
         })
         .expect("the write lands");
 }
@@ -253,6 +258,8 @@ mod gate {
             let outcome = store.write(&Actor::Human, |write| {
                 write.insert_project(NewProject {
                     name: "blocked",
+                    key: "",
+                    last_number: 0,
                     position: 0,
                 })
             });
@@ -297,6 +304,8 @@ mod gate {
             let outcome = store.write(&Actor::Human, |write| {
                 write.insert_project(NewProject {
                     name: "blocked",
+                    key: "",
+                    last_number: 0,
                     position: 0,
                 })
             });
@@ -483,6 +492,7 @@ mod schema {
                 "projects",
                 "schema_migrations",
                 "store_meta",
+                "ticket_aliases",
                 "ticket_dependencies",
                 "tickets",
             ],
@@ -1240,30 +1250,20 @@ mod schema {
         assert!(has_index(&connection, "tickets_label_position"));
         assert!(!has_index(&connection, "tickets_lane_position"));
 
-        let labels: Vec<(String, String, i64, i64, String)> = connection
-            .prepare(
-                "SELECT name, key, last_number, position, project FROM labels ORDER BY position",
-            )
+        let labels: Vec<(String, i64, String)> = connection
+            .prepare("SELECT name, position, project FROM labels ORDER BY position")
             .unwrap()
-            .query_map([], |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                ))
-            })
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
             .unwrap()
             .collect::<std::result::Result<_, _>>()
             .unwrap();
         assert_eq!(
             labels,
             vec![
-                ("Tandem".into(), "TAN".into(), 7, 0, "Tandem".into()),
-                ("Ui".into(), "UI".into(), 2, 1, "Tandem".into()),
+                ("Tandem".into(), 0, "Tandem".into()),
+                ("Ui".into(), 1, "Tandem".into()),
             ],
-            "names, keys, counters, order and project parents are unchanged"
+            "names, order and project parents are unchanged (the key and counter moved to the project at v16)"
         );
         let tickets: Vec<(String, Option<String>, Option<i64>, i64)> = connection
             .prepare("SELECT id, label, number, position FROM tickets WHERE title != 'migrates' ORDER BY id")
@@ -1275,10 +1275,11 @@ mod schema {
         assert_eq!(tickets.len(), 4);
         assert_eq!(tickets[0].1.as_deref(), Some("Tandem"));
         assert_eq!(tickets[2].1.as_deref(), Some("Ui"));
-        assert_eq!(tickets[3].1, None, "the default area stays unnamed");
+        assert_eq!(tickets[3].1, None, "an unlabelled ticket stays unlabelled");
         assert_eq!(
-            (tickets[0].2, tickets[1].2, tickets[2].2),
-            (Some(6), Some(7), Some(2))
+            (tickets[0].2, tickets[1].2, tickets[2].2, tickets[3].2),
+            (Some(6), Some(7), Some(8), Some(9)),
+            "the Tandem label keeps its numbers; the Ui ticket and the default-area ticket take the project's next"
         );
 
         let after: Vec<(String, Option<String>)> = Board::with_actor(sandbox.store(), Actor::Human)
@@ -1291,6 +1292,296 @@ mod schema {
         assert_eq!(
             before, after,
             "every ref reads the same across the migration"
+        );
+    }
+
+    /// A v15 home: project P holds labels P (key P, tickets 1 to 3) and Q (key Q,
+    /// tickets 1 and 2); a done and an archived ticket sit in Q; project Retro has
+    /// no label; three tickets sit in the default area (done, archived, and
+    /// archived but not done).
+    fn v15_home(name: &str) -> Sandbox {
+        let sandbox = Sandbox::new(name);
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..15], &Actor::Human).expect("v15 applies");
+        connection
+            .execute_batch(
+                "INSERT INTO projects (name, position, author) VALUES ('P', 0, 'human'),
+                                                                      ('Retro', 1, 'human');
+                 INSERT INTO labels (name, key, last_number, position, project, author)
+                     VALUES ('P', 'P', 3, 0, 'P', 'human'),
+                            ('Q', 'Q', 2, 1, 'P', 'human');
+                 INSERT INTO tickets
+                    (id, title, status, archived, label, number, origin, assignee, position,
+                     created_at, completed_at, author)
+                 VALUES
+                    ('00000000-0000-0000-0000-000000000001', 'p1', 'ready', 0, 'P', 1, 'human', NULL, 0, '2026-10-01T00:00:00Z', NULL, 'human'),
+                    ('00000000-0000-0000-0000-000000000002', 'p2', 'ready', 0, 'P', 2, 'human', NULL, 1, '2026-10-02T00:00:00Z', NULL, 'human'),
+                    ('00000000-0000-0000-0000-000000000003', 'p3', 'ready', 0, 'P', 3, 'human', NULL, 2, '2026-10-03T00:00:00Z', NULL, 'human'),
+                    ('00000000-0000-0000-0000-0000000000b2', 'q2 older', 'done', 0, 'Q', 2, 'human', NULL, 3, '2026-09-01T00:00:00Z', '2026-09-02T00:00:00Z', 'human'),
+                    ('00000000-0000-0000-0000-0000000000b1', 'q1 newer', 'backlog', 1, 'Q', 1, 'human', NULL, 4, '2026-09-05T00:00:00Z', NULL, 'human'),
+                    ('00000000-0000-0000-0000-0000000000c1', 'loose done', 'done', 1, NULL, NULL, 'human', NULL, 5, '2026-08-01T00:00:00Z', '2026-08-02T00:00:00Z', 'human'),
+                    ('00000000-0000-0000-0000-0000000000c2', 'loose archived', 'ready', 1, NULL, NULL, 'human', NULL, 6, '2026-08-03T00:00:00Z', NULL, 'human');
+                 INSERT INTO comments (ticket_id, author, at, body)
+                     VALUES ('00000000-0000-0000-0000-0000000000b1', 'builder', '2026-09-06T00:00:00Z', 'kept');
+                 INSERT INTO ticket_dependencies (ticket_id, depends_on_id, author)
+                     VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-0000000000b2', 'human');",
+            )
+            .unwrap();
+        drop(connection);
+        sandbox
+    }
+
+    #[test]
+    fn a_v15_file_migrates_to_v16_one_prefix_per_project_with_aliases_for_the_retired_refs() {
+        use crate::domain::{Board, TicketQuery};
+
+        let sandbox = v15_home("v15-to-v16");
+        let board = Board::with_actor(sandbox.store(), Actor::Human);
+
+        // A read before the first write shows the refs the migration will leave.
+        let before: Vec<(String, Option<String>)> = board
+            .list(&TicketQuery {
+                archived: crate::domain::Archived::Included,
+                ..TicketQuery::default()
+            })
+            .expect("a v15 home reads before it migrates")
+            .into_iter()
+            .map(|ticket| (ticket.title, ticket.reference))
+            .collect();
+        assert_eq!(version(&sandbox.connection()).unwrap(), Some(15));
+
+        probe(&sandbox.store(), &Actor::Human, "migrates");
+        let connection = sandbox.connection();
+        assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
+        assert_eq!(CURRENT_VERSION, 16);
+        assert!(!has_column(&connection, "labels", "key").unwrap());
+        assert!(!has_column(&connection, "labels", "last_number").unwrap());
+        assert!(has_column(&connection, "projects", "key").unwrap());
+        assert!(has_column(&connection, "tickets", "project").unwrap());
+
+        let all = |query: TicketQuery| board.list(&query).unwrap();
+        let tickets = all(TicketQuery {
+            archived: crate::domain::Archived::Included,
+            ..TicketQuery::default()
+        });
+        let after: Vec<(String, Option<String>)> = tickets
+            .iter()
+            .filter(|ticket| ticket.title != "migrates")
+            .map(|ticket| (ticket.title.clone(), ticket.reference.clone()))
+            .collect();
+        assert_eq!(before, after, "the in-memory read and the migration agree");
+
+        let reference = |title: &str| {
+            tickets
+                .iter()
+                .find(|ticket| ticket.title == title)
+                .and_then(|ticket| ticket.reference.clone())
+        };
+        // P-1 to P-3 are unchanged.
+        assert_eq!(reference("p1").as_deref(), Some("P-1"));
+        assert_eq!(reference("p3").as_deref(), Some("P-3"));
+        // Q-1 and Q-2 are P-4 and P-5 in created order (the older Q-2 first), the
+        // done and the archived one included.
+        assert_eq!(reference("q2 older").as_deref(), Some("P-4"));
+        assert_eq!(reference("q1 newer").as_deref(), Some("P-5"));
+        // The default area is homed in the first project, numbered after.
+        assert_eq!(reference("loose done").as_deref(), Some("P-6"));
+        assert_eq!(reference("loose archived").as_deref(), Some("P-7"));
+        assert!(
+            tickets
+                .iter()
+                .all(|ticket| ticket.project == "P" || ticket.title == "migrates"),
+            "every ticket has a project"
+        );
+        let loose = tickets.iter().find(|t| t.title == "loose done").unwrap();
+        assert_eq!(loose.label, None, "homed unlabelled");
+
+        // The aliases hold the retired refs, and only those.
+        let aliases: Vec<(String, String)> = connection
+            .prepare("SELECT reference, ticket_id FROM ticket_aliases ORDER BY reference")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            aliases,
+            vec![
+                (
+                    "Q-1".to_string(),
+                    "00000000-0000-0000-0000-0000000000b1".to_string()
+                ),
+                (
+                    "Q-2".to_string(),
+                    "00000000-0000-0000-0000-0000000000b2".to_string()
+                ),
+            ],
+            "the default-area tickets never had a ref, so they get no alias"
+        );
+
+        // A retired ref resolves on show, set and comment_add, and the answer
+        // carries the current ref.
+        let shown = board.ticket("Q-1").unwrap();
+        assert_eq!(shown.reference.as_deref(), Some("P-5"));
+        assert_eq!(
+            board.ticket("q-2").unwrap().reference.as_deref(),
+            Some("P-4")
+        );
+        let set = board
+            .set(
+                "Q-1",
+                crate::domain::SetFields {
+                    title: crate::domain::Edit::Set("q1 renamed"),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(set.reference.as_deref(), Some("P-5"));
+        board
+            .append_comment("Q-2", "builder", "via the alias")
+            .unwrap();
+        assert_eq!(board.comments("P-4").unwrap().len(), 1);
+        // Comments, edges and the rest are untouched.
+        assert_eq!(board.comments("P-5").unwrap().len(), 1);
+        assert_eq!(
+            board.ticket("P-1").unwrap().blocked_by[0]
+                .reference
+                .as_deref(),
+            Some("P-4"),
+            "the edge survives and shows the blocker's current ref"
+        );
+
+        // The retired prefix can never name a project.
+        assert!(matches!(
+            board.add_project("Quiet", Some("Q")),
+            Err(crate::domain::DomainError::DuplicateProjectKey(_))
+        ));
+        let hint = match board.ticket("P-99").unwrap_err() {
+            crate::domain::DomainError::UnknownRef { hint, .. } => hint,
+            other => panic!("expected unknownRef, got {other:?}"),
+        };
+        assert!(
+            hint.contains("Project \"P\" (P) has issued P-1 to P-7"),
+            "{hint}"
+        );
+
+        // Retro had no label: it keeps a generated key and can hold tickets.
+        let projects = board.projects().unwrap();
+        let retro = projects.iter().find(|p| p.name == "Retro").unwrap();
+        assert_eq!(retro.key, "RET");
+        let filed = board
+            .add(
+                "retro first",
+                crate::domain::AddTicket {
+                    project: Some("Retro"),
+                    ..crate::domain::AddTicket::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(filed.reference.as_deref(), Some("RET-1"));
+
+        // Every row carries its project.
+        let null_projects: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM tickets WHERE project IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(null_projects, 0);
+    }
+
+    #[test]
+    fn a_home_with_only_default_area_tickets_and_no_project_gets_an_inbox() {
+        use crate::domain::{Board, TicketQuery};
+
+        let sandbox = Sandbox::new("v15-inbox");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..15], &Actor::Human).expect("v15 applies");
+        connection
+            .execute_batch(
+                "INSERT INTO tickets
+                    (id, title, status, archived, label, number, origin, assignee, position,
+                     created_at, completed_at, author)
+                 VALUES
+                    ('00000000-0000-0000-0000-0000000000d1', 'old', 'done', 1, NULL, NULL, 'human', NULL, 0, '2026-08-01T00:00:00Z', NULL, 'human');",
+            )
+            .unwrap();
+        drop(connection);
+
+        probe(&sandbox.store(), &Actor::Human, "migrates");
+        let board = Board::with_actor(sandbox.store(), Actor::Human);
+        let projects = board.projects().unwrap();
+        let inbox = projects
+            .iter()
+            .find(|p| p.name == "Inbox")
+            .expect("an Inbox is created");
+        assert_eq!(inbox.key, "INB");
+        let old = board
+            .list(&TicketQuery {
+                archived: crate::domain::Archived::Included,
+                ..TicketQuery::default()
+            })
+            .unwrap()
+            .into_iter()
+            .find(|ticket| ticket.title == "old")
+            .unwrap();
+        assert_eq!(old.project, "Inbox");
+        assert_eq!(old.reference.as_deref(), Some("INB-1"));
+        let aliases: i64 = sandbox
+            .connection()
+            .query_row("SELECT COUNT(*) FROM ticket_aliases", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(aliases, 0);
+    }
+
+    #[test]
+    fn a_failure_after_the_rekey_leaves_the_file_at_v15() {
+        let sandbox = v15_home("v15-rollback");
+        let connection = Connection::open(sandbox.database()).unwrap();
+        fn fail(_connection: &Connection) -> rusqlite::Result<()> {
+            Err(rusqlite::Error::InvalidQuery)
+        }
+        let mut migrations: Vec<Migration> = Vec::new();
+        for migration in MIGRATIONS {
+            migrations.push(Migration {
+                version: migration.version,
+                name: migration.name,
+                apply: migration.apply,
+            });
+        }
+        // v16 applies and then a bogus v17 fails: each migration has its own
+        // transaction, so a failure inside v16 itself is the case that matters.
+        migrations[15].apply = |connection| {
+            super::super::rekey::migrate(connection)?;
+            fail(connection)
+        };
+        let outcome = migrate_with(&connection, &migrations, &Actor::Human);
+        assert!(outcome.is_err(), "the migration fails");
+        assert_eq!(
+            version(&connection).unwrap(),
+            Some(15),
+            "the file stays at v15"
+        );
+        assert!(
+            has_column(&connection, "labels", "key").unwrap(),
+            "the label columns are back"
+        );
+        assert!(!has_column(&connection, "tickets", "project").unwrap());
+        assert!(!has_table(&connection, "ticket_aliases").unwrap());
+        let numbers: Vec<Option<i64>> = connection
+            .prepare("SELECT number FROM tickets ORDER BY position")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            numbers,
+            vec![Some(1), Some(2), Some(3), Some(2), Some(1), None, None],
+            "no number moved"
         );
     }
 
@@ -1320,8 +1611,17 @@ mod schema {
         );
 
         board
-            .add("probe", AddTicket::default())
-            .expect("the first write migrates and lands the ticket");
+            .add_project("Main", None)
+            .expect("the first write migrates and lands the project");
+        board
+            .add(
+                "probe",
+                AddTicket {
+                    project: Some("Main"),
+                    ..AddTicket::default()
+                },
+            )
+            .expect("the ticket lands");
         assert_eq!(
             version(&sandbox.connection()).unwrap(),
             Some(CURRENT_VERSION),
@@ -1338,6 +1638,8 @@ mod schema {
         let outcome = sandbox.store().write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "k",
+                key: "",
+                last_number: 0,
                 position: 0,
             })
         });
@@ -1449,6 +1751,8 @@ mod schema {
         let outcome = store.write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "blocked",
+                key: "",
+                last_number: 0,
                 position: 0,
             })
         });
@@ -1492,6 +1796,8 @@ mod schema {
         let outcome = store.write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "blocked",
+                key: "",
+                last_number: 0,
                 position: 0,
             })
         });
@@ -1674,6 +1980,8 @@ mod refusal {
         let outcome = sandbox.store().write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "k",
+                key: "",
+                last_number: 0,
                 position: 0,
             })
         });
@@ -1703,6 +2011,8 @@ mod refusal {
             .write(&Actor::Human, |write| {
                 write.insert_project(NewProject {
                     name: "k",
+                    key: "",
+                    last_number: 0,
                     position: 0,
                 })
             })
@@ -1739,6 +2049,8 @@ mod refusal {
         let write = sandbox.store().write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "j",
+                key: "",
+                last_number: 0,
                 position: 1,
             })
         });
@@ -1791,6 +2103,8 @@ mod refusal {
         let _ = sandbox.store().write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "k",
+                key: "",
+                last_number: 0,
                 position: 0,
             })
         });
@@ -1831,8 +2145,6 @@ mod actor {
             .write(actor, |write| {
                 write.insert_label(NewLabel {
                     name: "Port",
-                    key: "PRT",
-                    last_number: 4,
                     position: 0,
                     project: "Port",
                 })?;
@@ -1842,6 +2154,7 @@ mod actor {
                     description: Some("the body"),
                     status: "backlog",
                     archived: false,
+                    project: "Port",
                     label: Some("Port"),
                     number: Some(4),
                     origin: "human",
@@ -1862,6 +2175,8 @@ mod actor {
                 })?;
                 write.insert_project(NewProject {
                     name: "defaultLabel",
+                    key: "",
+                    last_number: 0,
                     position: 0,
                 })?;
                 Ok(())
@@ -2046,6 +2361,8 @@ mod writes {
         let outcome = store.write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "three",
+                key: "",
+                last_number: 0,
                 position: 0,
             })
         });
@@ -2086,6 +2403,8 @@ mod writes {
             .write(&Actor::Human, |write| {
                 write.insert_project(NewProject {
                     name: "k",
+                    key: "",
+                    last_number: 0,
                     position: 0,
                 })
             })
@@ -2128,6 +2447,8 @@ mod writes {
                             .write(&Actor::Agent(group.to_string()), |write| {
                                 write.insert_project(NewProject {
                                     name: &key,
+                                    key: "",
+                                    last_number: 0,
                                     position: 0,
                                 })
                             })
@@ -2166,6 +2487,8 @@ mod writes {
                         .write(&Actor::Human, |write| {
                             write.insert_project(NewProject {
                                 name: &key,
+                                key: "",
+                                last_number: 0,
                                 position: 0,
                             })
                         })
@@ -2737,7 +3060,7 @@ mod members {
         let connection = sandbox.connection();
         assert_eq!(MEMBERS_VERSION, 14);
         assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
-        assert_eq!(CURRENT_VERSION, 15);
+        assert_eq!(CURRENT_VERSION, 16);
         for table in ["members", "member_tokens", "member_signin_keys"] {
             assert!(has_table(&connection, table).unwrap(), "{table}");
         }
@@ -3625,7 +3948,7 @@ mod access {
         let connection = sandbox.connection();
         assert_eq!(ACCESS_RECORD_VERSION, 15);
         assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
-        assert_eq!(CURRENT_VERSION, 15);
+        assert_eq!(CURRENT_VERSION, 16);
         assert!(has_table(&connection, "access_record").unwrap());
         assert_eq!(
             count(&sandbox, "SELECT COUNT(*) FROM access_record"),

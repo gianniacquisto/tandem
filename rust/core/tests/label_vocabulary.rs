@@ -17,8 +17,9 @@ const ALLOWED: [&str; 10] = [
     "rust/core/src/store/schema.rs",
     // The migration tests build v1 to v11 files, which are lane-shaped.
     "rust/core/src/store/tests.rs",
-    // A read before the first write still answers on a v11 file's lane names.
-    "rust/core/src/store/board_rows.rs",
+    // A read before the first write still answers on a v11 file's lane names,
+    // through the v16 re-key's legacy reader.
+    "rust/core/src/store/rekey.rs",
     // The export's table classification names the v11 file's table, so an
     // export of a store behind this build classifies every table it finds.
     "rust/core/src/store/export.rs",

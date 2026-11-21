@@ -321,7 +321,7 @@ fn call_frame(
         tracing::warn!(tool = ?name, "unknown tool");
         return error_frame(id, INVALID_PARAMS, format!("Unknown tool: {name}"));
     };
-    let arguments = params
+    let mut arguments = params
         .and_then(|params| params.get("arguments"))
         .cloned()
         .unwrap_or_else(|| json!({}));
@@ -340,6 +340,14 @@ fn call_frame(
             return error_frame(id, INVALID_PARAMS, message);
         }
     };
+    // A tool whose schema carries no `detail` ignores one (the CLI's remote door
+    // sends it on every call). The label and project params refuse an argument
+    // they do not name, so it is dropped here rather than refused.
+    if tool.input_schema["properties"].get("detail").is_none()
+        && let Some(map) = arguments.as_object_mut()
+    {
+        map.remove("detail");
+    }
     // A receipt names the title only when the write could have changed it.
     let title_changed = tool.method_tag == "ticket.add"
         || (tool.method_tag == "ticket.set" && arguments.get("title").is_some());
@@ -666,7 +674,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_add",
             method_tag: "ticket.add",
-            description: "File a ticket. A title alone lands backlog, unowned, on top of the default area. Answers the whole ticket; detail \"lean\" answers a short receipt without the description.",
+            description: "File a ticket. A ticket always lives in a project: name `project`, or a `label` alone implies its project; with neither it is refused and the projects are listed. A title and a project land backlog, unowned, unlabelled, on top of the project. Answers the whole ticket; detail \"lean\" answers a short receipt without the description.",
             input_schema: with_detail(TicketAddParams::schema()),
             annotations: Annotations::WRITE,
             method: Method::TicketAdd(TicketAddParams::default()),
@@ -682,7 +690,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "ticket_move",
             method_tag: "ticket.move",
-            description: "Move between labels and/or within one. Omit the index to append. Answers the whole ticket; detail \"lean\" answers a short receipt.",
+            description: "Move between labels of the ticket's own project (or to no label) and/or within one; the ref never changes, and a label of another project is refused. Omit the index to append. Answers the whole ticket; detail \"lean\" answers a short receipt.",
             input_schema: with_detail(TicketMoveParams::schema()),
             annotations: Annotations::WRITE,
             method: Method::TicketMove(TicketMoveParams::default()),
@@ -746,7 +754,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "label_add",
             method_tag: "label.add",
-            description: "Declare a label. A label must exist before tickets move to it.",
+            description: "Declare a label inside a project (project is required). A label must exist before tickets move to it.",
             input_schema: LabelAddParams::schema(),
             annotations: Annotations::WRITE,
             method: Method::LabelAdd(LabelAddParams::default()),
@@ -754,7 +762,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "label_rename",
             method_tag: "label.rename",
-            description: "Rename a label, rewriting every ticket in it in one write.",
+            description: "Rename a label, rewriting every ticket in it in one write. A new project is refused while the label holds tickets.",
             input_schema: LabelRenameParams::schema(),
             annotations: Annotations::WRITE,
             method: Method::LabelRename(LabelRenameParams::default()),
@@ -762,7 +770,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "label_delete",
             method_tag: "label.delete",
-            description: "Delete a label; members fall back to the default area, never deleted.",
+            description: "Delete a label; its tickets lose the label and stay in their project with their refs, never deleted.",
             input_schema: LabelDeleteParams::schema(),
             annotations: Annotations::DESTRUCTIVE,
             method: Method::LabelDelete(LabelDeleteParams::default()),
@@ -778,7 +786,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "project_list",
             method_tag: "project.list",
-            description: "List every project with its labels, in render order.",
+            description: "List every project with its key and labels, in render order.",
             input_schema: EmptyParams::schema(),
             annotations: Annotations::READ,
             method: Method::ProjectList(EmptyParams {}),
@@ -786,7 +794,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "project_add",
             method_tag: "project.add",
-            description: "Declare a project. A project must exist before labels name it as parent.",
+            description: "Declare a project and the ref key it issues (abbr; omitted, the first three letters of the name). A project must exist before labels or tickets name it.",
             input_schema: ProjectAddParams::schema(),
             annotations: Annotations::WRITE,
             method: Method::ProjectAdd(ProjectAddParams::default()),
@@ -794,7 +802,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "project_rename",
             method_tag: "project.rename",
-            description: "Rename a project, moving its labels with it.",
+            description: "Rename a project, moving its labels and tickets with it; abbr moves the key until the project has issued a number.",
             input_schema: ProjectRenameParams::schema(),
             annotations: Annotations::WRITE,
             method: Method::ProjectRename(ProjectRenameParams::default()),
@@ -802,7 +810,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "project_delete",
             method_tag: "project.delete",
-            description: "Delete an empty project; refused while labels belong to it.",
+            description: "Delete an empty project; refused while labels or tickets belong to it.",
             input_schema: ProjectDeleteParams::schema(),
             annotations: Annotations::DESTRUCTIVE,
             method: Method::ProjectDelete(ProjectDeleteParams::default()),

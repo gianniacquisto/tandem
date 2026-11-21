@@ -218,8 +218,12 @@ fn gathering_reads_a_fresh_home_without_creating_it() {
 fn gathering_counts_the_stores_rows_and_the_bikeshed_notes() {
     let (store, root) = temp_store("counts");
     let home = store.home().clone();
-    Board::new(store)
-        .add("Doctor probe", AddTicket::default())
+    let board = Board::new(store);
+    board
+        .add_project("Main", None)
+        .expect("the project is added");
+    board
+        .add("Doctor probe", probe_fields())
         .expect("the ticket is written");
     std::fs::create_dir_all(home.directory().join("bikeshed")).unwrap();
     std::fs::write(home.directory().join("bikeshed/note.md"), "a note\n").unwrap();
@@ -302,11 +306,23 @@ fn free_pages_past_a_fifth_of_the_file_add_a_hint_and_stay_green() {
     );
 }
 
+/// The fields of a probe ticket: it lives in the project the case declares.
+fn probe_fields() -> AddTicket<'static> {
+    AddTicket {
+        project: Some("Main"),
+        ..AddTicket::default()
+    }
+}
+
 /// A store with one ticket, so the schema and a row exist.
 fn written_store(name: &str) -> (Store, PathBuf) {
     let (store, root) = temp_store(name);
-    Board::new(store.clone())
-        .add("Doctor probe", AddTicket::default())
+    let board = Board::new(store.clone());
+    board
+        .add_project("Main", None)
+        .expect("the project is added");
+    board
+        .add("Doctor probe", probe_fields())
         .expect("the ticket is written");
     (store, root)
 }

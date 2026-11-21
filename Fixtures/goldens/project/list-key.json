@@ -1,0 +1,24 @@
+{
+  "argv": [
+    "project",
+    "list"
+  ],
+  "exit": 0,
+  "stderr": [],
+  "stdin": "",
+  "stdout": {
+    "projects": [
+      {
+        "key": "ALP",
+        "labels": [],
+        "name": "Alpha"
+      },
+      {
+        "key": "BET",
+        "labels": [],
+        "name": "Beta"
+      }
+    ]
+  },
+  "stdoutKind": "json"
+}

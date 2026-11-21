@@ -65,12 +65,16 @@ A ticket waiting on another ticket: a `ticket_dependencies` edge from the depend
 _Avoid_: blocked on (as a field), dependency column, gated (that is the gate's word), waiting (as a state)
 
 **Project**:
-A label's parent: the store's `projects` table, one row per project with its render order. A project holds several labels, and every label belongs to exactly one project; a ticket's project is derived via its label, never stored. The default area has no project: cross-project capture, first on the board (ADR 0039).
+The home of a ticket and the owner of its ref prefix: the store's `projects` table, one row per project with its render order, its `key` (the `TAN` of `TAN-42`) and the last number it issued. A ticket stores its project at creation and never changes it, so there is no default area: every ticket has a project and a ref, and every creation path names one (ADR 0053). A project holds optional labels; an empty project lists truthfully.
 _Avoid_: epic, portfolio, workspace
 
 **Label**:
-The named area a ticket belongs to: the board's row and the list's grouping. Every ticket sits in one label, or in the unnamed default area, which stays first. Every label belongs to exactly one parent project (ADR 0039).
+An optional grouping of tickets inside one project: the board's row and the list's grouping. A ticket has at most one label, which belongs to the ticket's project; a ticket with none sits in the project's unlabelled group, which stays first. A label has a name, a render order and exactly one parent project, and owns no key and no counter. It stays "label": it is not an epic (ADR 0039, ADR 0053).
 _Avoid_: lane, cycle lane, section, swimlane, epic, list (Trello's word)
+
+**Ref**:
+A ticket's human handle: its project's key and its project-wide number, `TAN-42`, derived on read and never stored. It never changes while the ticket stays in its project, whatever label it moves between. Every id-taking verb accepts it beside the UUID, case-insensitively. A ref the one-prefix migration retired (`CUT-34`) still resolves, through `ticket_aliases`, and the answer carries the current ref (ADR 0053).
+_Avoid_: id (that is the UUID), key (that is the prefix alone), number (that is the part after the dash)
 
 **Origin**:
 Who filed a ticket: `human`, or the name of the agent that filed it. Written once, at add, and never changed; a ticket that predates the field reads as `human`. A different question from the assignee, who is on it — a ticket an agent files *for* the human has both.
