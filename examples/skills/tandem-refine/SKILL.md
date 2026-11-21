@@ -11,7 +11,7 @@ A refine pass shapes tickets and builds nothing. It dispatches the `refiner` (`a
 2. **Scout each picked ticket**: a ticket whose comment log already holds a `scout` comment reuses its latest `SCOUT:` line. Dispatch one `scout` (`agents/scout.md`) per remaining ticket, on `sonnet`, low effort, all at once (each writes only its own comment), or in batches as large as the host's concurrent-subagent limit allows. Show the human each `SCOUT:` line, tier and trigger, and let the human confirm or override each tier.
 3. **Pick the mode** before the first refiner: **one at a time** (the default) or **in parallel**. Each refiner interviews the human, so parallel splits the human's attention across interviews; that cost is the human's to accept.
 4. **Dispatch** one `refiner` per ticket with the ticket id and its `SCOUT:` line, on its tier's model and effort. Relay each refiner's grilling round to the human and the human's answers back; never answer a round yourself.
-5. **Relay** each refiner's one-line report.
+5. **Relay** each refiner's one-line report, its ticket named by the Naming tickets rule in `AGENTS.md`.
 
 Done when every ticket the pass took carries the brief shape at the status it earns (`ready`, or `on-hold` with its reason), and no question the human has not answered remains open.
 

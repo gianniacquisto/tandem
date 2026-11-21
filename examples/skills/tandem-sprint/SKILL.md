@@ -22,7 +22,7 @@ Read the board in one round: `ticket_list` with `project` for the project's open
 **Draw `ready` only**, at most five, in stored order:
 
 - skip any row whose `blocked` is true, whatever its status (the edge is the block, ADR 0035), with one line naming the blocker;
-- report `backlog` rows as `TAN-217 needs a refine pass`, never drawn: only refine moves a ticket to `ready`;
+- report `backlog` rows as `TAN-217 <title>: <gist>, needs a refine pass`, never drawn: only refine moves a ticket to `ready` (ticket naming follows the Naming tickets rule in `AGENTS.md`);
 - leave `on-hold` alone: it is parked on purpose;
 - a ticket with an open question, a pending human decision, or more than one pass of work is not ready: report it for refine.
 
@@ -84,7 +84,7 @@ Settle the project as well: a dead claim outside the batch goes back to `ready` 
 SPRINT: <project>: <n> landed, <n> escalated, <n> slipped, <n> parked
 ```
 
-Then one line per batch ticket (`TAN-123 landed: PR #456`), one line per skipped ticket with its reason, and what waits on the human. A sprint that ends in the middle (the session dies, the human stops it) leaves dead claims, and the next sprint's §2 recovers them.
+Then one line per batch ticket (`TAN-123 <title>: landed, PR #456`), one line per skipped ticket with its reason, and what waits on the human. Every ticket named in the report follows the Naming tickets rule in `AGENTS.md`: ref, title and gist. A sprint that ends in the middle (the session dies, the human stops it) leaves dead claims, and the next sprint's §2 recovers them.
 
 ## Drain mode
 
