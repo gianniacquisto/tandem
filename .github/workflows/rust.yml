@@ -13,7 +13,7 @@ name: Rust
 #               code makes its output platform-dependent.
 #   test        the full suite on every OS (`cargo test` compiles the lib, the
 #               bins and the tests, so no separate build gate), plus the
-#               installer suite off Windows and the retired-path scan on macOS.
+#               installer suite off Windows and the retired-path scan and the em-dash diff gate on macOS.
 #   contention  the ten-run loop over the Windows-flaky store cases.
 # They have to report on every pull request to be worth requiring: a required
 # check that a path-filtered workflow never creates reads "Expected" forever
@@ -195,6 +195,15 @@ jobs:
         if: needs.changes.outputs.code != 'false' && runner.os == 'macOS'
         working-directory: ${{ github.workspace }}
         run: bash Scripts/check-retired-paths.sh
+
+      - name: "Gate: no added line carries an em dash"
+        # TAN-357: AGENTS.md bans U+2014 in what an agent writes. It reads the
+        # diff, not the platform build, so the macOS leg runs it once.
+        if: needs.changes.outputs.code != 'false' && runner.os == 'macOS'
+        working-directory: ${{ github.workspace }}
+        run: |
+          bash Scripts/test_check_prose_dash.sh
+          bash Scripts/check-prose-dash.sh
 
       - name: "Gate: the installer and stager suites"
         # TAN-253 wrote the suite and nothing ran it in CI, so a change to
