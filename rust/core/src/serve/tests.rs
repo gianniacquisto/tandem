@@ -874,6 +874,7 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
         ("/static/htmx.min.js", "text/javascript; charset=utf-8"),
         ("/static/sse.js", "text/javascript; charset=utf-8"),
         ("/static/tandem.js", "text/javascript; charset=utf-8"),
+        ("/static/icon.svg", "image/svg+xml"),
     ] {
         let (status, headers, body) = get(&app, path).await;
         assert_eq!(status, StatusCode::OK, "{path} is served");
@@ -912,6 +913,12 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
     assert!(
         body.contains("hx-ext=\"sse\""),
         "the shell connects the change stream"
+    );
+    // A linked icon keeps the browser from asking for /favicon.ico, a 404
+    // that logged a warning on every page load.
+    assert!(
+        body.contains("rel=\"icon\" href=\"/static/icon.svg?v="),
+        "the shell links the icon"
     );
 
     let (status, _, _) = get(&app, "/static/unknown.js").await;
@@ -3864,6 +3871,10 @@ async fn the_login_page_and_static_assets_open_without_the_token_and_nothing_els
     assert!(
         body.contains("name=\"username\""),
         "a field a manager can fill"
+    );
+    assert!(
+        body.contains("rel=\"icon\" href=\"/static/icon.svg?v="),
+        "the sign-in page links the icon"
     );
 
     let css = Request::builder()
