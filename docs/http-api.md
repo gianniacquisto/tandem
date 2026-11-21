@@ -18,7 +18,7 @@ What a request needs depends on how the server was started ([configuration](conf
 | --- | --- | --- |
 | Loopback | the default `--host 127.0.0.1` | Nothing. The machine is trusted. |
 | Open | a non-loopback `--host` and `--allow-unauthenticated` | Nothing. Only for a network you trust. |
-| Token | a non-loopback `--host` and `TANDEM_TOKEN` | `Authorization: Bearer <credential>`, or a browser session cookie from `/login`, on every route but `/health`, `/login`, `/logout` and the static assets. |
+| Token | a non-loopback `--host` and `TANDEM_TOKEN` | `Authorization: Bearer <credential>`, or a browser session cookie from `/login`, on every route but `/health`, `/login` and the static assets. |
 
 In token mode, the credential decides what the request may do. The owner token (`TANDEM_TOKEN`) may do everything. In [team mode](self-hosting.md), a member signs in a browser with a sign-in key (`tdk_...`), and gives their agent a personal token (`tdm_...`):
 

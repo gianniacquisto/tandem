@@ -97,9 +97,16 @@ fn render_tool(tool: &Tool) -> String {
 fn render() -> String {
     let mut out = String::new();
     let mut current = "";
+    let mut seen: Vec<&str> = Vec::new();
     for tool in mcp::tools() {
         let heading = group(tool.name);
         if heading != current {
+            assert!(
+                !seen.contains(&heading),
+                "tool {}: the {heading} tools are not registered together in tools(), so the page would repeat the heading; move it beside the others",
+                tool.name
+            );
+            seen.push(heading);
             out.push_str(&format!("### {heading}\n\n"));
             current = heading;
         }

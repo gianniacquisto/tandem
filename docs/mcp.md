@@ -11,7 +11,7 @@
 | Protocol | JSON-RPC 2.0. The server answers `initialize`, `tools/list` and `tools/call`. |
 | `X-Tandem-Agent` | Optional. The name writes are recorded under: lowercase letters, digits and hyphens. Any other shape answers `400`. See [actors](concepts.md#actors). |
 | `Authorization` | `Bearer <token>`, required when the server is not on loopback: the owner token or a member's personal token. See [self-hosting](self-hosting.md). |
-| `Origin` | A browser origin is refused `403`, unless it is exactly the server's `--public-origin`. |
+| `Origin` | A browser origin is refused `403`, unless it is the server's own address or exactly its `--public-origin`. |
 
 The `initialize` answer carries a `health` object beside the usual fields: the server's version, its home, whether the store opened and how many tools it serves.
 
@@ -39,7 +39,7 @@ The answer is one text item holding a JSON document: the same document the match
 
 There are two kinds, and an agent should handle both.
 
-- **The call was refused** by a rule of the board: an unknown ticket, a block that would close a cycle, a project that still holds tickets. The answer is a normal `result` with `"isError": true` and the reason as text, written so the agent can correct itself:
+- **The call was refused or its arguments were wrong**: an unknown ticket, a block that would close a cycle, a project that still holds tickets, a missing required parameter, a value of the wrong type. The answer is a normal `result` with `"isError": true` and the reason as text, written so the agent can correct itself:
 
   ```json
   {"jsonrpc": "2.0", "id": 2, "result": {"isError": true,
@@ -51,13 +51,13 @@ There are two kinds, and an agent should handle both.
   | Code | Meaning |
   | --- | --- |
   | `-32601` | Unknown method, such as `tools/bogus`. |
-  | `-32602` | Invalid params: an unknown tool, a missing required parameter, a wrong type, a value outside its allowed list. |
+  | `-32602` | Invalid params: an unknown tool, `arguments` that is not a JSON object, or a `detail` other than `lean` or `full`. |
 
   ```json
   {"jsonrpc": "2.0", "id": 3, "error": {"code": -32602, "message": "Invalid arguments for tool: ticket_list: detail is \"lean\" or \"full\""}}
   ```
 
-HTTP-level refusals (`400` for a malformed `X-Tandem-Agent`, `401` for a missing or wrong token, `403` for a foreign origin or a personal token naming someone else) come before JSON-RPC, as plain HTTP statuses.
+HTTP-level refusals come before the tool runs: `400` for a malformed `X-Tandem-Agent`, `401` for a missing, wrong or revoked token, and `403` for a foreign origin, a personal token naming someone else, or a credential without the permission. A `403` for a missing permission carries a JSON-RPC error body with code `-32001`.
 
 ## Lean answers
 

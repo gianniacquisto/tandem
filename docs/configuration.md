@@ -29,7 +29,7 @@ A leading `~` in either override is expanded to your home directory, and a relat
 
 | Variable | Read by | Default | Meaning |
 | --- | --- | --- | --- |
-| `TANDEM_TOKEN` | `tandem serve`, `tandem-cli` | unset | **Serve:** the owner credential, at least 32 characters. Off loopback, every route but `/health`, `/login`, `/logout` and the static assets then wants `Authorization: Bearer <token>`, and a browser signs in once at `/login`. **CLI:** with `TANDEM_SERVER`, sent as the bearer header. The CLI refuses to send it over plain `http://` to a host that is not loopback, and never prints it. |
+| `TANDEM_TOKEN` | `tandem serve`, `tandem-cli` | unset | **Serve:** the owner credential, at least 32 characters. Off loopback, every route but `/health`, `/login` and the static assets then wants `Authorization: Bearer <token>`, and a browser signs in once at `/login`. **CLI:** with `TANDEM_SERVER`, sent as the bearer header. The CLI refuses to send it over plain `http://` to a host that is not loopback, and never prints it. |
 | `TANDEM_PUBLIC_ORIGIN` | `tandem serve` | unset | The one origin a browser sees behind a TLS proxy, such as `https://board.example.com`. Same rules as [`--public-origin`](#tandem-serve); the flag wins when both are set. |
 
 ### The operator API
