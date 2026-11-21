@@ -36,9 +36,14 @@ use crate::store::StoreError;
 
 use self::locked::LockedDirectory;
 
-use self::wikilink::{LinkOccurrence, LinkResolution, NoteIndex, link_occurrences, rewrite_links};
+use self::wikilink::{
+    LinkOccurrence, LinkResolution, NoteIndex, link_occurrences, rewrite_links, rewrite_typed_links,
+};
 
-pub use self::health::{BikeshedHealth, BikeshedHealthCounts, BrokenLink, UnmatchedFolder};
+pub use self::health::{
+    BikeshedHealth, BikeshedHealthCounts, BrokenLink, MissingFolder, UnmatchedFolder, label_folder,
+    project_folder,
+};
 pub use self::stats::{BikeshedProjectStats, BikeshedStats, BikeshedStatsTotals};
 pub use self::wikilink::{BoardNames, BoardProject, LinkResolution as Resolution, Wikilink};
 
@@ -703,6 +708,118 @@ impl Bikeshed {
             })?;
             Ok(Operation {
                 value: to.to_string(),
+                note: None,
+            })
+        })
+    }
+
+    // MARK: - renameFolder
+
+    /// `rename_folder(from, to)`: change a folder's path, the folder and every
+    /// note in it moving together, with the link rewrite of a move (ADR 0005), in
+    /// one locked transaction. `to` may sit under another parent. A target that
+    /// differs only in case from `from` is the same folder, renamed in place.
+    pub fn rename_folder(&self, from: &str, to: &str) -> DomainResult<Operation<MoveOutcome>> {
+        self.validate_new_folder_name(to)?;
+        let (Some(old_url), Some(new_url)) = (self.file_url(from), self.file_url(to)) else {
+            return Err(DomainError::InvalidName(from.to_string()));
+        };
+        if is_descendant(&new_url, &old_url) && from.to_lowercase() != to.to_lowercase() {
+            return Err(DomainError::MoveCycle {
+                path: from.to_string(),
+                into: to.to_string(),
+            });
+        }
+        self.locked(|| {
+            match fs::metadata(&old_url) {
+                Ok(metadata) if metadata.is_dir() => {}
+                _ => return Err(DomainError::UnknownNote(from.to_string())),
+            }
+            let same_folder = from.to_lowercase() == to.to_lowercase();
+            if !same_folder {
+                if fs::symlink_metadata(&new_url).is_ok() {
+                    return Err(DomainError::NoteAlreadyExists(to.to_string()));
+                }
+                if let Some(taken) = self.file_collision(to, false) {
+                    return Err(DomainError::NoteAlreadyExists(taken));
+                }
+            }
+            let notes = self.note_paths();
+            let prefix = format!("{from}/");
+            let moves: Vec<MovedNote> = notes
+                .iter()
+                .filter(|note| note.starts_with(&prefix))
+                .map(|note| MovedNote {
+                    old_path: note.clone(),
+                    new_path: format!("{to}/{}", &note[prefix.len()..]),
+                })
+                .collect();
+            let mut post_move: HashSet<String> = notes.iter().cloned().collect();
+            for moved in &moves {
+                post_move.remove(&moved.old_path);
+                post_move.insert(moved.new_path.clone());
+            }
+            let mut mapping = HashMap::new();
+            for moved in &moves {
+                mapping.insert(
+                    moved.old_path.clone(),
+                    canonical_link_target(&moved.new_path, &post_move),
+                );
+            }
+            self.apply_link_rewrite(&notes, &mapping)?;
+            if let Some(parent) = new_url.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    DomainError::BikeshedIo(format!(
+                        "could not create \"{}\": {error}",
+                        parent.display()
+                    ))
+                })?;
+            }
+            fs::rename(&old_url, &new_url).map_err(|error| {
+                DomainError::BikeshedIo(format!("could not move \"{from}\": {error}"))
+            })?;
+            Ok(Operation {
+                value: MoveOutcome {
+                    path: to.to_string(),
+                    old_path: from.to_string(),
+                    is_folder: true,
+                    moved_notes: moves,
+                },
+                note: None,
+            })
+        })
+    }
+
+    // MARK: - rewriteTypedLinks
+
+    /// `rewrite_typed_links(is_project, from, to)`: after the board renamed a
+    /// project or label, point every `[[project:From]]` (or `[[label:From]]`) at
+    /// the new name, in one locked pass, per-file atomic (ADR 0004). Returns how
+    /// many notes changed. A note that fails to write stops the pass with its
+    /// error; the notes already rewritten stay rewritten.
+    pub fn rewrite_typed_links(
+        &self,
+        is_project: bool,
+        from: &str,
+        to: &str,
+    ) -> DomainResult<Operation<usize>> {
+        self.locked(|| {
+            let mut changed = 0;
+            for note_path in self.note_paths() {
+                let (Ok(content), Some(url)) =
+                    (self.read_note(&note_path), self.file_url(&note_path))
+                else {
+                    continue;
+                };
+                let Some(rewritten) = rewrite_typed_links(&content.text, is_project, from, to)
+                else {
+                    continue;
+                };
+                self.atomic_write(rewritten.as_bytes(), &url)?;
+                changed += 1;
+            }
+            Ok(Operation {
+                value: changed,
                 note: None,
             })
         })

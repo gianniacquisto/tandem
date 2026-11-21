@@ -923,6 +923,10 @@ pub struct CommentListReply {
 pub struct LabelListReply {
     pub revision: i64,
     pub labels: Vec<String>,
+    /// What the vault did not follow (TAN-531): a folder that was not made or
+    /// moved, a link that was not rewritten. The board write stands.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 /// `label.delete`: the labels left, and how many tickets moved to the default.
@@ -932,6 +936,10 @@ pub struct LabelDeletionReply {
     pub revision: i64,
     pub labels: Vec<String>,
     pub moved: usize,
+    /// What the vault did not follow (TAN-531): a folder that was not made or
+    /// moved, a link that was not rewritten. The board write stands.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 /// One project and its labels, in render order: the answer to `project list`
@@ -954,6 +962,10 @@ pub struct ProjectEntry {
 pub struct ProjectListReply {
     pub revision: i64,
     pub projects: Vec<ProjectEntry>,
+    /// What the vault did not follow (TAN-531): a folder that was not made or
+    /// moved, a link that was not rewritten. The board write stands.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 /// `ticket.archive` without an id: how many tickets the sweep archived.

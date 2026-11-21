@@ -225,7 +225,11 @@ fn the_hidden_saddlebag_is_out_of_the_graph() {
 #[test]
 fn an_empty_bikeshed_reports_zero_counts() {
     let vault = Vault::new("health-empty");
-    let found = health(&vault);
+    let found = vault
+        .bikeshed()
+        .health(&BoardNames::default())
+        .expect("the health read runs")
+        .value;
     assert!(found.broken.is_empty());
     assert!(found.orphans.is_empty());
     assert_eq!(
@@ -235,7 +239,8 @@ fn an_empty_bikeshed_reports_zero_counts() {
             links: 0,
             broken: 0,
             orphans: 0,
-            unmatched_folders: 0
+            unmatched_folders: 0,
+            missing_folders: 0
         }
     );
     assert_eq!(BikeshedHealth::empty(), found);
@@ -273,4 +278,37 @@ fn the_json_carries_the_unmatched_folders() {
         serde_json::json!([{"path": "projects/tandem/App", "reason": "no label"}])
     );
     assert_eq!(value["counts"]["unmatchedFolders"], 1);
+}
+
+#[test]
+fn missing_folders_lists_the_board_names_with_no_folder() {
+    let vault = Vault::new("health-missing");
+    vault.stage("projects/tandem/b.md", "b");
+    vault.stage("projects/Tandem/CLI/c.md", "c");
+    let found = health(&vault);
+    let rows: Vec<(String, Option<String>, String)> = found
+        .missing_folders
+        .iter()
+        .map(|row| (row.project.clone(), row.label.clone(), row.path.clone()))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![(
+            "code-rank".to_string(),
+            None,
+            "projects/code-rank".to_string()
+        )],
+        "tandem and its cli label match ignoring case; a label named like its project needs none"
+    );
+    assert_eq!(found.counts.missing_folders, 1);
+    let value = serde_json::to_value(&found).expect("serializes");
+    assert_eq!(value["counts"]["missingFolders"], 1);
+    assert_eq!(value["missingFolders"][0]["label"], serde_json::Value::Null);
+}
+
+#[test]
+fn an_empty_vault_misses_every_project_and_label_folder() {
+    let vault = Vault::new("health-missing-empty");
+    let found = health(&vault);
+    assert_eq!(found.counts.missing_folders, 3);
 }

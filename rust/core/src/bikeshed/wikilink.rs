@@ -424,6 +424,60 @@ pub(crate) fn rewrite_links(
     Some(out)
 }
 
+/// The typed rewrite for one note's text (TAN-531): every `[[project:From...]]`
+/// (or `[[label:From...]]` when `is_project` is false) becomes `...:To...`, the
+/// name matched ignoring case, the prefix as written and the fragment and alias
+/// byte-identical. Frontmatter and code spans are skipped, and a plain `[[From]]`
+/// is never touched. `None` when nothing changed.
+pub(crate) fn rewrite_typed_links(
+    text: &str,
+    is_project: bool,
+    from: &str,
+    to: &str,
+) -> Option<String> {
+    let occurrences = link_occurrences(text, &[], &BoardNames::default());
+    let frontmatter = frontmatter_end(text);
+    let from = from.trim().to_lowercase();
+    let mut out = String::with_capacity(text.len());
+    let mut cursor = 0;
+    let mut changed = false;
+    for occurrence in &occurrences {
+        let Some((project, name)) = typed_target(&occurrence.link.target) else {
+            continue;
+        };
+        if project != is_project || name.to_lowercase() != from {
+            continue;
+        }
+        if frontmatter.is_some_and(|end| occurrence.end <= end) {
+            continue;
+        }
+        let content_start = occurrence.start + 2;
+        let close_start = occurrence.end - 2;
+        let content = &text[content_start..close_start];
+        let target_end = [content.find('#'), content.find('|')]
+            .into_iter()
+            .flatten()
+            .min()
+            .unwrap_or(content.len());
+        let target = &content[..target_end];
+        let Some(colon) = target.find(':') else {
+            continue;
+        };
+        let after = &target[colon + 1..];
+        let leading = after.len() - after.trim_start().len();
+        let trailing = after.len() - after.trim_end().len();
+        out.push_str(&text[cursor..content_start + colon + 1 + leading]);
+        out.push_str(to);
+        cursor = content_start + target_end - trailing;
+        changed = true;
+    }
+    if !changed {
+        return None;
+    }
+    out.push_str(&text[cursor..]);
+    Some(out)
+}
+
 /// The byte offset just past a leading, properly terminated `---` frontmatter
 /// block, or `None` (no frontmatter, or unterminated).
 pub(crate) fn frontmatter_end(text: &str) -> Option<usize> {

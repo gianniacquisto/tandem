@@ -214,11 +214,11 @@ tandem-cli project delete --name <name>
 | Verb | Notes |
 | --- | --- |
 | `project list` | Every project with its key and its labels, in board order. Answers `{"projects": [{"name", "key", "labels"}]}`. |
-| `project add` | A new, empty project. `--abbr` is its key: upper-case letters and digits, unique across projects. Default: the first three letters of the name (`Tandem` becomes `TAN`). |
-| `project rename` | Renames a project. Its labels, tickets and refs move with it. `--abbr` changes the key, and is refused once the project has filed a ticket. |
-| `project delete` | Deletes an empty project. A project that still holds labels or tickets is refused, and the refusal names them. |
+| `project add` | A new, empty project. `--abbr` is its key: upper-case letters and digits, unique across projects. Default: the first three letters of the name (`Tandem` becomes `TAN`). Also creates the notes folder `projects/<name>/`; an existing folder that matches ignoring case is reused. |
+| `project rename` | Renames a project. Its labels, tickets and refs move with it. `--abbr` changes the key, and is refused once the project has filed a ticket. Also moves the notes folder `projects/<old>/` to `projects/<new>/` and rewrites every `[[project:Old]]` link, keeping its fragment and alias. |
+| `project delete` | Deletes an empty project. A project that still holds labels or tickets is refused, and the refusal names them. Its notes folder and notes are left alone; `note links` lists the folder as unmatched. |
 
-Each write answers the project list.
+Each write answers the project list. The board write commits first and the notes follow: when a folder could not be made or moved, or a link not rewritten (a name that is not one path component, a target folder that already exists, a lock), the answer carries a `note` naming what was left, and `note links` shows the leftovers as `missingFolders`, `unmatchedFolders` and broken typed links. The write itself stands.
 
 ## Labels
 

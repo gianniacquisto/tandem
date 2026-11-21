@@ -14,6 +14,10 @@ use crate::domain::{
     resolve_comment_author, resolve_origin,
 };
 use crate::store::{Actor, Store};
+pub(crate) mod vault;
+
+pub use self::vault::reconcile as reconcile_vault;
+
 use crate::wire::rpc::{
     ArchivedReply, CommentListReply, CommentReply, DoctorReply, LabelDeletionReply, LabelListReply,
     Method, NoteBacklinksReply, NoteHealthReply, NoteMoveReply, NoteReadReply, NoteSearchReply,
@@ -200,31 +204,38 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
         }
         Method::LabelList(_) => {
             let (labels, revision) = board.labels_snapshot().map_err(domain)?;
-            Ok(Reply::LabelList(LabelListReply { revision, labels }))
+            Ok(Reply::LabelList(LabelListReply {
+                revision,
+                labels,
+                note: None,
+            }))
         }
         Method::LabelAdd(params) => {
+            let name = params.name.as_deref().unwrap_or("");
             let labels = board
-                .add_label(
-                    params.name.as_deref().unwrap_or(""),
-                    params.project.as_deref(),
-                )
+                .add_label(name, params.project.as_deref())
                 .map_err(domain)?;
+            let note = vault::added(store, &board, params.project.as_deref(), Some(name.trim()));
             Ok(Reply::LabelList(LabelListReply {
                 revision: store.last_revision(),
                 labels,
+                note,
             }))
         }
         Method::LabelRename(params) => {
+            let (from, to) = (
+                params.from.as_deref().unwrap_or(""),
+                params.to.as_deref().unwrap_or(""),
+            );
+            let before = vault::names(&board);
             let labels = board
-                .rename_label(
-                    params.from.as_deref().unwrap_or(""),
-                    params.to.as_deref().unwrap_or(""),
-                    params.project.as_deref(),
-                )
+                .rename_label(from, to, params.project.as_deref())
                 .map_err(domain)?;
+            let note = vault::label_renamed(store, &board, &before, from, to);
             Ok(Reply::LabelList(LabelListReply {
                 revision: store.last_revision(),
                 labels,
+                note,
             }))
         }
         Method::LabelDelete(params) => {
@@ -235,6 +246,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
                 revision: store.last_revision(),
                 labels: deletion.labels,
                 moved: deletion.moved,
+                note: None,
             }))
         }
         Method::LabelMove(params) => {
@@ -249,56 +261,42 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
             Ok(Reply::LabelList(LabelListReply {
                 revision: store.last_revision(),
                 labels,
+                note: None,
             }))
         }
         Method::ProjectList(_) => {
             let (projects, revision) = board.projects_snapshot().map_err(domain)?;
             Ok(Reply::ProjectList(ProjectListReply {
                 revision,
-                projects: projects
-                    .into_iter()
-                    .map(|entry| ProjectEntry {
-                        name: entry.name,
-                        key: entry.key,
-                        labels: entry.labels,
-                    })
-                    .collect(),
+                projects: project_entries(projects),
+                note: None,
             }))
         }
         Method::ProjectAdd(params) => {
+            let name = params.name.as_deref().unwrap_or("");
             let projects = board
-                .add_project(params.name.as_deref().unwrap_or(""), params.abbr.as_deref())
+                .add_project(name, params.abbr.as_deref())
                 .map_err(domain)?;
+            let note = vault::added(store, &board, Some(name.trim()), None);
             Ok(Reply::ProjectList(ProjectListReply {
                 revision: store.last_revision(),
-                projects: projects
-                    .into_iter()
-                    .map(|entry| ProjectEntry {
-                        name: entry.name,
-                        key: entry.key,
-                        labels: entry.labels,
-                    })
-                    .collect(),
+                projects: project_entries(projects),
+                note,
             }))
         }
         Method::ProjectRename(params) => {
+            let (from, to) = (
+                params.from.as_deref().unwrap_or(""),
+                params.to.as_deref().unwrap_or(""),
+            );
             let projects = board
-                .rename_project(
-                    params.from.as_deref().unwrap_or(""),
-                    params.to.as_deref().unwrap_or(""),
-                    params.abbr.as_deref(),
-                )
+                .rename_project(from, to, params.abbr.as_deref())
                 .map_err(domain)?;
+            let note = vault::project_renamed(store, &board, from, to);
             Ok(Reply::ProjectList(ProjectListReply {
                 revision: store.last_revision(),
-                projects: projects
-                    .into_iter()
-                    .map(|entry| ProjectEntry {
-                        name: entry.name,
-                        key: entry.key,
-                        labels: entry.labels,
-                    })
-                    .collect(),
+                projects: project_entries(projects),
+                note,
             }))
         }
         Method::ProjectDelete(params) => {
@@ -307,14 +305,8 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
                 .map_err(domain)?;
             Ok(Reply::ProjectList(ProjectListReply {
                 revision: store.last_revision(),
-                projects: projects
-                    .into_iter()
-                    .map(|entry| ProjectEntry {
-                        name: entry.name,
-                        key: entry.key,
-                        labels: entry.labels,
-                    })
-                    .collect(),
+                projects: project_entries(projects),
+                note: None,
             }))
         }
         Method::DoctorReport(_) => Ok(Reply::Doctor(DoctorReply {
@@ -439,6 +431,18 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
             }))
         }
     }
+}
+
+/// The project rows a reply carries.
+fn project_entries(projects: Vec<crate::domain::ProjectWithLabels>) -> Vec<ProjectEntry> {
+    projects
+        .into_iter()
+        .map(|entry| ProjectEntry {
+            name: entry.name,
+            key: entry.key,
+            labels: entry.labels,
+        })
+        .collect()
 }
 
 /// How many search rows an absent `limit` returns.

@@ -809,3 +809,238 @@ fn label_move_reorders_the_declared_labels_over_the_wire() {
         "the refusal names the fix: {refused}"
     );
 }
+
+// MARK: - The vault follows the board (TAN-531)
+
+fn vault_dir(sandbox: &Sandbox) -> std::path::PathBuf {
+    sandbox.root().join("home").join("bikeshed")
+}
+
+fn write_note(store: &tandem_core::store::Store, path: &str, text: &str) {
+    let wrote = handle(
+        store,
+        &frame(90, "note.write", json!({"path": path, "text": text})),
+    );
+    assert!(wrote.get("error").is_none(), "{wrote}");
+}
+
+fn read_note(sandbox: &Sandbox, path: &str) -> String {
+    std::fs::read_to_string(vault_dir(sandbox).join(path)).expect("the note reads")
+}
+
+#[test]
+fn project_add_and_label_add_create_their_folders() {
+    let sandbox = Sandbox::new("rpc-folders-add");
+    let store = sandbox.store();
+    let added = handle(&store, &frame(1, "project.add", json!({"name": "P"})));
+    assert!(added["result"].get("note").is_none(), "{added}");
+    assert!(vault_dir(&sandbox).join("projects/P").is_dir());
+
+    handle(
+        &store,
+        &frame(2, "label.add", json!({"name": "L", "project": "P"})),
+    );
+    assert!(vault_dir(&sandbox).join("projects/P/L").is_dir());
+
+    // A label named like its project is the project folder: nothing new.
+    handle(
+        &store,
+        &frame(3, "label.add", json!({"name": "p", "project": "P"})),
+    );
+    assert!(!vault_dir(&sandbox).join("projects/P/p").exists());
+    let health = handle(&store, &frame(4, "note.health", json!({})));
+    assert_eq!(health["result"]["health"]["counts"]["missingFolders"], 0);
+    assert_eq!(health["result"]["health"]["missingFolders"], json!([]));
+}
+
+#[test]
+fn an_existing_folder_that_matches_ignoring_case_is_reused() {
+    let sandbox = Sandbox::new("rpc-folders-case");
+    let store = sandbox.store();
+    std::fs::create_dir_all(vault_dir(&sandbox).join("projects/p/l")).expect("staged");
+    handle(&store, &frame(1, "project.add", json!({"name": "P"})));
+    handle(
+        &store,
+        &frame(2, "label.add", json!({"name": "L", "project": "P"})),
+    );
+    let names: Vec<String> = std::fs::read_dir(vault_dir(&sandbox).join("projects"))
+        .expect("projects reads")
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(names, vec!["p".to_string()], "no second spelling is made");
+    let labels: Vec<String> = std::fs::read_dir(vault_dir(&sandbox).join("projects/p"))
+        .expect("the project folder reads")
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(labels, vec!["l".to_string()]);
+    let health = handle(&store, &frame(3, "note.health", json!({})));
+    assert_eq!(health["result"]["health"]["counts"]["missingFolders"], 0);
+}
+
+#[test]
+fn project_rename_moves_the_folder_and_rewrites_typed_links() {
+    let sandbox = Sandbox::new("rpc-folders-project-rename");
+    let store = sandbox.store();
+    handle(&store, &frame(1, "project.add", json!({"name": "P"})));
+    handle(
+        &store,
+        &frame(2, "label.add", json!({"name": "L", "project": "P"})),
+    );
+    write_note(&store, "projects/P/L/deep.md", "deep");
+    write_note(
+        &store,
+        "daily.md",
+        "[[project:P|x]] [[project:p#frag]] [[P]] `[[project:P]]`",
+    );
+    write_note(&store, "plain.md", "[[projects/P/L/deep]]");
+
+    let renamed = handle(
+        &store,
+        &frame(3, "project.rename", json!({"from": "P", "to": "Q"})),
+    );
+    assert!(renamed["result"].get("note").is_none(), "{renamed}");
+    assert!(!vault_dir(&sandbox).join("projects/P").exists());
+    assert!(vault_dir(&sandbox).join("projects/Q/L/deep.md").is_file());
+    assert_eq!(
+        read_note(&sandbox, "daily.md"),
+        "[[project:Q|x]] [[project:Q#frag]] [[P]] `[[project:P]]`"
+    );
+    assert_eq!(read_note(&sandbox, "plain.md"), "[[deep]]");
+    let health = handle(&store, &frame(4, "note.health", json!({})));
+    let report = &health["result"]["health"];
+    assert_eq!(report["counts"]["missingFolders"], 0, "{report}");
+    assert_eq!(report["counts"]["unmatchedFolders"], 0, "{report}");
+    // The plain [[P]] link never resolved, and still does not.
+    assert_eq!(report["counts"]["broken"], 1, "{report}");
+}
+
+#[test]
+fn label_rename_moves_the_folder_and_rewrites_typed_links() {
+    let sandbox = Sandbox::new("rpc-folders-label-rename");
+    let store = sandbox.store();
+    handle(&store, &frame(1, "project.add", json!({"name": "P"})));
+    handle(
+        &store,
+        &frame(2, "label.add", json!({"name": "L", "project": "P"})),
+    );
+    write_note(&store, "projects/P/L/n.md", "n");
+    write_note(
+        &store,
+        "daily.md",
+        "[[label:L|x]] [[label:l#h]] [[project:P]]",
+    );
+    let renamed = handle(
+        &store,
+        &frame(3, "label.rename", json!({"from": "L", "to": "M"})),
+    );
+    assert!(renamed["result"].get("note").is_none(), "{renamed}");
+    assert!(!vault_dir(&sandbox).join("projects/P/L").exists());
+    assert!(vault_dir(&sandbox).join("projects/P/M/n.md").is_file());
+    assert_eq!(
+        read_note(&sandbox, "daily.md"),
+        "[[label:M|x]] [[label:M#h]] [[project:P]]"
+    );
+
+    // Re-parent: the folder follows the label to the other project.
+    handle(&store, &frame(4, "project.add", json!({"name": "R"})));
+    let moved = handle(
+        &store,
+        &frame(
+            5,
+            "label.rename",
+            json!({"from": "M", "to": "M", "project": "R"}),
+        ),
+    );
+    assert!(moved.get("error").is_none(), "{moved}");
+    assert!(vault_dir(&sandbox).join("projects/R/M/n.md").is_file());
+    assert!(!vault_dir(&sandbox).join("projects/P/M").exists());
+}
+
+#[test]
+fn a_rename_into_an_existing_folder_commits_the_board_and_answers_a_note() {
+    let sandbox = Sandbox::new("rpc-folders-clash");
+    let store = sandbox.store();
+    handle(&store, &frame(1, "project.add", json!({"name": "P"})));
+    write_note(&store, "projects/P/keep.md", "keep");
+    write_note(&store, "projects/Q/other.md", "other");
+    write_note(&store, "daily.md", "[[project:P]]");
+
+    let renamed = handle(
+        &store,
+        &frame(2, "project.rename", json!({"from": "P", "to": "Q"})),
+    );
+    assert!(renamed.get("error").is_none(), "{renamed}");
+    assert_eq!(
+        renamed["result"]["projects"][0]["name"], "Q",
+        "the board write stands"
+    );
+    let note = renamed["result"]["note"]
+        .as_str()
+        .expect("a note names the leftover");
+    assert!(
+        note.contains("projects/P") && note.contains("already exists"),
+        "{note}"
+    );
+    assert!(vault_dir(&sandbox).join("projects/P/keep.md").is_file());
+    assert_eq!(
+        read_note(&sandbox, "daily.md"),
+        "[[project:Q]]",
+        "links still follow"
+    );
+
+    let health = handle(&store, &frame(3, "note.health", json!({})));
+    let unmatched = health["result"]["health"]["unmatchedFolders"].to_string();
+    assert!(unmatched.contains("projects/P"), "{unmatched}");
+}
+
+#[test]
+fn label_delete_leaves_the_folder() {
+    let sandbox = Sandbox::new("rpc-folders-delete");
+    let store = sandbox.store();
+    handle(&store, &frame(1, "project.add", json!({"name": "P"})));
+    handle(
+        &store,
+        &frame(2, "label.add", json!({"name": "L", "project": "P"})),
+    );
+    write_note(&store, "projects/P/L/n.md", "n");
+    handle(&store, &frame(3, "label.delete", json!({"name": "L"})));
+    assert!(vault_dir(&sandbox).join("projects/P/L/n.md").is_file());
+    let health = handle(&store, &frame(4, "note.health", json!({})));
+    assert_eq!(health["result"]["health"]["counts"]["unmatchedFolders"], 1);
+}
+
+#[test]
+fn a_name_that_is_not_one_path_component_gets_no_folder_and_is_listed() {
+    let sandbox = Sandbox::new("rpc-folders-bad-name");
+    let store = sandbox.store();
+    handle(&store, &frame(1, "project.add", json!({"name": "P"})));
+    let added = handle(
+        &store,
+        &frame(2, "label.add", json!({"name": "a/b", "project": "P"})),
+    );
+    assert!(added.get("error").is_none(), "{added}");
+    let note = added["result"]["note"].as_str().expect("the note says why");
+    assert!(
+        note.contains("a/b") && note.contains("single path component"),
+        "{note}"
+    );
+    assert!(!vault_dir(&sandbox).join("projects/P/a").exists());
+    let health = handle(&store, &frame(3, "note.health", json!({})));
+    assert_eq!(
+        health["result"]["health"]["missingFolders"],
+        json!([{"project": "P", "label": "a/b", "path": "projects/P/a/b"}])
+    );
+    assert_eq!(health["result"]["health"]["counts"]["missingFolders"], 1);
+}
