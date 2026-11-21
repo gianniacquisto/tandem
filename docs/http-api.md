@@ -90,4 +90,4 @@ curl -fsS -H "Authorization: Bearer $TANDEM_TOKEN" -o tandem-home.tar.gz https:/
 
 ## Stability
 
-`/operator/v1` is versioned by its path: a change that breaks a shape or a status code becomes `/operator/v2`. The board's own routes are internal to the board and may change in any release.
+`/operator/v1` is versioned by its path: a change that breaks a shape or a status code becomes `/operator/v2`. The board's own routes are internal to the board and may change in any release. What every other surface promises: [versions and compatibility](versioning.md).

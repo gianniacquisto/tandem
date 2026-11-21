@@ -95,6 +95,7 @@ Start at the [documentation index](docs/README.md). The most used pages:
 - Guides: [installing and upgrading](docs/install-paths.md), [self-hosting](docs/self-hosting.md), [reverse proxy](docs/reverse-proxy.md), [store, backup and notes](docs/store.md)
 - Reference: [configuration](docs/configuration.md), [CLI](docs/cli.md), [MCP](docs/mcp.md), [HTTP API](docs/http-api.md), [operator API](docs/operator.md)
 - Background: [architecture](docs/architecture.md), [ADRs](docs/adr/README.md), [glossary](GLOSSARY.md)
+- Help: [troubleshooting](docs/troubleshooting.md), [versions and compatibility](docs/versioning.md), [security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md) and [releasing](docs/releasing.md)
 
 ## Licence

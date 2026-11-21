@@ -1,6 +1,6 @@
 # Installing Tandem
 
-**Status**: the standalone binary is the only install path (CUT-16, 2026-11-13). The Homebrew cask and its tap were retired with the Electron tree ([ADR 0046](adr/0046-tandem-serve-and-single-binary-distribution.md)); this page replaces the 2026-11-01 comparison between the cask, a piped script and a hand-run zip.
+Tandem ships as one binary per platform. This page covers installing, upgrading, pinning or rolling back a version, uninstalling, and verifying what you downloaded.
 
 A release publishes five archives, `install.sh` and one `SHA256SUMS`:
 
@@ -94,9 +94,3 @@ gh attestation verify tandem-2.4.0-darwin-arm64.tar.gz --repo gianniacquisto/tan
 ```
 
 A success names the workflow run and the commit that built the archive; a failure means the file did not come from this repository's release workflow. `install.sh` itself is not signed and does not run this check.
-
-## Why the cask went
-
-The cask existed because the shipped artifact was a macOS app bundle. Once the UI is served by the binary itself, the bundle, the tap repository and the `TAP_TOKEN` secret only add a second distribution path to keep correct. One archive per platform, one manifest and one script is the whole surface, and the binary is the same executable the CI gates test.
-
-The old comparison's concerns still hold where they apply: the release's manifest is fetched from the same release as the archive, so TLS to GitHub is the transport's authentication, not a second repository's digest. That is the trade the standalone binary makes, and the digest check is the guarantee it keeps: nothing is written before the archive matches its published line.
