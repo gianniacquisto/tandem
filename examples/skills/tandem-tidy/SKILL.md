@@ -31,6 +31,6 @@ An escalated ticket (`in-review`, `human`, a PR in the log) is settled by the PR
 
 ## 5. Report
 
-Report-only, for the human to rule on: duplicates (two open tickets, one subject), and tickets whose named blocker landed and are ripe to draw.
+Report-only, for the human to rule on: duplicates (two open tickets, one subject), and tickets whose named blocker landed and are ripe to draw. Every ticket named here follows the Naming tickets rule in `AGENTS.md`: ref, title and gist.
 
 Then one block per project: completed with evidence, claims recovered, archived count, and left alone with the reason. Done when every open ticket appears in the report.
