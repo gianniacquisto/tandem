@@ -306,7 +306,7 @@ tandem-cli ticket list --status ready
 
 ## Deprecated
 
-`todo` still works in place of `ticket`, with a one-line warning on stderr, and `todo list` answers both `tickets` and `todos`. Both go in the release after the one that deprecated them. Use `ticket`.
+`todo` still works in place of `ticket`, with a one-line warning on stderr, and `todo list` answers both `tickets` and `todos`. They will be removed in a later release, listed under Breaking changes in its notes ([versions and compatibility](versioning.md)). Use `ticket`.
 
 ## Background
 
