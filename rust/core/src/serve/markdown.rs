@@ -9,44 +9,60 @@
 //! text, and the templates never see raw user HTML: the only markup in this
 //! output is the renderer's own.
 
+use crate::bikeshed::wikilink::{LinkResolution, Wikilink, wikilink_tokens};
 use crate::domain::markdown::{InlineStyle, MarkdownBlock, MarkdownInline};
 
 /// The whole document: the `.markdown` container and every block under it.
 pub fn document(blocks: &[MarkdownBlock]) -> String {
     let mut html = String::from("<div class=\"markdown\">");
-    blocks_into(blocks, &mut html);
+    blocks_into(blocks, &mut html, None);
     html.push_str("</div>");
     html
+}
+
+/// The whole document with its plain `[[note]]` wikilinks drawn as links (the
+/// notes read view). The resolver is a value, so this module stays store-free.
+pub fn document_with_links(blocks: &[MarkdownBlock], links: &Wikilinks) -> String {
+    let mut html = String::from("<div class=\"markdown\">");
+    blocks_into(blocks, &mut html, Some(links));
+    html.push_str("</div>");
+    html
+}
+
+/// How a wikilink target resolves and where a resolved note opens.
+pub struct Wikilinks<'a> {
+    pub resolve: &'a dyn Fn(&str) -> LinkResolution,
+    pub href: &'a dyn Fn(&str) -> String,
 }
 
 /// The blocks alone, for the `markdown.html` partial's body.
 pub fn blocks(blocks: &[MarkdownBlock]) -> String {
     let mut html = String::new();
-    blocks_into(blocks, &mut html);
+    blocks_into(blocks, &mut html, None);
     html
 }
 
-fn blocks_into(blocks: &[MarkdownBlock], out: &mut String) {
+fn blocks_into(blocks: &[MarkdownBlock], out: &mut String, links: Option<&Wikilinks>) {
     for block in blocks {
-        block_into(block, out);
+        block_into(block, out, links);
     }
 }
 
-fn block_into(block: &MarkdownBlock, out: &mut String) {
+fn block_into(block: &MarkdownBlock, out: &mut String, links: Option<&Wikilinks>) {
     match block {
         MarkdownBlock::Heading { level, runs } => {
             let tag = format!("h{}", (*level).clamp(1, 6));
             out.push('<');
             out.push_str(&tag);
             out.push_str(" class=\"markdown__heading\">");
-            runs_into(runs, out);
+            runs_into(runs, out, links);
             out.push_str("</");
             out.push_str(&tag);
             out.push('>');
         }
         MarkdownBlock::Paragraph { runs } => {
             out.push_str("<p class=\"markdown__paragraph\">");
-            runs_into(runs, out);
+            runs_into(runs, out, links);
             out.push_str("</p>");
         }
         MarkdownBlock::List {
@@ -66,7 +82,7 @@ fn block_into(block: &MarkdownBlock, out: &mut String) {
             out.push('>');
             for item in items {
                 out.push_str("<li class=\"markdown__item\">");
-                blocks_into(item, out);
+                blocks_into(item, out, links);
                 out.push_str("</li>");
             }
             out.push_str("</");
@@ -86,7 +102,7 @@ fn block_into(block: &MarkdownBlock, out: &mut String) {
         }
         MarkdownBlock::Quote(inner) => {
             out.push_str("<blockquote class=\"markdown__quote\">");
-            blocks_into(inner, out);
+            blocks_into(inner, out, links);
             out.push_str("</blockquote>");
         }
         MarkdownBlock::Alert { kind, blocks } => {
@@ -97,7 +113,7 @@ fn block_into(block: &MarkdownBlock, out: &mut String) {
             title[..1].make_ascii_uppercase();
             out.push_str(&title);
             out.push_str("</p>");
-            blocks_into(blocks, out);
+            blocks_into(blocks, out, links);
             out.push_str("</div>");
         }
         MarkdownBlock::Table { header, rows } => {
@@ -132,22 +148,22 @@ fn block_into(block: &MarkdownBlock, out: &mut String) {
             out.push_str("><span class=\"markdown__checkbox\" role=\"checkbox\" aria-checked=\"");
             out.push_str(if *checked { "true" } else { "false" });
             out.push_str("\"></span><div class=\"markdown__task-body\">");
-            blocks_into(blocks, out);
+            blocks_into(blocks, out, links);
             out.push_str("</div></div>");
         }
     }
 }
 
-fn runs_into(runs: &[MarkdownInline], out: &mut String) {
+fn runs_into(runs: &[MarkdownInline], out: &mut String, links: Option<&Wikilinks>) {
     for run in runs {
-        run_into(run, out);
+        run_into(run, out, links);
     }
 }
 
 /// One run, the markers nesting outside in this order:
 /// strikethrough outside italic outside bold outside code, with the link's
 /// label innermost.
-fn run_into(run: &MarkdownInline, out: &mut String) {
+fn run_into(run: &MarkdownInline, out: &mut String, links: Option<&Wikilinks>) {
     let strike = run.has(InlineStyle::Strikethrough);
     let italic = run.has(InlineStyle::Italic);
     let bold = run.has(InlineStyle::Bold);
@@ -172,7 +188,10 @@ fn run_into(run: &MarkdownInline, out: &mut String) {
             escape_into(&run.text, out);
             out.push_str("</span>");
         }
-        None => escape_into(&run.text, out),
+        None => match links {
+            Some(links) if !code => text_with_links(&run.text, links, out),
+            _ => escape_into(&run.text, out),
+        },
     }
     if code {
         out.push_str("</code>");
@@ -186,6 +205,48 @@ fn run_into(run: &MarkdownInline, out: &mut String) {
     if strike {
         out.push_str("</s>");
     }
+}
+
+/// A text run with its plain wikilinks drawn. A typed `[[project:..]]` or
+/// `[[label:..]]` stays literal text until its own chips land, and an embed is
+/// left to the scanner, which skips it.
+fn text_with_links(text: &str, links: &Wikilinks, out: &mut String) {
+    let mut last = 0;
+    for (start, end, content) in wikilink_tokens(text) {
+        let Some(link) = Wikilink::parse(content) else {
+            continue;
+        };
+        let lowered = link.target.trim().to_lowercase();
+        if lowered.starts_with("project:") || lowered.starts_with("label:") {
+            continue;
+        }
+        escape_into(&text[last..start], out);
+        last = end;
+        match (links.resolve)(&link.target) {
+            LinkResolution::Resolved(path) => {
+                let href = (links.href)(&path);
+                out.push_str("<a class=\"wikilink\" href=\"");
+                escape_into(&href, out);
+                out.push_str("\" hx-get=\"");
+                escape_into(&href, out);
+                out.push_str("\" hx-target=\"#notes-root\" hx-swap=\"outerHTML\" title=\"");
+                escape_into(&path, out);
+                out.push_str("\">");
+                escape_into(link.display_text(), out);
+                out.push_str("</a>");
+            }
+            LinkResolution::Broken => {
+                out.push_str(
+                    "<span class=\"wikilink wikilink--broken\" title=\"No single note named ",
+                );
+                escape_into(&link.target, out);
+                out.push_str("\">");
+                escape_into(link.display_text(), out);
+                out.push_str("</span>");
+            }
+        }
+    }
+    escape_into(&text[last..], out);
 }
 
 /// The five characters that would change the markup, escaped.
@@ -230,5 +291,12 @@ mod tests {
         assert!(!html.contains("<a "), "{html}");
         assert!(!html.contains("href"), "{html}");
         assert!(html.contains("&lt;script&gt;"), "{html}");
+    }
+
+    #[test]
+    fn the_plain_document_draws_no_wikilink_markup() {
+        let html = document(&TicketMarkdown::blocks(Some("see [[B]]")));
+        assert!(html.contains("[[B]]"), "{html}");
+        assert!(!html.contains("wikilink"), "{html}");
     }
 }

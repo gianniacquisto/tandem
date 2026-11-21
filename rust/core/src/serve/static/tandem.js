@@ -455,7 +455,18 @@
       } else if (match[4] || match[5]) {
         out += '<em>' + marker(token.charAt(0)) + esc(token.slice(1, -1)) + marker(token.charAt(0)) + '</em>';
       } else if (match[6]) {
-        out += '<span class="lp__wiki">' + marker('[[') + esc(token.slice(2, -2)) + marker(']]') + '</span>';
+        var inner = token.slice(2, -2);
+        var typed = /^\s*(project|label):/i.test(inner);
+        var embed = match.index > 0 && source.charAt(match.index - 1) === '!';
+        var follow = !typed && !embed;
+        var cut = inner.search(/[#|]/);
+        var name = (cut < 0 ? inner : inner.slice(0, cut)).toLowerCase();
+        var broken = follow && brokenLinks().indexOf(name) >= 0;
+        out += '<span class="lp__wiki' + (follow ? ' lp__wiki--follow' : '') +
+          (broken ? ' wikilink--broken' : '') + '"' +
+          (follow ? ' data-link="' + esc(inner).replace(/"/g, '&quot;') + '"' : '') +
+          (broken ? ' title="No single note named ' + esc(cut < 0 ? inner : inner.slice(0, cut)).replace(/"/g, '&quot;') + '"' : '') +
+          '>' + marker('[[') + esc(inner) + marker(']]') + '</span>';
       } else {
         var close = token.indexOf('](');
         out += '<span class="lp__link">' + marker('[') + esc(token.slice(1, close)) +
@@ -464,6 +475,57 @@
       last = match.index + token.length;
     }
     return out + esc(source.slice(last));
+  }
+
+  // The targets the server found broken when the page loaded, lowercased.
+  function brokenLinks() {
+    var root = document.querySelector('[data-live]');
+    try {
+      return JSON.parse((root && root.getAttribute('data-broken-links')) || '[]');
+    } catch (error) {
+      return [];
+    }
+  }
+
+  // Follow a link's raw text: the pending save lands first, then the server
+  // resolves it (ADR 0005) and the pane swaps. A save that did not land keeps
+  // the page where it is.
+  function followWikilink(raw) {
+    var form = document.getElementById('note-form');
+    if (!form || !window.htmx) return;
+    var cut = raw.search(/[#|]/);
+    var target = cut < 0 ? raw : raw.slice(0, cut);
+    var value = function (name) {
+      var input = form.querySelector('input[name="' + name + '"]');
+      return input ? input.value : '';
+    };
+    var query = new URLSearchParams({
+      target: target,
+      from: value('path'),
+      project: value('project'),
+      show_all: value('show_all')
+    });
+    flushNote().then(function (landed) {
+      if (!landed) return;
+      window.htmx.ajax('GET', '/notes/open?' + query.toString(), {
+        target: '#notes-root',
+        swap: 'outerHTML'
+      });
+    });
+  }
+
+  // The link the caret sits in, as its raw text, or null.
+  function wikilinkAt(text, offset) {
+    var re = /\[\[([^\]\n]+)\]\]/g;
+    var match;
+    while ((match = re.exec(text))) {
+      if (offset >= match.index && offset <= match.index + match[0].length) {
+        if (match.index > 0 && text.charAt(match.index - 1) === '!') return null;
+        if (/^\s*(project|label):/i.test(match[1])) return null;
+        return match[1];
+      }
+    }
+    return null;
   }
 
   var HEADING = /^(#{1,6})( +)(.*)$/;
@@ -712,13 +774,36 @@
     // would cut the selection short.
     root.addEventListener('mousedown', function (event) {
       if (self.toggleTask(event)) return;
+      if ((event.metaKey || event.ctrlKey) && event.button === 0) {
+        var wiki = event.target.closest ? event.target.closest('.lp__wiki--follow') : null;
+        if (wiki && self.root.contains(wiki)) {
+          event.preventDefault();
+          followWikilink(wiki.getAttribute('data-link') || '');
+          return;
+        }
+      }
       self.dragging = true;
     });
+
+    root.addEventListener('keyup', function (event) {
+      if (!event.metaKey && !event.ctrlKey) root.classList.remove('lp--mod');
+    });
+    root.addEventListener('blur', function () { root.classList.remove('lp--mod'); });
 
     root.addEventListener('keydown', function (event) {
       if (self.menu && !self.composing && !event.isComposing && self.menuKey(event)) return;
       var meta = event.metaKey || event.ctrlKey;
       var key = event.key.toLowerCase();
+      if (meta) root.classList.add('lp--mod');
+      if (meta && key === 'enter') {
+        var at = self.selection();
+        var raw = at ? wikilinkAt(self.text, at.end) : null;
+        if (raw !== null) {
+          event.preventDefault();
+          followWikilink(raw);
+        }
+        return;
+      }
       if (meta && key === 'z') {
         event.preventDefault();
         self.travel(event.shiftKey ? 1 : -1);

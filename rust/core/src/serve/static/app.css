@@ -3951,6 +3951,20 @@ a.menu__option {
   color: var(--accent-deep);
 }
 
+/* A link broken at load: dim on the broken tint, dotted. Typed since load, a
+ * link stays neutral until the next load. */
+.lp__wiki.wikilink--broken {
+  background: var(--wikilink-chip-broken);
+}
+
+/* With Cmd or Ctrl held a followable link is a hand and underlined; a plain
+ * click still places the caret. */
+.lp--mod .lp__wiki--follow:hover {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .lp__link {
   color: var(--accent-deep);
   text-decoration: underline;
@@ -4858,4 +4872,35 @@ a.menu__option {
   width: 16px;
   height: 16px;
   stroke: currentColor;
+}
+
+/* A plain [[note]] link in the read view: always underlined, so colour is not
+ * the only cue. */
+.wikilink {
+  color: var(--accent-deep);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  border-radius: 3px;
+}
+
+.wikilink:hover {
+  text-decoration-thickness: 2px;
+}
+
+.wikilink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.wikilink--broken {
+  padding: 0 3px;
+  background: var(--wikilink-chip-broken);
+  color: var(--ink-dim);
+  text-decoration: underline dotted;
+  cursor: help;
+}
+
+.wikilink--broken:hover {
+  text-decoration: underline dotted;
 }
