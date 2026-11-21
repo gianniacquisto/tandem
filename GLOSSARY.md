@@ -137,7 +137,7 @@ A person using Tandem through the board in a browser.
 _Avoid_: user (ambiguous with the OS account), client, owner
 
 **Agent**:
-A local AI coding agent (e.g. OpenCode, Claude Code) running as the same OS user on the same machine, interacting with Tandem through `tandem serve`'s `/mcp` endpoint or the CLI.
+A local AI coding agent (e.g. OpenCode, Claude Code) running as the same OS user on the same machine, interacting with Tandem through `tandem serve`'s `/mcp` endpoint.
 _Avoid_: bot, client, automation, user
 
 **Reviewer**:
@@ -161,5 +161,5 @@ The role that turns a backlog ticket into a brief a builder can take: it grills 
 _Avoid_: spec writer, planner, triage
 
 **CLI**:
-Tandem's agent-facing interface: the `tandem-cli` binary `install.sh` puts on PATH beside `tandem`; both names reach the same executable.
+The human's and the scripts' interface: the `tandem-cli` binary `install.sh` puts on PATH beside `tandem`; both names reach the same executable. Agents do not use it; see `docs/cli.md`.
 _Avoid_: API (too generic), backend, endpoint

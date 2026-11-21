@@ -14,7 +14,7 @@ No em dash (U+2014) in anything an agent writes: use a comma, a colon, a full st
 
 Tickets keep their own conventions: a ticket's description is written once, and a later pass appends to it rather than rewriting it. That is the convention: append with `ticket_set`'s `appendDescription` (the CLI's `--append-description`), which adds the text after a blank line and keeps the body. `description` **replaces** the stored body, and the two together are refused. An empty addition is a domain failure, and an empty `description` clears the body.
 
-**Identity comes from the spawn site, or the request header.** The actor a write records resolves from `TANDEM_AGENT` in the process that spawned the call (`rust/core/src/store/actor.rs`), and for a call through `tandem serve`'s `/mcp` from the `X-Tandem-Agent` header, else the server's own actor (ADR 0047). The host harness's own subagent dispatch does not set it today, so agent writes there record `human`; that is a known gap, owned by TAN-336.
+**Identity comes from the spawn site, or the request header.** The actor a write records resolves from `TANDEM_AGENT` in the process that spawned the call (`rust/core/src/store/actor.rs`), and for a call through `tandem serve`'s `/mcp` from the `X-Tandem-Agent` header, else the server's own actor (ADR 0047). The host harness's own subagent dispatch does not set it today, so agent writes there record `human`; that gap is outside this repo, the harness's to close, and no ticket here owns it.
 
 ## Handoff
 
