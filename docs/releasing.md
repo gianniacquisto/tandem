@@ -15,6 +15,8 @@ To cut a release:
    - The job is named `release` because `main` requires a status check by that name; renaming it would leave the branch protection waiting for a check that never reports, so the name stays and the protection is untouched. Pull-request runs build and verify the same five archives and never publish, so a packaging change is a red check on the PR instead of a broken tag.
 3. Users install with the one-liner in [`README.md`](../README.md) (`curl -fsSL .../releases/latest/download/install.sh | sh`), or with the archive for their platform. [`install-paths.md`](install-paths.md) describes what each route asks of the user and how it verifies the download.
 
+**Breaking changes.** A PR that renames or removes an MCP tool, one of its parameters or answer fields, a CLI verb, flag, output field or exit code, an environment variable, or one of the HTTP routes `/health`, `/mcp`, `/events` and `/export`, or changes what one of them means, carries the GitHub label `breaking`. `Scripts/release-notes.sh` lists every such PR first, under "Breaking changes", which is what [versions and compatibility](versioning.md) promises users. A CLI or HTTP removal is deprecated, with a warning, for at least one release before it lands.
+
 The installer line is a contract in two places: `README.md` and the release-notes lead in `Scripts/release-notes.sh`. Change one and the other moves in the same commit.
 
 ## Supply chain

@@ -7,7 +7,7 @@ A local ticket board, served by one binary, shared by humans and agents on the s
 ### The app
 
 **Tandem**:
-The macOS ticket board, usable by both humans and agents on the same machine.
+The ticket board and notes, served by one binary, usable by both humans and agents.
 _Avoid_: "the app", "the todo app"
 
 **Serve**:
@@ -19,7 +19,7 @@ _Avoid_: main window, desktop app, renderer, shell
 _Avoid_: package manager, bundle installer
 
 **Archive**:
-One platform's release artifact: a `tandem-<version>-darwin-arm64.tar.gz`, `tandem-<version>-linux-x86_64.tar.gz` or `tandem-<version>-windows-x86_64.zip`, each carrying the executable. A release publishes all three, `install.sh` and one `SHA256SUMS`.
+One platform's release artifact: a `tandem-<version>-<os>-<arch>.tar.gz` for macOS (arm64, x86_64) and Linux (x86_64, arm64), or `tandem-<version>-windows-x86_64.zip`, each carrying the executable. A release publishes all five, `install.sh` and one `SHA256SUMS`.
 _Avoid_: app bundle, package, build
 
 **Board**:

@@ -1,7 +1,11 @@
 #!/bin/sh
 # The release notes (7B005267, BCE67BAE): what shipped, not a fixed tag line,
-# grouped by kind — features, bugs and fixes, docs and infra — with an
-# explicit "Other (unclassified)" fallback.
+# grouped by kind: breaking changes, features, bugs and fixes, docs and infra,
+# with an explicit "Other (unclassified)" fallback. A PR carrying the label
+# `breaking` (the set docs/versioning.md names: a renamed or removed tool,
+# parameter, flag, field, exit code, variable or route, or a change in what
+# one means) leads the notes under "Breaking changes", whatever else it is.
+# Only that exact label puts a PR there, never a title's words.
 #
 # Usage: Scripts/release-notes.sh <new-tag> — run from a checkout that has the
 # tags. Prints the body to stdout: the fixed lead line plus one section per
@@ -79,6 +83,10 @@ newTip=$(integration_tip "$new")
 # label is someone's stated intent; the words are the fallback.
 classify() {
   labels=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+  # `breaking` is matched as a whole label, so `non-breaking` stays out.
+  case ",$labels," in
+    *,breaking,*) printf 'breaking\n'; return ;;
+  esac
   case "$labels" in
     *bug*|*fix*) printf 'fixes\n'; return ;;
     *feature*|*enhancement*) printf 'features\n'; return ;;
@@ -113,7 +121,7 @@ fi
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
-for kind in features fixes infra other; do : > "$tmp/$kind"; done
+for kind in breaking features fixes infra other; do : > "$tmp/$kind"; done
 tab=$(printf '\t')
 
 printf '%s\n' "$subjects" | while IFS= read -r subject; do
@@ -161,9 +169,10 @@ printf '%s\n' "$subjects" | while IFS= read -r subject; do
 done
 
 : > "$tmp/sections"
-for kind in features fixes infra other; do
+for kind in breaking features fixes infra other; do
   [ -s "$tmp/$kind" ] || continue
   case "$kind" in
+    breaking) heading="## Breaking changes" ;;
     features) heading="## Features" ;;
     fixes) heading="## Bugs and fixes" ;;
     infra) heading="## Docs and infra" ;;
