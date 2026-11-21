@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tandem-scratch",
+      "runtimeExecutable": "Scripts/scratch-serve.sh",
+      "runtimeArgs": [],
+      "port": 7790
+    },
+    {
+      "name": "tandem-scratch-empty",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["SCRATCH_FIXTURE=empty", "SCRATCH_PORT=7791", "Scripts/scratch-serve.sh"],
+      "port": 7791
+    }
+  ]
+}
