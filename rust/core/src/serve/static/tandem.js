@@ -1334,6 +1334,105 @@
   document.addEventListener('htmx:afterSettle', setUpNote);
 })();
 
+// MARK: - The Relations pane beside a note
+//
+// Open state and each section's state are kept per browser, keyed by section
+// kind and not by note. Wide windows apply the stored (or default) choice;
+// narrow ones start with the drawer closed and open it only on the toggle.
+(function () {
+  var OPEN_KEY = 'tandem.relations.open';
+  var SECTIONS_KEY = 'tandem.relations.sections';
+  var narrow = window.matchMedia ? window.matchMedia('(max-width: 1100px)') : null;
+  var drawerOpen = false;
+
+  function isNarrow() {
+    return !!(narrow && narrow.matches);
+  }
+
+  function storedOpen() {
+    try {
+      var value = window.localStorage.getItem(OPEN_KEY);
+      return value === null ? true : value === '1';
+    } catch (error) {
+      return true;
+    }
+  }
+
+  function storedSections() {
+    try {
+      var parsed = JSON.parse(window.localStorage.getItem(SECTIONS_KEY) || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function save(key, value) {
+    try {
+      window.localStorage.setItem(key, value);
+    } catch (error) {
+      // Private mode: the choice holds until the next redraw.
+    }
+  }
+
+  function paneOpen() {
+    return isNarrow() ? drawerOpen : storedOpen();
+  }
+
+  function applyRelations() {
+    var pane = document.getElementById('relations');
+    if (!pane) return;
+    var open = paneOpen();
+    pane.hidden = !isNarrow() && !open;
+    pane.classList.toggle('relations--open', open);
+    var toggles = document.querySelectorAll('[data-relations-toggle]');
+    for (var i = 0; i < toggles.length; i += 1) toggles[i].setAttribute('aria-expanded', open ? 'true' : 'false');
+    var stored = storedSections();
+    var sections = pane.querySelectorAll('details[data-section]');
+    for (var j = 0; j < sections.length; j += 1) {
+      var kind = sections[j].getAttribute('data-section');
+      if (typeof stored[kind] === 'boolean') sections[j].open = stored[kind];
+    }
+  }
+
+  function setPane(open) {
+    if (isNarrow()) drawerOpen = open;
+    else save(OPEN_KEY, open ? '1' : '0');
+    applyRelations();
+    if (!open) {
+      var toggle = document.querySelector('[data-relations-toggle]');
+      if (toggle) toggle.focus();
+    }
+  }
+
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    if (!target.closest) return;
+    if (target.closest('[data-relations-toggle]')) setPane(!paneOpen());
+    else if (target.closest('[data-relations-close]')) setPane(false);
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && isNarrow() && drawerOpen) setPane(false);
+  });
+
+  // toggle does not bubble: listen in the capture phase.
+  document.addEventListener('toggle', function (event) {
+    var details = event.target;
+    if (!details.getAttribute || !details.closest || !details.closest('#relations')) return;
+    var kind = details.getAttribute('data-section');
+    if (!kind) return;
+    var stored = storedSections();
+    if (stored[kind] === details.open) return;
+    stored[kind] = details.open;
+    save(SECTIONS_KEY, JSON.stringify(stored));
+  }, true);
+
+  if (narrow && narrow.addEventListener) narrow.addEventListener('change', applyRelations);
+  document.addEventListener('DOMContentLoaded', applyRelations);
+  document.addEventListener('htmx:afterSettle', applyRelations);
+})();
+
 // MARK: - The board bar's filter chips and the New ticket form
 (function () {
   // A chip clears one filter: the control goes back to its empty value and the

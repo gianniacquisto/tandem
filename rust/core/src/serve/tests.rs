@@ -559,6 +559,20 @@ async fn a_card_move_keeps_the_filters_the_board_was_drawn_with() {
         css.contains(".note-tabs__tab[aria-selected=\"true\"]"),
         "the stylesheet draws the active note tab"
     );
+    for selector in [
+        ".tree__label:focus-visible",
+        ".sheet:focus-visible",
+        ".button:focus-visible",
+        ".relations-toggle:focus-visible",
+        ".relations__close:focus-visible",
+        ".relations__summary:focus-visible",
+        ".relations__row:focus-visible",
+    ] {
+        assert!(
+            css.contains(&format!("{selector},")) || css.contains(&format!("{selector} {{")),
+            "the stylesheet keeps the accent focus ring on {selector}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -738,6 +752,8 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
             for key in [
                 "tandem.collapsed",
                 "tandem.collapsedSet",
+                "tandem.relations.open",
+                "tandem.relations.sections",
                 "data-tree-action",
                 "revealedPath === undefined",
             ] {
@@ -1609,6 +1625,65 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
         !focused.contains("data-path=\"projects/other/outside.md\""),
         "the focused tree drops another project's folder: {focused}"
     );
+}
+
+#[tokio::test]
+async fn the_notes_page_draws_the_relations_pane_with_collapsible_sections() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-relations");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let notes = vault(&store);
+    notes.create("Index.md").expect("the note is created");
+    notes.create("Other.md").expect("the note is created");
+    notes
+        .write("Other.md", "See [[Index]]", None)
+        .expect("the note is written");
+    board
+        .set_link(&ticket.id.to_string(), Some("Index.md"))
+        .expect("the ticket links the note");
+    let app = router(context(store));
+
+    let (_, _, body) = send(&app, page_get("/notes?path=Index.md")).await;
+    for marker in [
+        "<aside class=\"relations\" id=\"relations\" aria-label=\"Relations\"",
+        "data-section=\"backlinks\"",
+        "data-section=\"tickets\"",
+        "aria-controls=\"relations\"",
+        "aria-expanded=",
+        "aria-label=\"Close relations\"",
+    ] {
+        assert!(body.contains(marker), "the pane draws {marker}: {body}");
+    }
+    assert!(!body.contains("note-footer"), "the footer is gone: {body}");
+    let section = |kind: &str| {
+        let at = body
+            .find(&format!("data-section=\"{kind}\""))
+            .unwrap_or_else(|| panic!("section {kind}"));
+        let start = body[..at].rfind("<details").expect("a details");
+        let end = at + body[at..].find('>').expect("a tag end");
+        body[start..end].to_string()
+    };
+    assert!(
+        section("backlinks").contains(" open"),
+        "Backlinks starts open"
+    );
+    assert!(
+        !section("tickets").contains(" open"),
+        "Tickets starts collapsed"
+    );
+
+    // An empty Backlinks renders collapsed with its empty line.
+    let (_, _, lonely) = send(&app, page_get("/notes?path=Other.md")).await;
+    let at = lonely.find("data-section=\"backlinks\"").expect("section");
+    let start = lonely[..at].rfind("<details").expect("a details");
+    let end = at + lonely[at..].find('>').expect("a tag end");
+    assert!(
+        !lonely[start..end].contains(" open"),
+        "an empty section is collapsed"
+    );
+    assert!(lonely.contains("Nothing links here yet."), "the empty line");
 }
 
 #[tokio::test]
