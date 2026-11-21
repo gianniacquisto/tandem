@@ -76,6 +76,8 @@ The installer's modes and exit codes are in [install paths](install-paths.md#ins
 
 The server stops on `SIGINT` (Ctrl-C) or `SIGTERM`. A changed setting takes effect at the next start.
 
+Each page the server draws carries its release as `data-version` on `<html>`, so a server left running across an upgrade shows in the browser. A request slower than 500 ms (on any route but `/events` and `/health`) logs a `slow request` warning with its route and latency.
+
 ### Start-up refusals
 
 `tandem serve` checks its settings before it binds and exits `2`, with the reason on stderr, when:
