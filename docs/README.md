@@ -32,6 +32,12 @@ Tandem is one binary, `tandem serve`, that gives you and your AI coding agents o
 | [HTTP API](http-api.md) | The routes for programs (`/health`, `/mcp`, `/events`, `/export`), authentication modes and the permissions of each credential |
 | [Operator API](operator.md) | `/operator/v1`, the HTTP interface a hosting service uses to manage members |
 
+## Help
+
+- [Troubleshooting](troubleshooting.md): symptoms, causes and fixes, from install to a team board.
+- [Versions and compatibility](versioning.md): what each release may change, deprecations and known issues.
+- [Security policy](../SECURITY.md): how to report a vulnerability, privately.
+
 ## Background
 
 - [Architecture](architecture.md): the pieces and how they talk.
