@@ -16,6 +16,48 @@ Agents normally use the [MCP tools](mcp.md) instead. Every agent verb below has 
 - **Home.** Every verb takes `--home <path>`. See [configuration](configuration.md#the-home).
 - **Remote.** With `TANDEM_SERVER` set, verbs run against a running server. See [remote target](#remote-target).
 
+## Synopsis
+
+Every agent verb at a glance. `tandem-cli --help` prints the same text. Each verb is detailed below.
+
+```sh
+tandem-cli ticket list [--filter open|done|all] [--status <value[,value]>]
+                       [--assignee <name|self>] [--project <name>] [--label <name>]
+                       [--text <string>]
+                       [--archived] [--blocked]
+tandem-cli ticket show --id <id>
+tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]
+                      [--project <name>] [--label <name>] [--origin <name|self>]
+                      [--description <string|->]
+tandem-cli ticket set --id <id> [--title <string>] [--status <value>]
+                      [--assignee <name|self>] [--description <string|->]
+                      [--append-description <string|->]
+tandem-cli ticket move --id <id> [--label <name>] [--index <number>]
+tandem-cli ticket block --id <id> --on <id>
+tandem-cli ticket unblock --id <id> [--on <id>]
+tandem-cli ticket complete --id <id>
+tandem-cli ticket archive [--id <id>]
+tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
+tandem-cli ticket comment list --id <id>
+
+tandem-cli label list
+tandem-cli label add --name <name> --project <name>
+tandem-cli label rename --from <name> --to <name> [--project <name>]
+tandem-cli label delete --name <name>
+tandem-cli label move --name <name> [--index <number>]
+tandem-cli project list
+tandem-cli project add --name <name> [--abbr <key>]
+tandem-cli project rename --from <name> --to <name> [--abbr <key>]
+tandem-cli project delete --name <name>
+
+tandem-cli note rename --from <path> --to <path>
+tandem-cli note stats [--project <name>]
+tandem-cli note links
+tandem-cli doctor
+```
+
+## Example
+
 A short session:
 
 ```sh
