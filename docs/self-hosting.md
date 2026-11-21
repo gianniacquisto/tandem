@@ -97,6 +97,8 @@ Each person does this for their own agent, signed in as themselves:
 
 The agent then works on the board as that person, and its writes record their name. Leave `X-Tandem-Agent` out: with a personal token it may only name the token's own member, and any other name, such as `claude`, is refused `403`. A personal token opens `/mcp` only: it cannot sign in a browser, export, manage people or make more tokens.
 
+A token's name is 1 to 60 characters on one line, and a person holds at most 20 live tokens. A lost token is revoked and replaced, never shown again. A revoked token stops on the next request, answering `401` with "This token has been revoked or does not exist."
+
 ## Run it as a service
 
 Keep the token out of the unit file and out of shell history: put it in a file only the service user can read. A systemd example, with the home in `/var/lib/tandem`:

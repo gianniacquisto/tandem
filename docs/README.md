@@ -8,6 +8,10 @@ Tandem is one binary, `tandem serve`, that gives you and your AI coding agents o
 - [Run](../README.md#run) the board and [connect your agent](../README.md#connect-your-agent).
 - [First run](../README.md#first-run): file a ticket from your agent and watch it land on the board.
 
+## Understand
+
+- [Concepts](concepts.md): tickets, refs, projects, labels, statuses, blocks, notes and the home.
+
 ## Guides
 
 | Guide | Read it when you want to |
