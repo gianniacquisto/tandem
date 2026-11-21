@@ -34,8 +34,19 @@ pub struct UnmatchedFolder {
     pub reason: String,
 }
 
+/// A board project or label that has no folder in the vault (TAN-531): the
+/// folder `projects/<project>/` or `projects/<project>/<label>/` it should have,
+/// or the path it would have had when its name is not a single path component.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct MissingFolder {
+    pub project: String,
+    pub label: Option<String>,
+    /// The folder the board name maps to, bikeshed-root-relative.
+    pub path: String,
+}
+
 /// The vault's link-graph health:
-/// `{"broken": [...], "orphans": [...], "unmatchedFolders": [...], "counts": {...}}`.
+/// `{"broken": [...], "orphans": [...], "unmatchedFolders": [...], "missingFolders": [...], "counts": {...}}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct BikeshedHealth {
     /// Every wikilink that resolves to no note, or to more than one.
@@ -46,6 +57,9 @@ pub struct BikeshedHealth {
     /// The project and label folders that match nothing on the board.
     #[serde(rename = "unmatchedFolders")]
     pub unmatched_folders: Vec<UnmatchedFolder>,
+    /// The board's projects and labels that have no folder.
+    #[serde(rename = "missingFolders")]
+    pub missing_folders: Vec<MissingFolder>,
     pub counts: BikeshedHealthCounts,
 }
 
@@ -56,12 +70,14 @@ impl BikeshedHealth {
             broken: Vec::new(),
             orphans: Vec::new(),
             unmatched_folders: Vec::new(),
+            missing_folders: Vec::new(),
             counts: BikeshedHealthCounts {
                 notes: 0,
                 links: 0,
                 broken: 0,
                 orphans: 0,
                 unmatched_folders: 0,
+                missing_folders: 0,
             },
         }
     }
@@ -76,6 +92,8 @@ pub struct BikeshedHealthCounts {
     pub orphans: usize,
     #[serde(rename = "unmatchedFolders")]
     pub unmatched_folders: usize,
+    #[serde(rename = "missingFolders")]
+    pub missing_folders: usize,
 }
 
 impl Bikeshed {
@@ -138,18 +156,21 @@ impl Bikeshed {
             (left.path.to_lowercase(), left.path.clone())
                 .cmp(&(right.path.to_lowercase(), right.path.clone()))
         });
+        let missing_folders = missing_folders(&tree, names);
         let counts = BikeshedHealthCounts {
             notes: notes.len(),
             links: link_count,
             broken: broken.len(),
             orphans: orphans.len(),
             unmatched_folders: unmatched_folders.len(),
+            missing_folders: missing_folders.len(),
         };
         Ok(Operation {
             value: BikeshedHealth {
                 broken,
                 orphans,
                 unmatched_folders,
+                missing_folders,
                 counts,
             },
             note: None,
@@ -207,4 +228,83 @@ fn unmatched_folders(tree: &[BikeshedNode], names: &BoardNames) -> Vec<Unmatched
         }
     }
     found
+}
+
+/// The folder a project maps to: `projects/<project>`, or `None` when the name
+/// is not a single path component (a `/`, `..`, a leading dot).
+pub fn project_folder(project: &str) -> Option<String> {
+    is_component(project).then(|| format!("projects/{project}"))
+}
+
+/// The folder a label maps to inside its project: `projects/<project>/<label>`,
+/// `None` when either name is not a single path component, and `None` too when
+/// the label is named like its project (that label is the project folder).
+pub fn label_folder(project: &str, label: &str) -> Option<String> {
+    if label.to_lowercase() == project.to_lowercase() {
+        return None;
+    }
+    (is_component(project) && is_component(label)).then(|| format!("projects/{project}/{label}"))
+}
+
+/// A name that is one legal path component: it holds no separator and is not
+/// `.`, `..` or a hidden name. The path guard of ADR 0008 still judges the
+/// folder it would build.
+pub fn is_component(name: &str) -> bool {
+    let name = name.trim();
+    !name.is_empty()
+        && name == name.trim_matches(|c: char| c.is_whitespace())
+        && !name.starts_with('.')
+        && !name.contains(['/', '\\', '#', '|', '\0'])
+        && !name.chars().any(char::is_control)
+}
+
+/// The board's projects and labels with no folder: a project with no
+/// `projects/<project>` (matched ignoring case), a label with no folder under
+/// it. A name that is not a single component has no folder and is listed.
+fn missing_folders(tree: &[BikeshedNode], names: &BoardNames) -> Vec<MissingFolder> {
+    let projects = tree
+        .iter()
+        .find(|node| node.kind == NodeKind::Folder && node.name.eq_ignore_ascii_case("projects"));
+    let child = |parent: Option<&BikeshedNode>, name: &str| -> Option<BikeshedNode> {
+        parent?
+            .children
+            .iter()
+            .find(|node| {
+                node.kind == NodeKind::Folder && node.name.to_lowercase() == name.to_lowercase()
+            })
+            .cloned()
+    };
+    let mut missing = Vec::new();
+    for project in &names.projects {
+        let folder = if is_component(&project.name) {
+            child(projects, &project.name)
+        } else {
+            None
+        };
+        if folder.is_none() {
+            missing.push(MissingFolder {
+                project: project.name.clone(),
+                label: None,
+                path: format!("projects/{}", project.name),
+            });
+        }
+        for label in &project.labels {
+            if label.to_lowercase() == project.name.to_lowercase() {
+                continue;
+            }
+            let present = is_component(label) && child(folder.as_ref(), label).is_some();
+            if !present {
+                missing.push(MissingFolder {
+                    project: project.name.clone(),
+                    label: Some(label.clone()),
+                    path: format!("projects/{}/{}", project.name, label),
+                });
+            }
+        }
+    }
+    missing.sort_by(|left, right| {
+        (left.path.to_lowercase(), left.path.clone())
+            .cmp(&(right.path.to_lowercase(), right.path.clone()))
+    });
+    missing
 }

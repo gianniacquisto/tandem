@@ -754,7 +754,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "label_add",
             method_tag: "label.add",
-            description: "Declare a label inside a project (project is required). A label must exist before tickets move to it.",
+            description: "Declare a label inside a project (project is required). A label must exist before tickets move to it. Creates the notes folder projects/<project>/<label>/ (none when the label is named like its project); a folder that could not be made is a note on the answer.",
             input_schema: LabelAddParams::schema(),
             annotations: Annotations::WRITE,
             method: Method::LabelAdd(LabelAddParams::default()),
@@ -762,7 +762,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "label_rename",
             method_tag: "label.rename",
-            description: "Rename a label, rewriting every ticket in it in one write. A new project is refused while the label holds tickets.",
+            description: "Rename a label, rewriting every ticket in it in one write. A new project is refused while the label holds tickets. Moves its notes folder, and rewrites [[label:...]] links; what could not be moved is a note on the answer and shows in note_health.",
             input_schema: LabelRenameParams::schema(),
             annotations: Annotations::WRITE,
             method: Method::LabelRename(LabelRenameParams::default()),
@@ -794,7 +794,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "project_add",
             method_tag: "project.add",
-            description: "Declare a project and the ref key it issues (abbr; omitted, the first three letters of the name). A project must exist before labels or tickets name it.",
+            description: "Declare a project and the ref key it issues (abbr; omitted, the first three letters of the name). A project must exist before labels or tickets name it. Creates the notes folder projects/<name>/; a folder that could not be made is a note on the answer.",
             input_schema: ProjectAddParams::schema(),
             annotations: Annotations::WRITE,
             method: Method::ProjectAdd(ProjectAddParams::default()),
@@ -802,7 +802,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "project_rename",
             method_tag: "project.rename",
-            description: "Rename a project, moving its labels and tickets with it; abbr moves the key until the project has issued a number.",
+            description: "Rename a project, moving its labels and tickets with it; abbr moves the key until the project has issued a number. Moves the notes folder projects/<old>/ and rewrites [[project:...]] links; what could not be moved is a note on the answer and shows in note_health.",
             input_schema: ProjectRenameParams::schema(),
             annotations: Annotations::WRITE,
             method: Method::ProjectRename(ProjectRenameParams::default()),
@@ -898,7 +898,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "note_health",
             method_tag: "note.health",
-            description: "Check the vault's link graph: broken links (typed project: and label: links included), orphans, folders under projects/ that match no project or label, and counts, the same report note links prints.",
+            description: "Check the vault's link graph: broken links (typed project: and label: links included), orphans, folders under projects/ that match no project or label, board projects and labels with no folder (missingFolders), and counts, the same report note links prints.",
             input_schema: EmptyParams::schema(),
             annotations: Annotations::READ,
             method: Method::NoteHealth(EmptyParams {}),

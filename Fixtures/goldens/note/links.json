@@ -11,10 +11,12 @@
     "counts": {
       "broken": 0,
       "links": 1,
+      "missingFolders": 0,
       "notes": 3,
       "orphans": 1,
       "unmatchedFolders": 1
     },
+    "missingFolders": [],
     "orphans": [
       "daily/2026-10-30.md"
     ],

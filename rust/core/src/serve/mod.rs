@@ -335,6 +335,9 @@ pub fn router(context: SessionContext) -> Router {
 pub fn router_with(context: SessionContext, changes: broadcast::Sender<i64>) -> Router {
     let access = context.access.clone();
     let store = context.store.clone();
+    // The vault follows the board (TAN-531): every project and label has its
+    // folder once serve is up. Idempotent; it moves and deletes nothing.
+    crate::rpc::reconcile_vault(&store, &context.actor);
     if access.is_token()
         && let Err(error) = store.browser_sessions_sweep(crate::store::unix_now())
     {

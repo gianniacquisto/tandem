@@ -755,7 +755,12 @@ pub(super) async fn add_label(
     // A label lives in a project: the board's project focus names it, and with
     // no focus the refusal lists the projects.
     let project = Some(filters.project.as_str()).filter(|name| !name.is_empty());
-    let outcome = context.board().add_label(field(&params, "name"), project);
+    let name = field(&params, "name");
+    let outcome = context.board().add_label(name, project);
+    // The board write stands; a folder that was not made is the notice.
+    let vault_note = outcome.as_ref().ok().and_then(|_| {
+        crate::rpc::vault::added(&context.store, &context.board(), project, Some(name.trim()))
+    });
     if outcome.is_ok() {
         tracing::info!(
             actor = ?context.actor.as_str(),
@@ -764,7 +769,7 @@ pub(super) async fn add_label(
             "label added"
         );
     }
-    let notice = outcome.err().map(|error| error.message());
+    let notice = outcome.err().map(|error| error.message()).or(vault_note);
     render_response(&context, &filters, notice, &headers, StatusCode::OK)
 }
 
@@ -779,7 +784,11 @@ pub(super) async fn rename_label(
     };
     let mut filters = Filters::parse(&params);
     let to = field(&params, "to");
+    let before = crate::rpc::vault::names(&context.board());
     let outcome = context.board().rename_label(&name, to, None);
+    let vault_note = outcome.as_ref().ok().and_then(|_| {
+        crate::rpc::vault::label_renamed(&context.store, &context.board(), &before, &name, to)
+    });
     if outcome.is_ok() {
         tracing::info!(
             actor = ?context.actor.as_str(),
@@ -792,6 +801,6 @@ pub(super) async fn rename_label(
     if outcome.is_ok() && filters.label == name {
         filters.label = to.trim().to_string();
     }
-    let notice = outcome.err().map(|error| error.message());
+    let notice = outcome.err().map(|error| error.message()).or(vault_note);
     render_response(&context, &filters, notice, &headers, StatusCode::OK)
 }

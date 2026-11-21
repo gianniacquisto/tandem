@@ -8978,3 +8978,40 @@ async fn the_edit_view_lists_the_targets_that_resolve_broken() {
         "{body}"
     );
 }
+
+#[tokio::test]
+async fn serve_start_creates_the_missing_folders_and_a_label_add_creates_its_own() {
+    let _one = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("serve-folders");
+    let store = sandbox.store();
+    setup_board(&store);
+    let vault = sandbox.root.join("home").join("bikeshed");
+    assert!(
+        !vault.join("projects").exists(),
+        "nothing exists before serve starts"
+    );
+    std::fs::create_dir_all(vault.join("projects/alpha")).expect("a pre-existing folder");
+
+    let app = router(context(store));
+    let mut spelled: Vec<String> = std::fs::read_dir(vault.join("projects"))
+        .expect("projects reads")
+        .map(|entry| {
+            entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+    spelled.sort();
+    assert_eq!(
+        spelled,
+        vec!["Beta", "Elsewhere", "alpha"],
+        "an existing folder keeps its spelling and is reused"
+    );
+    assert!(vault.join("projects/alpha/shared").is_dir());
+
+    let (status, _, _) = send(&app, form_request("/labels", "name=gamma&project=Alpha")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(vault.join("projects/alpha/gamma").is_dir());
+}

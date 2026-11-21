@@ -240,3 +240,53 @@ fn rename_into_a_new_folder_creates_the_parent_directories() {
     assert_eq!(vault.read("deep/nested/C.md"), "bee");
     assert!(!vault.exists("B.md"));
 }
+
+#[test]
+fn the_typed_rewrite_keeps_fragment_and_alias_and_skips_frontmatter_and_code() {
+    let vault = Vault::new("rename-typed");
+    vault.stage(
+        "A.md",
+        "---\nrelated: [[project:P]]\n---\n[[project:P]] [[Project: p#frag|alias]] [[P]] [[label:P]] `[[project:P]]`\n```\n[[project:P]]\n```\n",
+    );
+    let changed = vault
+        .bikeshed()
+        .rewrite_typed_links(true, "P", "Q")
+        .unwrap();
+    assert_eq!(changed.value, 1);
+    assert_eq!(
+        vault.read("A.md"),
+        "---\nrelated: [[project:P]]\n---\n[[project:Q]] [[Project: Q#frag|alias]] [[P]] [[label:P]] `[[project:P]]`\n```\n[[project:P]]\n```\n"
+    );
+}
+
+#[test]
+fn the_label_rewrite_touches_only_label_links() {
+    let vault = Vault::new("rename-typed-label");
+    vault.stage("A.md", "[[label:L|x]] [[project:L]] [[L]]");
+    vault
+        .bikeshed()
+        .rewrite_typed_links(false, "L", "M")
+        .unwrap();
+    assert_eq!(vault.read("A.md"), "[[label:M|x]] [[project:L]] [[L]]");
+}
+
+#[test]
+fn rename_folder_moves_the_notes_and_rewrites_qualified_links() {
+    let vault = Vault::new("rename-folder");
+    vault.stage("projects/P/n.md", "n");
+    vault.stage("A.md", "[[projects/P/n]]");
+    vault
+        .bikeshed()
+        .rename_folder("projects/P", "projects/Q")
+        .unwrap();
+    assert!(vault.exists("projects/Q/n.md"));
+    assert!(!vault.exists("projects/P"));
+    assert_eq!(vault.read("A.md"), "[[n]]");
+    assert!(
+        vault
+            .bikeshed()
+            .rename_folder("projects/Q", "projects/Q/inner")
+            .is_err(),
+        "a folder never moves into itself"
+    );
+}
