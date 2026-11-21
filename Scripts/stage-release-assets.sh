@@ -6,7 +6,7 @@
 #
 # <version> is X.Y.Z without the leading v; <dist-dir> holds the platform
 # archives the build jobs produced, `tandem-<version>-darwin-arm64.tar.gz`,
-# `tandem-<version>-linux-x86_64.tar.gz` and
+# `-darwin-x86_64.tar.gz`, `-linux-x86_64.tar.gz`, `-linux-arm64.tar.gz` and
 # `tandem-<version>-windows-x86_64.zip`. The script copies Scripts/install.sh to
 # <dist-dir>/install.sh with its DEFAULT_VERSION set to <version>, then writes
 # <dist-dir>/SHA256SUMS with one line per published verifiable asset: every

@@ -15,7 +15,7 @@ Decided 2026-11-13 (CUT-14).
 - **No HTTP JSON-RPC.** `POST /api/rpc` is not exposed: the UI speaks HTML routes and SSE, and no HTTP JSON-RPC client exists. `rpc::handle_in`, `rpc::Stream` and `rpc::StdioStream` stay for `tandem mcp`, which is the one caller left.
 - **`tandem rpc` is retired.** The stdio door the Electron shell spawned goes with the shell; `serve` and `mcp` are the two server doors.
 - **Electron, React, Vite, vitest, `ts-rs` and `app/` retire.** A later cut deletes the renderer tree; this record writes the replacement it answers to.
-- **Distribution is one standalone binary.** Releases publish archive files per platform with `SHA256SUMS` and an `install.sh`; the Homebrew tap and `Scripts/bump-tap.sh` retire.
+- **Distribution is one standalone binary.** Releases publish archive files per platform with `SHA256SUMS` and an `install.sh`; five targets (amended 2026-11-21, CUT-22): darwin-arm64, darwin-x86_64 (cross-built on the arm64 runner), windows-x86_64, and static musl linux-x86_64 and linux-arm64, so one Linux archive per architecture runs on any distro, glibc or not (no separate glibc variant); the Homebrew tap and `Scripts/bump-tap.sh` retire.
 
 ## Amendment (2026-11-14)
 
