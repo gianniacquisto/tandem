@@ -70,7 +70,7 @@ Every write records who made it, the **actor**. In order:
 2. The `X-Tandem-Agent` header on an MCP call, or `TANDEM_AGENT` for a local CLI run.
 3. Otherwise, `human`.
 
-An actor name is lowercase letters, digits and hyphens. Where a verb takes `self` (`--assignee self`, `--origin self`), it means the current `TANDEM_AGENT`, and it is refused when that is unset. See [configuration](configuration.md#connecting-an-agent).
+The `X-Tandem-Agent` header only accepts lowercase letters, digits and hyphens; `TANDEM_AGENT`, `--author` and `--origin` are recorded as given. Where a verb takes `self` (`--assignee self`, `--origin self`), it means the current `TANDEM_AGENT`, and it is refused when that is unset. See [configuration](configuration.md#connecting-an-agent).
 
 ## Notes
 
