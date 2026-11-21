@@ -88,3 +88,31 @@ fn the_fixture_copy_is_not_the_committed_tree() {
     assert_ne!(vault.dir(), committed.as_path());
     assert!(Bikeshed::new(vault.dir()).read("Index.md").is_ok());
 }
+
+#[test]
+fn the_fixture_vaults_graph_counts() {
+    let vault = fixture();
+    let graph = vault
+        .bikeshed()
+        .graph(
+            &BoardNames {
+                projects: vec![BoardProject {
+                    name: "fixture".to_string(),
+                    labels: Vec::new(),
+                }],
+            },
+            &crate::bikeshed::GraphScope::default(),
+        )
+        .expect("the graph reads");
+    let count = |kind: &str| graph.nodes.iter().filter(|n| n.kind.word() == kind).count();
+    assert_eq!(count("note"), 3, "Index, the overview and the daily note");
+    assert_eq!(count("project"), 1);
+    assert_eq!(count("label"), 0);
+    assert_eq!(graph.total, graph.shown);
+    let links = graph
+        .edges
+        .iter()
+        .filter(|e| e.kind.word() == "links")
+        .count();
+    assert_eq!(links, 1, "[[fixture]] in the Index");
+}

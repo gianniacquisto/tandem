@@ -5555,6 +5555,7 @@ const ROUTE_TABLE: &[(&str, &str, &str)] = &[
         "/people/bob/tokens/1/revoke",
     ),
     ("GET", "/notes", "/notes"),
+    ("GET", "/notes/graph.json", "/notes/graph.json"),
     ("GET", "/notes/view", "/notes/view"),
     ("GET", "/notes/edit", "/notes/edit"),
     ("GET", "/notes/open", "/notes/open"),
@@ -9014,4 +9015,95 @@ async fn serve_start_creates_the_missing_folders_and_a_label_add_creates_its_own
     let (status, _, _) = send(&app, form_request("/labels", "name=gamma&project=Alpha")).await;
     assert_eq!(status, StatusCode::OK);
     assert!(vault.join("projects/alpha/gamma").is_dir());
+}
+
+#[tokio::test]
+async fn get_notes_graph_json_answers_the_typed_graph_and_narrows_by_project() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-graph");
+    let store = sandbox.store();
+    setup_board(&store);
+    let notes = vault(&store);
+    notes
+        .create("projects/alpha/Inside.md")
+        .expect("the note is created");
+    notes
+        .create("projects/beta/Outside.md")
+        .expect("the note is created");
+    notes.create("Other.md").expect("the note is created");
+    notes
+        .write("Other.md", "See [[project:Alpha]]", None)
+        .expect("the note is written");
+    let app = router(context(store));
+
+    let (status, headers, body) = get(&app, "/notes/graph.json").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+    let whole: serde_json::Value = serde_json::from_str(&body).expect("the answer is JSON");
+    for key in ["nodes", "edges", "total", "shown", "cap"] {
+        assert!(whole.get(key).is_some(), "the answer carries {key}: {body}");
+    }
+    assert_eq!(whole["cap"], 1000);
+    assert_eq!(whole["total"], whole["shown"]);
+    let ids = |value: &serde_json::Value| -> Vec<String> {
+        value["nodes"]
+            .as_array()
+            .expect("nodes is a list")
+            .iter()
+            .map(|node| node["id"].as_str().expect("an id").to_string())
+            .collect()
+    };
+    let whole_ids = ids(&whole);
+    assert!(whole_ids.contains(&"projects/beta/Outside.md".to_string()));
+    let alpha = whole["nodes"]
+        .as_array()
+        .expect("nodes")
+        .iter()
+        .find(|node| node["id"] == "projects/alpha")
+        .expect("the project node");
+    assert_eq!(alpha["kind"], "project");
+    assert_eq!(alpha["name"], "Alpha");
+
+    let (status, _, body) = get(&app, "/notes/graph.json?project=Alpha").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let narrowed: serde_json::Value = serde_json::from_str(&body).expect("JSON");
+    let narrowed_ids = ids(&narrowed);
+    assert!(narrowed_ids.contains(&"projects/alpha/Inside.md".to_string()));
+    assert!(
+        narrowed_ids.contains(&"Other.md".to_string()),
+        "it links in"
+    );
+    assert!(!narrowed_ids.contains(&"projects/beta/Outside.md".to_string()));
+}
+
+#[tokio::test]
+async fn get_notes_graph_json_with_an_unknown_project_answers_the_error() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-graph-unknown");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store));
+
+    let (status, headers, body) = get(&app, "/notes/graph.json?project=Nope").await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+    let answer: serde_json::Value = serde_json::from_str(&body).expect("the error is JSON");
+    let message = answer["error"].as_str().expect("an error message");
+    assert!(
+        message.contains("Nope") && message.contains("Alpha"),
+        "{message}"
+    );
+    assert!(answer.get("nodes").is_none(), "never an empty graph");
+}
+
+#[test]
+fn the_notes_graph_route_needs_what_the_notes_face_needs() {
+    assert_eq!(
+        guard::route_need("/notes/graph.json"),
+        Some(guard::Need::Permit(crate::permission::Permission::Board))
+    );
+    assert_eq!(
+        guard::route_need("/notes/graph.json"),
+        guard::route_need("/notes")
+    );
 }

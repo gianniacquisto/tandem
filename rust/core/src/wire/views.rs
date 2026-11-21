@@ -19,7 +19,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
-use crate::bikeshed::{Backlink, BikeshedNode, MovedNote, NodeKind, NoteContent, WriteRecord};
+use crate::bikeshed::{
+    Backlink, BikeshedNode, MovedNote, NodeKind, NoteContent, NoteGraph, WriteRecord,
+};
 
 use crate::domain::{Comment, LabelDeletion, Ticket, TicketBlock};
 use crate::store::encode;
@@ -310,6 +312,74 @@ impl NoteNodeView {
                 NodeKind::Note => "note".to_string(),
             },
             children: node.children.iter().map(Self::new).collect(),
+        }
+    }
+}
+
+/// `GET /notes/graph.json`: the vault as typed nodes and edges (ADR 0054), for
+/// the graph view to draw. `kind` is `project`, `label`, `folder` or `note` on a
+/// node and `contains` or `links` on an edge. `total` counts the nodes before
+/// the cap and `shown` the nodes sent.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteGraphView {
+    pub nodes: Vec<NoteGraphNodeView>,
+    pub edges: Vec<NoteGraphEdgeView>,
+    pub total: usize,
+    pub shown: usize,
+    pub cap: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteGraphNodeView {
+    pub id: String,
+    pub kind: String,
+    pub name: String,
+    /// The vault path; null for a project or label a link names and no folder holds.
+    pub path: Option<String>,
+    pub orphan: bool,
+    pub daily: bool,
+    /// `no project` or `no label` for a folder `note_health` lists, else null.
+    pub unmatched: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteGraphEdgeView {
+    pub source: String,
+    pub target: String,
+    pub kind: String,
+}
+
+impl NoteGraphView {
+    pub fn new(graph: &NoteGraph) -> Self {
+        Self {
+            nodes: graph
+                .nodes
+                .iter()
+                .map(|node| NoteGraphNodeView {
+                    id: node.id.clone(),
+                    kind: node.kind.word().to_string(),
+                    name: node.name.clone(),
+                    path: node.path.clone(),
+                    orphan: node.orphan,
+                    daily: node.daily,
+                    unmatched: node.unmatched.clone(),
+                })
+                .collect(),
+            edges: graph
+                .edges
+                .iter()
+                .map(|edge| NoteGraphEdgeView {
+                    source: edge.source.clone(),
+                    target: edge.target.clone(),
+                    kind: edge.kind.word().to_string(),
+                })
+                .collect(),
+            total: graph.total,
+            shown: graph.shown,
+            cap: graph.cap,
         }
     }
 }

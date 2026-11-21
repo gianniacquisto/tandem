@@ -145,7 +145,7 @@ impl Bikeshed {
         });
         let mut orphans: Vec<String> = notes
             .iter()
-            .filter(|note| !linked.contains(*note) && !is_filed_under_project(note, names))
+            .filter(|note| is_orphan(note, &linked, names))
             .cloned()
             .collect();
         orphans.sort_by(|left, right| {
@@ -178,6 +178,17 @@ impl Bikeshed {
     }
 }
 
+/// The orphan rule (ADR 0054): a note with no resolved link in or out that is
+/// not filed under a matched project folder. `note_health` and the graph read
+/// call this one function.
+pub(super) fn is_orphan(
+    path: &str,
+    linked: &std::collections::HashSet<String>,
+    names: &BoardNames,
+) -> bool {
+    !linked.contains(path) && !is_filed_under_project(path, names)
+}
+
 /// A note filed anywhere under `projects/<p>/` where `<p>` is a board project,
 /// matched case-insensitively. Filing is the project link a folder gives.
 fn is_filed_under_project(path: &str, names: &BoardNames) -> bool {
@@ -190,7 +201,7 @@ fn is_filed_under_project(path: &str, names: &BoardNames) -> bool {
 /// The direct children of `projects/` that match no project, and the direct
 /// children of a matched project folder that match none of its labels. Deeper
 /// folders are free.
-fn unmatched_folders(tree: &[BikeshedNode], names: &BoardNames) -> Vec<UnmatchedFolder> {
+pub(super) fn unmatched_folders(tree: &[BikeshedNode], names: &BoardNames) -> Vec<UnmatchedFolder> {
     let mut found = Vec::new();
     let Some(projects) = tree
         .iter()

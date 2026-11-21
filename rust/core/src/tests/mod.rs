@@ -16,6 +16,7 @@ mod bikeshed_backlink;
 mod bikeshed_conflict;
 mod bikeshed_crash_recovery;
 mod bikeshed_edit;
+mod bikeshed_graph;
 mod bikeshed_health;
 mod bikeshed_locked;
 mod bikeshed_locking;

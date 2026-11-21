@@ -5,8 +5,43 @@ use super::board::ProjectOption;
 use super::sheet::sheet_handle;
 use super::*;
 use crate::bikeshed::wikilink::LinkResolution;
+use crate::domain::DomainError;
 
 // MARK: - The bikeshed notes
+
+/// `GET /notes/graph.json?project=<name>`: the vault as typed nodes and edges
+/// for the graph view. The project value is matched against the board's names
+/// and never builds a path. A failure answers a JSON error, never an empty graph.
+pub(super) async fn note_graph(
+    context: Context,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    let project = field(&params, "project").trim().to_string();
+    let scope = crate::bikeshed::GraphScope {
+        project: Some(project).filter(|project| !project.is_empty()),
+    };
+    let graph = crate::rpc::vault::try_names(&context.board())
+        .and_then(|names| context.bikeshed().graph(&names, &scope));
+    let (status, body) = match graph {
+        Ok(graph) => (
+            StatusCode::OK,
+            serde_json::to_string(&crate::wire::NoteGraphView::new(&graph))
+                .unwrap_or_else(|_| "{}".to_string()),
+        ),
+        Err(error) => {
+            let status = match error {
+                DomainError::UnknownProjectName { .. } => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            tracing::warn!(error = ?error, "the notes graph could not be read");
+            (
+                status,
+                serde_json::json!({ "error": error.message() }).to_string(),
+            )
+        }
+    };
+    (status, [(header::CONTENT_TYPE, "application/json")], body).into_response()
+}
 
 /// The `markdown.html` partial on its own: the notes preview's answer.
 #[derive(Template)]
