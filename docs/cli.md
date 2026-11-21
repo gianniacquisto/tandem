@@ -304,10 +304,6 @@ tandem-cli ticket list --status ready
 - `--home` is ignored: the server's home is the one used.
 - `serve`, `export`, `import`, `note rename` and `note stats` have no remote form and refuse, naming themselves.
 
-## Deprecated
-
-`todo` still works in place of `ticket`, with a one-line warning on stderr, and `todo list` answers both `tickets` and `todos`. They will be removed in a later release, listed under Breaking changes in its notes ([versions and compatibility](versioning.md)). Use `ticket`.
-
 ## Background
 
-[ADR 0047](adr/0047-serve-is-the-single-door.md) (one server for every session), [ADR 0050](adr/0050-the-home-leaves-and-arrives-as-one-archive.md) (export and import), [ADR 0053](adr/0053-one-prefix-per-project.md) (projects and refs), [ADR 0030](adr/0030-one-entity-the-ticket.md) (the ticket and the `todo` alias).
+[ADR 0047](adr/0047-serve-is-the-single-door.md) (one server for every session), [ADR 0050](adr/0050-the-home-leaves-and-arrives-as-one-archive.md) (export and import), [ADR 0053](adr/0053-one-prefix-per-project.md) (projects and refs), [ADR 0030](adr/0030-one-entity-the-ticket.md) (the ticket). What may change between releases: [versions and compatibility](versioning.md).

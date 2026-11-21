@@ -8,7 +8,7 @@ Only the latest release is supported. A fix ships in a new release, not as a pat
 
 ## What may change, and how you hear about it
 
-Tandem moves quickly, and different surfaces carry different promises. Whatever the surface, a change that renames or removes something, or changes what it means, is listed under **Breaking changes** at the top of the release notes.
+Tandem moves quickly, and different surfaces carry different promises. A change that renames or removes an MCP tool, one of its parameters or answer fields, a CLI verb, flag, output field or exit code, an environment variable, or one of the HTTP routes `/health`, `/mcp`, `/events` and `/export`, or changes what one of them means, is listed under **Breaking changes** at the top of the release notes. The agent examples, the board's own routes and error messages are left out of that list: they carry no promise.
 
 | Surface | Promise |
 | --- | --- |
@@ -29,9 +29,7 @@ An archive made by [`tandem-cli export`](cli.md#export-and-import) can be import
 
 ## Deprecated now
 
-| What | Use instead | Deprecated in |
-| --- | --- | --- |
-| `tandem-cli todo ...` and the `todos` key in `todo list`'s answer | `tandem-cli ticket ...` and `tickets` | 1.0 ([ADR 0030](adr/0030-one-entity-the-ticket.md)) |
+Nothing is deprecated at the moment. A deprecation is listed here, with what to use instead and the release that deprecated it, until the release that removes it.
 
 ## Known issues
 
