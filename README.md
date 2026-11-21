@@ -90,12 +90,11 @@ Details in [architecture](docs/architecture.md).
 
 ## Docs
 
-- [Self-hosting](docs/self-hosting.md): a team board, the first admin, people and their agents
-- [Architecture](docs/architecture.md)
-- [CLI reference](docs/cli.md)
-- [MCP tools](docs/mcp.md)
-- [Store, backup and notes](docs/store.md)
-- [Glossary](GLOSSARY.md) and [ADRs](docs/adr/README.md), indexed by status
+Start at the [documentation index](docs/README.md). The most used pages:
+
+- Guides: [installing and upgrading](docs/install-paths.md), [self-hosting](docs/self-hosting.md), [reverse proxy](docs/reverse-proxy.md), [store, backup and notes](docs/store.md)
+- Reference: [configuration](docs/configuration.md), [CLI](docs/cli.md), [MCP tools](docs/mcp.md), [operator API](docs/operator.md)
+- Background: [architecture](docs/architecture.md), [ADRs](docs/adr/README.md), [glossary](GLOSSARY.md)
 - [Contributing](CONTRIBUTING.md) and [releasing](docs/releasing.md)
 
 ## Licence
