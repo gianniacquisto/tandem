@@ -2,6 +2,8 @@
 
 > **Status:** In force as amended. See [the index](README.md).
 
+> **Amended 2026-11-20 by [ADR 0053](0053-one-prefix-per-project.md):** refs are project-keyed (the project owns the key and the counter), a ticket stores its project, and there is no default area. A label is optional inside one project. The amendment's text is ADR 0053's.
+
 > **Amended 2026-11-11 by [ADR 0043](0043-the-board-draws-one-axis.md):** the board no longer groups lanes under project headers. It draws one column per workflow stage, a lane is a chip on the card and a filter, and the project is the focus the columns are narrowed by. This record's model (a project holds lanes, a ticket derives its project via its lane) stands unchanged. The amendment's text is ADR 0043's.
 
 > **Amended 2026-11-08 by [ADR 0041](0041-workflows-are-data.md):** `projects.workflow` is the later hook for a per-project workflow. Projects still own lanes unchanged; this record's model gains the nullable column and no reader yet. The amendment's text is ADR 0041's.

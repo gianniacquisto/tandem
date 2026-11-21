@@ -10,11 +10,13 @@ Every command prints JSON on stdout.
 
 ```sh
 tandem-cli ticket list [--filter open|done|all] [--status <value[,value]>]
-                       [--assignee <name|self>] [--label <name>] [--text <string>]
+                       [--assignee <name|self>] [--project <name>] [--label <name>]
+                       [--text <string>]
                        [--archived] [--blocked]
 tandem-cli ticket show --id <id>
 tandem-cli ticket add --title <string> [--status <value>] [--assignee <name|self>]
-                      [--label <name>] [--origin <name|self>] [--description <string|->]
+                      [--project <name>] [--label <name>] [--origin <name|self>]
+                      [--description <string|->]
 tandem-cli ticket set --id <id> [--title <string>] [--status <value>]
                       [--assignee <name|self>] [--description <string|->]
                       [--append-description <string|->]
@@ -27,13 +29,13 @@ tandem-cli ticket comment add --id <id> [--author <name>] --body <string|->
 tandem-cli ticket comment list --id <id>
 
 tandem-cli label list
-tandem-cli label add --name <name> [--abbr <key>] [--project <name>]
-tandem-cli label rename --from <name> --to <name> [--abbr <key>] [--project <name>]
+tandem-cli label add --name <name> --project <name>
+tandem-cli label rename --from <name> --to <name> [--project <name>]
 tandem-cli label delete --name <name>
 tandem-cli label move --name <name> [--index <number>]
 tandem-cli project list
-tandem-cli project add --name <name>
-tandem-cli project rename --from <name> --to <name>
+tandem-cli project add --name <name> [--abbr <key>]
+tandem-cli project rename --from <name> --to <name> [--abbr <key>]
 tandem-cli project delete --name <name>
 
 tandem-cli note rename --from <path> --to <path>
@@ -44,7 +46,7 @@ tandem-cli doctor
 
 A comment's `--author` left out (or blank) is the actor the run writes as: `TANDEM_AGENT` locally, the member or `X-Tandem-Agent` name through `tandem serve`; with no agent named it stays unnamed.
 
-The Statuses are `backlog`, `on-hold`, `ready`, `in-progress`, `in-review` and `done` (`on-hold` is the parked slot: a blocker, a human decision pending); a ticket's label is named with `--label`, and the unnamed default area always comes first. A ticket in a label carries a **ref** - the label's key and a per-label number, `TAN-42` - and every `--id` (or `--ticket`) accepts it beside the full UUID; the default area's tickets have none, and a label's key is frozen once its tickets carry numbers.
+The Statuses are `backlog`, `on-hold`, `ready`, `in-progress`, `in-review` and `done` (`on-hold` is the parked slot: a blocker, a human decision pending); a ticket always lives in a **project**, named with `--project` (a `--label` alone implies its project, and with neither `ticket add` refuses and lists the projects); the label, named with `--label`, is an optional grouping inside the project, and the unlabelled tickets come first. Every ticket carries a **ref** - its project's key and a per-project number, `TAN-42` - and every `--id` (or `--ticket`) accepts it beside the full UUID. The ref never changes while the ticket stays in its project, a move to a label of another project is refused, and a project's key is set with `project add --abbr` and frozen once the project has issued a number. A ref the one-prefix migration retired (`CUT-34`) still resolves to its ticket and the answer shows the current ref ([ADR 0053](adr/0053-one-prefix-per-project.md)).
 
 `todo` still answers for `ticket` as a deprecated alias: same parse, same output, one line on stderr saying so, and the `list` reply carries both `tickets` and `todos` with the same array ([ADR 0030](adr/0030-one-entity-the-ticket.md)). The alias and the doubled reply go in the release after the one that deprecated them.
 

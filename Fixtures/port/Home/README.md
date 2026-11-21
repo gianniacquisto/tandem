@@ -9,7 +9,7 @@ the real `~/.tandem`.
 
 - `bikeshed/` is the vault: `Index.md`, `projects/<project>/<project>.md`, and
   one `daily/` note.
-- `tandem.db` is the store: the two board tickets and the one label the fixture
+- `tandem.db` is the store: the two board tickets and the one project and label the fixture
   carries, generated, never hand-edited:
   `Scripts/make-fixture-home.sh` writes it from `Fixtures/port/tandem.seed.json`
   (every id and timestamp in the seed, no clock), and

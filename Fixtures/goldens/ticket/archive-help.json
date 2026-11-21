@@ -8,7 +8,7 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli ticket archive — the whole done list, bulk.",
+    "tandem-cli ticket archive \u2014 the whole done list, bulk.",
     "",
     "Usage:",
     "  tandem-cli ticket archive"

@@ -59,6 +59,19 @@ The People screen is a second caller of these store functions: it holds no SQL. 
 
 A personal token has a label, the name its member gave it (1 to 60 characters of one line of plain text: the store function that makes a token refuses an empty label, a longer one and one with a control character, a line or paragraph separator or a character that hides or reorders text, so a caller other than the form cannot store one). A member holds at most 20 live tokens, counted in the same write as the insert. The label is the only part of a token in the access record: the value and its digest never are. To connect an AI coding agent, a member makes a token on the Personal tokens screen and puts it in the tool's MCP settings as `Authorization: Bearer <token>`; the tool acts as that member and is limited as described in [the CLI guide](cli.md).
 
+## One prefix per project (schema v16)
+
+The project owns the ref prefix and its counter, and a ticket stores its project ([ADR 0053](adr/0053-one-prefix-per-project.md)). Schema v16, in one migration transaction:
+
+| Change | Holds |
+| --- | --- |
+| `projects.key`, `projects.last_number` | the `TAN` of `TAN-42` and the last number the project issued; the number only rises |
+| `tickets.project` | the ticket's project, set at creation and never null after v16 (a read refuses a null row as corrupt) |
+| `ticket_aliases (reference, ticket_id, author)` | every ref the re-key retired, upper case (`CUT-34`), and the ticket it still names; written by the migration only, carried by an export |
+| `labels.key`, `labels.last_number` | dropped, so no second copy of the counter survives |
+
+The re-key, per project: the key is the key of the label named like the project when it has one, otherwise the key of the label with the highest counter, and a project with no label gets a generated key. That label's tickets keep their numbers; every other numbered ticket takes the project's next number in `created_at` order (then by id) and its old ref becomes an alias. Tickets that never had a ref (the default area) are homed unlabelled in the first project, or in a created `Inbox` on a home with no project, and are numbered after the rest with no alias. Dependency edges, comments and positions are keyed by UUID and are untouched. A read of a file below v16 runs the same arithmetic in memory, so it shows the refs the first write will leave.
+
 ## The access record (schema v15)
 
 Who changed access to a team workspace, and who exported it, is a durable record an admin can read ([ADR 0052](adr/0052-members-and-personal-tokens.md), part 2). Schema v15 adds one table:

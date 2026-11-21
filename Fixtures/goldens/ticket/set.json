@@ -30,6 +30,7 @@
     "link": null,
     "number": 1,
     "origin": "human",
+    "project": "Cycle",
     "ref": "CYC-1",
     "status": "in-progress",
     "title": "Renamed ticket"

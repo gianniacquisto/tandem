@@ -58,6 +58,7 @@ fn seed(home: &Home, tickets: usize) {
                     description: Some("body"),
                     status: "ready",
                     archived: false,
+                    project: "Main",
                     label: None,
                     number: None,
                     origin: "human",
@@ -81,6 +82,8 @@ fn seed(home: &Home, tickets: usize) {
         .write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "p",
+                key: "",
+                last_number: 0,
                 position: 0,
             })
         })
@@ -314,6 +317,8 @@ fn an_exported_home_imports_with_the_same_tickets_comments_and_notes() {
         .write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "after",
+                key: "",
+                last_number: 0,
                 position: 1,
             })
         })
@@ -416,6 +421,8 @@ fn an_export_beside_an_active_writer_yields_a_store_that_opens() {
             let _ = store.write(&Actor::Human, |write| {
                 write.insert_project(NewProject {
                     name: &name,
+                    key: "",
+                    last_number: 0,
                     position: 100 + index,
                 })
             });
@@ -786,6 +793,7 @@ fn import_refuses_a_store_with_a_foreign_trigger_or_a_filled_emptied_table() {
             "schema_migrations",
             "members",
             "access_record",
+            "ticket_aliases",
         ],
         &[
             "browser_sessions",
@@ -861,6 +869,8 @@ fn an_older_schema_archive_imports_and_migrates_on_the_first_write() {
         .write(&Actor::Human, |write| {
             write.insert_project(NewProject {
                 name: "first",
+                key: "",
+                last_number: 0,
                 position: 0,
             })
         })

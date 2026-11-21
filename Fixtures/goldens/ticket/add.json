@@ -3,7 +3,9 @@
     "ticket",
     "add",
     "--title",
-    "Golden ticket"
+    "Golden ticket",
+    "--project",
+    "Main"
   ],
   "exit": 0,
   "stderr": [],
@@ -22,9 +24,10 @@
     "id": "<id>",
     "label": null,
     "link": null,
-    "number": null,
+    "number": 1,
     "origin": "human",
-    "ref": null,
+    "project": "Main",
+    "ref": "MAI-1",
     "status": "backlog",
     "title": "Golden ticket"
   },

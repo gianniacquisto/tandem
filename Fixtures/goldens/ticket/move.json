@@ -24,9 +24,10 @@
     "id": "<id>",
     "label": null,
     "link": null,
-    "number": null,
+    "number": 2,
     "origin": "human",
-    "ref": null,
+    "project": "Cycle",
+    "ref": "CYC-2",
     "status": "backlog",
     "title": "Second ticket"
   },

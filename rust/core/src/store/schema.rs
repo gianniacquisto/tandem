@@ -25,7 +25,7 @@ use super::{Actor, Result, StoreError, now, translate};
 
 /// The version this build writes and reads. Always the last version applied, so
 /// the constant is the migration count.
-pub const CURRENT_VERSION: i64 = 15;
+pub const CURRENT_VERSION: i64 = 16;
 
 /// One migration: its version, a name for the error text, and its DDL.
 pub(crate) struct Migration {
@@ -111,6 +111,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: ACCESS_RECORD_VERSION,
         name: "the access record",
         apply: version_fifteen,
+    },
+    Migration {
+        version: PROJECT_KEYS_VERSION,
+        name: "one prefix per project",
+        apply: version_sixteen,
     },
 ];
 
@@ -619,6 +624,17 @@ pub(crate) const ACCESS_RECORD_VERSION: i64 = 15;
 /// Version 15: the append-only `access_record` table.
 fn version_fifteen(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(super::access_record::VERSION_FIFTEEN)
+}
+
+/// The version that moves the ref prefix and its counter from the label to the
+/// project (TAN-339, ADR 0053).
+pub(crate) const PROJECT_KEYS_VERSION: i64 = 16;
+
+/// Version 16: `projects` gains `key` and `last_number`, `tickets` gains
+/// `project`, the retired refs go to `ticket_aliases`, and `labels` loses `key`
+/// and `last_number`. The arithmetic lives in [`super::rekey`].
+fn version_sixteen(connection: &Connection) -> rusqlite::Result<()> {
+    super::rekey::migrate(connection)
 }
 
 fn version_seven(connection: &Connection) -> rusqlite::Result<()> {

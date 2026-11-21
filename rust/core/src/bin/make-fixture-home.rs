@@ -26,6 +26,7 @@ use tandem_core::store::{Actor, Home, NewDependency, NewLabel, NewProject, NewTi
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Seed {
     schema: Schema,
+    projects: Vec<Project>,
     labels: Vec<Label>,
     tickets: Vec<Ticket>,
     /// The dependency edges, as `ticket block --id <ticket> --on <on>` writes
@@ -51,10 +52,18 @@ struct Schema {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Label {
+struct Project {
     name: String,
     key: String,
     last_number: i64,
+    position: i64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Label {
+    name: String,
+    project: String,
     position: i64,
 }
 
@@ -65,6 +74,7 @@ struct Ticket {
     title: String,
     status: String,
     archived: bool,
+    project: String,
     label: Option<String>,
     number: Option<i64>,
     origin: String,
@@ -109,28 +119,20 @@ fn write(seed_path: &Path, target: &Path) -> Result<(), String> {
     // so the file is exactly what this build writes for a fresh home.
     store
         .write(&Actor::Human, |write| {
+            for project in &seed.projects {
+                write.insert_project(NewProject {
+                    name: &project.name,
+                    key: &project.key,
+                    last_number: project.last_number,
+                    position: project.position,
+                })?;
+            }
             for label in &seed.labels {
                 write.insert_label(NewLabel {
                     name: &label.name,
-                    key: &label.key,
-                    last_number: label.last_number,
                     position: label.position,
-                    project: &label.name,
+                    project: &label.project,
                 })?;
-            }
-            {
-                use std::collections::HashSet;
-                let mut seen = HashSet::new();
-                let mut position: i64 = 0;
-                for label in &seed.labels {
-                    if seen.insert(label.name.clone()) {
-                        write.insert_project(NewProject {
-                            name: &label.name,
-                            position,
-                        })?;
-                        position += 1;
-                    }
-                }
             }
             for ticket in &seed.tickets {
                 write.insert_ticket(NewTicket {
@@ -139,6 +141,7 @@ fn write(seed_path: &Path, target: &Path) -> Result<(), String> {
                     description: None,
                     status: &ticket.status,
                     archived: ticket.archived,
+                    project: &ticket.project,
                     label: ticket.label.as_deref(),
                     number: ticket.number,
                     origin: &ticket.origin,

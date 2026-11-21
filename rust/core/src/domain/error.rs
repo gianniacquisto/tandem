@@ -61,23 +61,46 @@ pub enum DomainError {
     /// A `--project` named a project the store does not carry. `projects` is
     /// the declared list, so the refusal names what the caller may pick.
     UnknownProjectName { name: String, projects: Vec<String> },
-    /// A project delete named a project that still holds labels. `labels` names
-    /// them, so the caller re-parents first and deletes after: a delete never
-    /// strands or silently re-homes numbered labels.
+    /// A project delete named a project that still holds labels or tickets.
+    /// `labels` names the labels and `tickets` counts the tickets, so the caller
+    /// empties it first and deletes after: a delete never strands a ticket.
     ProjectNotEmpty {
         project: String,
         labels: Vec<String>,
+        tickets: usize,
     },
-    /// A label key that is not uppercase alphanumerics.
-    InvalidLabelKey(String),
-    /// A label key another label already holds.
-    DuplicateLabelKey(String),
-    /// A label's key is frozen: a ticket in the label holds a number, so moving the
-    /// key would move a ref a human has already written down.
-    FrozenLabelKey {
-        key: String,
+    /// A project key that is not uppercase alphanumerics.
+    InvalidProjectKey(String),
+    /// A project key another project, or a retired ref's prefix, already holds.
+    DuplicateProjectKey(String),
+    /// A project's key is frozen: it has issued a number, so moving the key would
+    /// move refs a human has already written down.
+    FrozenProjectKey { key: String, project: String },
+    /// A ticket or a label was added without a project. `projects` is the list
+    /// to pick from; empty means the home has no project at all.
+    MissingProject {
+        projects: Vec<String>,
+        for_label: bool,
+    },
+    /// A project and a label named together, and the label belongs elsewhere.
+    LabelProjectMismatch {
         label: String,
-        refs: Vec<String>,
+        label_project: String,
+        project: String,
+    },
+    /// A move to a label in another project. A ticket never changes project.
+    CrossProjectMove {
+        reference: String,
+        from: String,
+        label: String,
+        to: String,
+    },
+    /// A label re-parent while the label holds tickets.
+    LabelHoldsTickets {
+        label: String,
+        tickets: usize,
+        from: String,
+        to: String,
     },
     /// A handle looked like a ref (`KEY-N`) but named nothing; `hint` says
     /// whether the key is unknown or the number was never issued.
@@ -185,20 +208,75 @@ impl DomainError {
                 "Unknown project \"{name}\". The known projects are: {}.",
                 projects.join(", ")
             ),
-            Self::ProjectNotEmpty { project, labels } => format!(
-                "Project \"{project}\" still holds labels: {}. Re-parent them first, then delete.",
-                labels.join(", ")
-            ),
-            Self::InvalidLabelKey(bad) => format!(
-                "Label key \"{bad}\" is not valid. A key is uppercase letters and digits (e.g. TAN)."
-            ),
-            Self::DuplicateLabelKey(key) => {
-                format!("The label key \"{key}\" is already in use. Pick another key.")
+            Self::ProjectNotEmpty {
+                project,
+                labels,
+                tickets,
+            } => {
+                let mut held = Vec::new();
+                if !labels.is_empty() {
+                    held.push(format!("labels: {}", labels.join(", ")));
+                }
+                if *tickets > 0 {
+                    held.push(format!("{tickets} tickets"));
+                }
+                format!(
+                    "Project \"{project}\" still holds {}. A project cannot be deleted while it \
+                     holds labels or tickets.",
+                    held.join(" and ")
+                )
             }
-            Self::FrozenLabelKey { key, label, refs } => format!(
-                "The key \"{key}\" of label \"{label}\" is frozen: {} already carry it. \
-                 A key cannot move once a ticket in the label holds a number.",
-                refs.join(", ")
+            Self::InvalidProjectKey(bad) => format!(
+                "Project key \"{bad}\" is not valid. A key is uppercase letters and digits (e.g. TAN)."
+            ),
+            Self::DuplicateProjectKey(key) => {
+                format!(
+                    "The project key \"{key}\" is already in use, by a project or by a retired ref. Pick another key."
+                )
+            }
+            Self::FrozenProjectKey { key, project } => format!(
+                "The key \"{key}\" of project \"{project}\" is frozen: the project has already \
+                 issued refs with it. A key cannot move once a number is issued."
+            ),
+            Self::MissingProject { projects, .. } if projects.is_empty() => {
+                "No project yet. Add one with project_add first.".to_string()
+            }
+            Self::MissingProject {
+                projects,
+                for_label,
+            } => {
+                if *for_label {
+                    format!("Name the label's project: {}.", projects.join(", "))
+                } else {
+                    format!("Name a project: {} (or a label).", projects.join(", "))
+                }
+            }
+            Self::LabelProjectMismatch {
+                label,
+                label_project,
+                project,
+            } => format!(
+                "Label \"{label}\" belongs to project \"{label_project}\", not \"{project}\". \
+                 Name project \"{label_project}\", or pick a label of \"{project}\"."
+            ),
+            Self::CrossProjectMove {
+                reference,
+                from,
+                label,
+                to,
+            } => format!(
+                "{reference} is in project \"{from}\" and label \"{label}\" belongs to project \
+                 \"{to}\". A ticket never changes project: pick a label of \"{from}\", or file a \
+                 new ticket in \"{to}\"."
+            ),
+            Self::LabelHoldsTickets {
+                label,
+                tickets,
+                from,
+                to,
+            } => format!(
+                "Label \"{label}\" holds {tickets} tickets, so it cannot move from project \
+                 \"{from}\" to \"{to}\". Move or unlabel them first (ticket move), then re-parent."
             ),
             Self::UnknownRef { reference, hint } => {
                 format!("Unknown ticket ref \"{reference}\". {hint}")

@@ -8,7 +8,7 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli label list — the store's declared labels, empty ones included.",
+    "tandem-cli label list \u2014 the store's declared labels, empty ones included.",
     "",
     "Usage:",
     "  tandem-cli label list"

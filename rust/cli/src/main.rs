@@ -194,6 +194,8 @@ struct ListArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     assignee: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    project: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
     label: Option<String>,
     /// The archive as its own view, or joining a named filter.
     #[arg(long)]
@@ -217,6 +219,8 @@ struct AddArgs {
     status: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     assignee: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    project: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     label: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
@@ -294,8 +298,6 @@ struct LabelAddArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     name: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    abbr: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
     project: Option<String>,
 }
 
@@ -305,8 +307,6 @@ struct LabelRenameArgs {
     from: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     to: Option<String>,
-    #[arg(long, num_args = 0..=1, default_missing_value = "")]
-    abbr: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     project: Option<String>,
 }
@@ -329,6 +329,8 @@ struct LabelMoveArgs {
 struct ProjectAddArgs {
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     name: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    abbr: Option<String>,
 }
 
 #[derive(Args)]
@@ -337,6 +339,8 @@ struct ProjectRenameArgs {
     from: Option<String>,
     #[arg(long, num_args = 0..=1, default_missing_value = "")]
     to: Option<String>,
+    #[arg(long, num_args = 0..=1, default_missing_value = "")]
+    abbr: Option<String>,
 }
 
 #[derive(Args)]
@@ -608,6 +612,7 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                 args.text.as_deref(),
                 args.status.as_deref(),
                 assignee.as_deref(),
+                args.project.as_deref(),
                 args.label.as_deref(),
                 args.archived,
                 args.blocked,
@@ -636,6 +641,7 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                 .add(
                     args.title.as_deref().unwrap_or(""),
                     AddTicket {
+                        project: args.project.as_deref(),
                         label: args.label.as_deref(),
                         status,
                         assignee: assignee.as_deref(),
@@ -793,11 +799,7 @@ fn label(home: &Home, command: Option<&LabelCommand>) -> Result<(), Failure> {
         }),
         LabelCommand::Add(args) => {
             let labels = board
-                .add_label(
-                    args.name.as_deref().unwrap_or(""),
-                    args.abbr.as_deref(),
-                    args.project.as_deref(),
-                )
+                .add_label(args.name.as_deref().unwrap_or(""), args.project.as_deref())
                 .map_err(Failure::domain)?;
             print(&LabelList { labels, note: None })
         }
@@ -806,7 +808,6 @@ fn label(home: &Home, command: Option<&LabelCommand>) -> Result<(), Failure> {
                 .rename_label(
                     args.from.as_deref().unwrap_or(""),
                     args.to.as_deref().unwrap_or(""),
-                    args.abbr.as_deref(),
                     args.project.as_deref(),
                 )
                 .map_err(Failure::domain)?;
@@ -852,7 +853,7 @@ fn project(home: &Home, command: Option<&ProjectCommand>) -> Result<(), Failure>
         }
         ProjectCommand::Add(args) => {
             let projects = board
-                .add_project(args.name.as_deref().unwrap_or(""))
+                .add_project(args.name.as_deref().unwrap_or(""), args.abbr.as_deref())
                 .map_err(Failure::domain)?;
             print(&ProjectList::new(&projects, None))
         }
@@ -861,6 +862,7 @@ fn project(home: &Home, command: Option<&ProjectCommand>) -> Result<(), Failure>
                 .rename_project(
                     args.from.as_deref().unwrap_or(""),
                     args.to.as_deref().unwrap_or(""),
+                    args.abbr.as_deref(),
                 )
                 .map_err(Failure::domain)?;
             print(&ProjectList::new(&projects, None))

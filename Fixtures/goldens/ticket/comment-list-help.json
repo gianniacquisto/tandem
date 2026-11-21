@@ -9,7 +9,7 @@
   "stderr": [],
   "stdin": "",
   "stdout": [
-    "tandem-cli ticket comment list — the log, in append order.",
+    "tandem-cli ticket comment list \u2014 the log, in append order.",
     "",
     "Usage:",
     "  tandem-cli ticket comment list --id <id>"

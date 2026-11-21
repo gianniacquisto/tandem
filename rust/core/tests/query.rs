@@ -10,7 +10,10 @@ use tandem_core::domain::{
 };
 
 fn ticket(title: &str) -> Ticket {
-    Ticket::new(title)
+    Ticket {
+        project: "Core".to_string(),
+        ..Ticket::new(title)
+    }
 }
 
 /// A board with one ticket per interesting corner, in stored order.
@@ -33,22 +36,26 @@ fn board() -> Vec<Ticket> {
             status: Status::InProgress,
             description: Some("Parse the flags in the core".to_string()),
             assignee: Some("ui".to_string()),
+            project: "Shell".to_string(),
             label: Some("CLI".to_string()),
             ..ticket("in flight")
         },
         Ticket {
             status: Status::Done,
+            project: "Shell".to_string(),
             label: Some("CLI".to_string()),
             ..ticket("finished")
         },
         Ticket {
             status: Status::Done,
             archived: true,
+            project: "Shell".to_string(),
             label: Some("CLI".to_string()),
             ..ticket("finished and filed away")
         },
         Ticket {
             archived: true,
+            project: "Shell".to_string(),
             ..ticket("archived but not done")
         },
     ]
@@ -131,7 +138,7 @@ fn the_assignee_axis_selects_a_name_or_the_unowned_tickets() {
 }
 
 #[test]
-fn the_label_axis_selects_a_name_or_the_unnamed_default_area() {
+fn the_label_axis_selects_a_name_or_no_label_in_any_project() {
     assert_eq!(
         titles(&TicketQuery {
             label: LabelAxis::Named("Core".to_string()),
@@ -153,6 +160,39 @@ fn the_label_axis_selects_a_name_or_the_unnamed_default_area() {
         }),
         titles(&TicketQuery::default())
     );
+}
+
+#[test]
+fn the_project_axis_selects_one_project_and_composes_with_no_label() {
+    assert_eq!(
+        titles(&TicketQuery {
+            project: Some("Shell".to_string()),
+            ..TicketQuery::default()
+        }),
+        ["in flight", "finished"]
+    );
+    assert_eq!(
+        titles(&TicketQuery {
+            project: Some("Core".to_string()),
+            label: LabelAxis::Unnamed,
+            ..TicketQuery::default()
+        }),
+        ["capture the idea"],
+        "no label means no label inside the project, not a default area"
+    );
+    assert!(
+        titles(&TicketQuery {
+            project: Some("Nowhere".to_string()),
+            ..TicketQuery::default()
+        })
+        .is_empty()
+    );
+    let parsed =
+        TicketQuery::parse(None, None, None, None, Some("Shell"), None, false, false).unwrap();
+    assert_eq!(parsed.project.as_deref(), Some("Shell"));
+    let unlabelled =
+        TicketQuery::parse(None, None, None, None, None, Some(""), false, false).unwrap();
+    assert_eq!(unlabelled.label, LabelAxis::Unnamed, "\"\" is no label");
 }
 
 #[test]
@@ -274,7 +314,7 @@ fn the_shipped_filter_keeps_meaning_what_it_means_open_done_all() {
 
 #[test]
 fn parse_defaults_to_the_shipped_open_filter() {
-    let query = TicketQuery::parse(None, None, None, None, None, false, false).unwrap();
+    let query = TicketQuery::parse(None, None, None, None, None, None, false, false).unwrap();
     assert_eq!(query.archived, Archived::Excluded);
     assert_eq!(
         query.done,
@@ -293,7 +333,7 @@ fn parse_defaults_to_the_shipped_open_filter() {
 #[test]
 fn parse_takes_comma_separated_statuses() {
     let statuses = |raw: &str| {
-        TicketQuery::parse(None, None, Some(raw), None, None, false, false)
+        TicketQuery::parse(None, None, Some(raw), None, None, None, false, false)
             .unwrap()
             .statuses
     };
@@ -310,8 +350,17 @@ fn parse_takes_comma_separated_statuses() {
 
 #[test]
 fn parse_refuses_a_word_outside_the_six_fixed_statuses() {
-    let error = TicketQuery::parse(None, None, Some("ready,blocked"), None, None, false, false)
-        .unwrap_err();
+    let error = TicketQuery::parse(
+        None,
+        None,
+        Some("ready,blocked"),
+        None,
+        None,
+        None,
+        false,
+        false,
+    )
+    .unwrap_err();
     match error {
         DomainError::InvalidStatus(bad) => {
             assert_eq!(bad, "blocked", "the refusal names the unknown word");
@@ -328,8 +377,8 @@ fn parse_refuses_a_word_outside_the_six_fixed_statuses() {
 
 #[test]
 fn the_retired_word_is_not_a_status_the_query_accepts() {
-    let error =
-        TicketQuery::parse(None, None, Some("refined"), None, None, false, false).unwrap_err();
+    let error = TicketQuery::parse(None, None, Some("refined"), None, None, None, false, false)
+        .unwrap_err();
     match error {
         DomainError::InvalidStatus(bad) => {
             assert_eq!(bad, "refined");
@@ -346,7 +395,7 @@ fn the_retired_word_is_not_a_status_the_query_accepts() {
 #[test]
 fn parse_treats_an_empty_value_as_the_empty_field() {
     let parse = |assignee: Option<&str>, label: Option<&str>| {
-        TicketQuery::parse(None, None, None, assignee, label, false, false).unwrap()
+        TicketQuery::parse(None, None, None, assignee, None, label, false, false).unwrap()
     };
     assert_eq!(parse(Some(""), None).assignee, AssigneeAxis::Unassigned);
     assert_eq!(
@@ -359,7 +408,7 @@ fn parse_treats_an_empty_value_as_the_empty_field() {
         LabelAxis::Named("Core".to_string())
     );
     assert_eq!(
-        TicketQuery::parse(None, Some("  "), None, None, None, false, false)
+        TicketQuery::parse(None, Some("  "), None, None, None, None, false, false)
             .unwrap()
             .normalized_text(),
         None
@@ -369,25 +418,25 @@ fn parse_treats_an_empty_value_as_the_empty_field() {
 #[test]
 fn parse_keeps_the_shipped_filter_as_sugar_and_the_clis_filters_never_carry_the_archive() {
     assert_eq!(
-        TicketQuery::parse(Some("all"), None, None, None, None, false, false)
+        TicketQuery::parse(Some("all"), None, None, None, None, None, false, false)
             .unwrap()
             .archived,
         Archived::Excluded
     );
     assert_eq!(
-        TicketQuery::parse(Some("done"), None, None, None, None, false, false)
+        TicketQuery::parse(Some("done"), None, None, None, None, None, false, false)
             .unwrap()
             .done,
         Some(true)
     );
     assert_eq!(
-        TicketQuery::parse(Some("open"), None, None, None, None, false, false)
+        TicketQuery::parse(Some("open"), None, None, None, None, None, false, false)
             .unwrap()
             .done,
         Some(false)
     );
     assert!(
-        TicketQuery::parse(Some("done"), None, None, None, None, false, false)
+        TicketQuery::parse(Some("done"), None, None, None, None, None, false, false)
             .unwrap()
             .statuses
             .is_empty(),
@@ -435,21 +484,21 @@ fn the_done_filter_reads_the_status_alone() {
 fn the_clis_three_filters_never_carry_the_archive() {
     for filter in [None, Some("open"), Some("done"), Some("all")] {
         assert_eq!(
-            TicketQuery::parse(filter, None, None, None, None, false, false)
+            TicketQuery::parse(filter, None, None, None, None, None, false, false)
                 .unwrap()
                 .archived,
             Archived::Excluded
         );
     }
     assert_eq!(
-        titles(&TicketQuery::parse(None, None, None, None, None, false, false).unwrap()),
+        titles(&TicketQuery::parse(None, None, None, None, None, None, false, false).unwrap()),
         ["capture the idea", "parked work", "ready work", "in flight"]
     );
 }
 
 #[test]
 fn archived_alone_is_the_archive_statuses_ignored() {
-    let query = TicketQuery::parse(None, None, None, None, None, true, false).unwrap();
+    let query = TicketQuery::parse(None, None, None, None, None, None, true, false).unwrap();
     assert_eq!(query.archived, Archived::Only);
     assert!(query.statuses.is_empty());
     assert_eq!(
@@ -460,18 +509,19 @@ fn archived_alone_is_the_archive_statuses_ignored() {
 
 #[test]
 fn archived_named_with_a_filter_joins_that_filter() {
-    let all = TicketQuery::parse(Some("all"), None, None, None, None, true, false).unwrap();
+    let all = TicketQuery::parse(Some("all"), None, None, None, None, None, true, false).unwrap();
     assert_eq!(all.archived, Archived::Included);
     assert_eq!(titles(&all).len(), 7, "every ticket, the archive included");
 
-    let done = TicketQuery::parse(Some("done"), None, None, None, None, true, false).unwrap();
+    let done = TicketQuery::parse(Some("done"), None, None, None, None, None, true, false).unwrap();
     assert_eq!(done.archived, Archived::Included);
     assert_eq!(titles(&done), ["finished", "finished and filed away"]);
 }
 
 #[test]
 fn an_explicit_status_narrows_the_archive_it_was_named_with() {
-    let query = TicketQuery::parse(None, None, Some("backlog"), None, None, true, false).unwrap();
+    let query =
+        TicketQuery::parse(None, None, Some("backlog"), None, None, None, true, false).unwrap();
     assert_eq!(query.statuses, [Status::Backlog]);
     assert_eq!(titles(&query), ["archived but not done"]);
 }
@@ -575,11 +625,11 @@ fn the_inbox_lists_every_human_ticket_and_the_agents_read_matches() {
 #[test]
 fn parse_rejects_a_bad_filter_or_status_by_name() {
     assert_eq!(
-        TicketQuery::parse(Some("bogus"), None, None, None, None, false, false),
+        TicketQuery::parse(Some("bogus"), None, None, None, None, None, false, false),
         Err(DomainError::InvalidFilter("bogus".to_string()))
     );
     assert_eq!(
-        TicketQuery::parse(None, None, Some(""), None, None, false, false),
+        TicketQuery::parse(None, None, Some(""), None, None, None, false, false),
         Err(DomainError::InvalidStatus(String::new()))
     );
 }
@@ -647,7 +697,8 @@ fn blocked_keeps_the_blocked_rows_and_drops_the_rest() {
 
 #[test]
 fn blocked_combines_with_status() {
-    let query = TicketQuery::parse(None, None, Some("ready"), None, None, false, true).unwrap();
+    let query =
+        TicketQuery::parse(None, None, Some("ready"), None, None, None, false, true).unwrap();
     assert!(query.blocked_only);
     let tickets = vec![
         waiting(

@@ -11,7 +11,12 @@
     "tandem-cli project add \u2014 a new, empty project.",
     "",
     "Usage:",
-    "  tandem-cli project add --name <name>"
+    "  tandem-cli project add --name <name> [--abbr <key>]",
+    "",
+    "Values:",
+    "  key       the ref key the project issues (the TAN of TAN-42): uppercase letters and",
+    "            digits, unique across projects and retired refs; omitted, the first three",
+    "            letters of the name (Tandem -> TAN)"
   ],
   "stdoutKind": "text"
 }

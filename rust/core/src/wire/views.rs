@@ -66,6 +66,7 @@ pub struct TicketDetail {
     pub link: Option<String>,
     pub number: Option<i64>,
     pub origin: String,
+    pub project: String,
     #[serde(rename = "ref")]
     pub reference: Option<String>,
     pub status: String,
@@ -92,6 +93,7 @@ impl TicketDetail {
             link: ticket.link.clone(),
             number: ticket.number,
             origin: ticket.origin.clone(),
+            project: ticket.project.clone(),
             reference: ticket.reference.clone(),
             status: ticket.status.as_str().to_string(),
             title: ticket.title.clone(),
@@ -125,6 +127,7 @@ pub struct TicketSummary {
     pub link: Option<String>,
     pub number: Option<i64>,
     pub origin: String,
+    pub project: String,
     #[serde(rename = "ref")]
     pub reference: Option<String>,
     pub status: String,
@@ -148,6 +151,7 @@ impl TicketSummary {
             link: ticket.link.clone(),
             number: ticket.number,
             origin: ticket.origin.clone(),
+            project: ticket.project.clone(),
             reference: ticket.reference.clone(),
             status: ticket.status.as_str().to_string(),
             title: ticket.title.clone(),
@@ -226,6 +230,7 @@ impl LabelDeletionView {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ProjectView {
     pub name: String,
+    pub key: String,
     pub labels: Vec<String>,
 }
 
@@ -245,6 +250,7 @@ impl ProjectList {
                 .iter()
                 .map(|entry| ProjectView {
                     name: entry.name.clone(),
+                    key: entry.key.clone(),
                     labels: entry.labels.clone(),
                 })
                 .collect(),

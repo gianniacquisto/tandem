@@ -12,6 +12,18 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use tandem_core::domain::{Board, Filter, Ticket};
 use tandem_core::store::{Actor, Home, Store};
 
+/// The project every `Sandbox::board` is seeded with (key `MAI`).
+pub const PROJECT: &str = "Main";
+
+/// A new ticket's fields with the seed project, so a case that does not care
+/// about the project still files one.
+pub fn ticket() -> tandem_core::domain::AddTicket<'static> {
+    tandem_core::domain::AddTicket {
+        project: Some(PROJECT),
+        ..tandem_core::domain::AddTicket::default()
+    }
+}
+
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
 /// A throwaway root: `root/home` is the Tandem home, `root/user` a sandbox user
@@ -45,14 +57,38 @@ impl Sandbox {
         Store::new(self.home())
     }
 
-    /// A board writing as the human, the actor most cases need.
+    /// A board writing as the human, the actor most cases need. The home holds
+    /// one project, [`PROJECT`], so a ticket can be filed with [`ticket`]: a
+    /// ticket always lives in a project (TAN-339).
     pub fn board(&self) -> Board {
+        let board = self.empty_board();
+        if board.projects().map(|p| p.is_empty()).unwrap_or(true) {
+            board
+                .add_project(PROJECT, None)
+                .expect("the seed project is addable");
+        }
+        board
+    }
+
+    /// A board over a home with no project at all, for the cases that pin the
+    /// refusals an empty home gives.
+    pub fn empty_board(&self) -> Board {
         Board::with_actor(self.store(), Actor::Human)
     }
 
     /// A board writing as one named pass, for the cases that pin authorship.
     pub fn board_as(&self, actor: &str) -> Board {
-        Board::with_actor(self.store(), Actor::Agent(actor.to_string()))
+        let board = Board::with_actor(self.store(), Actor::Agent(actor.to_string()));
+        if board
+            .projects()
+            .map(|projects| projects.is_empty())
+            .unwrap_or(true)
+        {
+            board
+                .add_project(PROJECT, None)
+                .expect("the seed project is addable");
+        }
+        board
     }
 
     pub fn database(&self) -> PathBuf {

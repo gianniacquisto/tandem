@@ -242,6 +242,7 @@ fn call_for(command: &Command) -> Result<(String, Map<String, Value>), Failure> 
                     put(&mut map, "text", args.text.as_deref());
                     put(&mut map, "status", args.status.as_deref());
                     put(&mut map, "assignee", args.assignee.as_deref());
+                    put(&mut map, "project", args.project.as_deref());
                     put(&mut map, "label", args.label.as_deref());
                     if args.archived {
                         map.insert("archived".into(), Value::Bool(true));
@@ -259,6 +260,7 @@ fn call_for(command: &Command) -> Result<(String, Map<String, Value>), Failure> 
                     put(&mut map, "title", args.title.as_deref());
                     put(&mut map, "status", args.status.as_deref());
                     put(&mut map, "assignee", args.assignee.as_deref());
+                    put(&mut map, "project", args.project.as_deref());
                     put(&mut map, "label", args.label.as_deref());
                     put(&mut map, "origin", args.origin.as_deref());
                     let description = add_description_body(args.description.as_deref())?;
@@ -335,14 +337,12 @@ fn call_for(command: &Command) -> Result<(String, Map<String, Value>), Failure> 
             LabelCommand::List => "label list",
             LabelCommand::Add(args) => {
                 put(&mut map, "name", args.name.as_deref());
-                put(&mut map, "abbr", args.abbr.as_deref());
                 put(&mut map, "project", args.project.as_deref());
                 "label add"
             }
             LabelCommand::Rename(args) => {
                 put(&mut map, "from", args.from.as_deref());
                 put(&mut map, "to", args.to.as_deref());
-                put(&mut map, "abbr", args.abbr.as_deref());
                 put(&mut map, "project", args.project.as_deref());
                 "label rename"
             }
@@ -362,11 +362,13 @@ fn call_for(command: &Command) -> Result<(String, Map<String, Value>), Failure> 
             ProjectCommand::List => "project list",
             ProjectCommand::Add(args) => {
                 put(&mut map, "name", args.name.as_deref());
+                put(&mut map, "abbr", args.abbr.as_deref());
                 "project add"
             }
             ProjectCommand::Rename(args) => {
                 put(&mut map, "from", args.from.as_deref());
                 put(&mut map, "to", args.to.as_deref());
+                put(&mut map, "abbr", args.abbr.as_deref());
                 "project rename"
             }
             ProjectCommand::Delete(args) => {

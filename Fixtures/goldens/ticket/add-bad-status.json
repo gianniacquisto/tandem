@@ -5,7 +5,9 @@
     "--title",
     "Golden ticket",
     "--status",
-    "nope"
+    "nope",
+    "--project",
+    "Main"
   ],
   "exit": 1,
   "stderr": [

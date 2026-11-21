@@ -7,7 +7,7 @@ mod support;
 use std::time::SystemTime;
 
 use support::Sandbox;
-use tandem_core::domain::{AddTicket, DomainError, Filter};
+use tandem_core::domain::{DomainError, Filter};
 
 fn modified(sandbox: &Sandbox) -> SystemTime {
     std::fs::metadata(sandbox.database())
@@ -19,9 +19,7 @@ fn modified(sandbox: &Sandbox) -> SystemTime {
 fn set_link_stores_a_trimmed_bikeshed_relative_path_and_it_persists() {
     let sandbox = Sandbox::new("link-set");
     let board = sandbox.board();
-    let added = board
-        .add("Ship the bikeshed", AddTicket::default())
-        .unwrap();
+    let added = board.add("Ship the bikeshed", support::ticket()).unwrap();
     let linked = board
         .set_link(&added.id.to_string(), Some("  projects/App.md  \n"))
         .unwrap();
@@ -41,7 +39,7 @@ fn set_link_stores_a_trimmed_bikeshed_relative_path_and_it_persists() {
 fn an_empty_or_whitespace_only_link_unlinks_the_ticket() {
     let sandbox = Sandbox::new("link-clear");
     let board = sandbox.board();
-    let added = board.add("Task", AddTicket::default()).unwrap();
+    let added = board.add("Task", support::ticket()).unwrap();
     board
         .set_link(&added.id.to_string(), Some("Ideas.md"))
         .unwrap();
@@ -64,7 +62,7 @@ fn an_empty_or_whitespace_only_link_unlinks_the_ticket() {
 fn set_link_to_none_clears_an_existing_link() {
     let sandbox = Sandbox::new("link-none");
     let board = sandbox.board();
-    let added = board.add("Task", AddTicket::default()).unwrap();
+    let added = board.add("Task", support::ticket()).unwrap();
     board
         .set_link(&added.id.to_string(), Some("Ideas.md"))
         .unwrap();
@@ -78,7 +76,7 @@ fn set_link_to_none_clears_an_existing_link() {
 fn setting_the_same_link_is_a_no_op_that_writes_nothing() {
     let sandbox = Sandbox::new("link-noop");
     let board = sandbox.board();
-    let added = board.add("Task", AddTicket::default()).unwrap();
+    let added = board.add("Task", support::ticket()).unwrap();
     board
         .set_link(&added.id.to_string(), Some("Ideas.md"))
         .unwrap();
@@ -102,7 +100,7 @@ fn setting_the_same_link_is_a_no_op_that_writes_nothing() {
 fn set_link_with_an_unknown_or_non_uuid_id_is_the_unknown_id_failure() {
     let sandbox = Sandbox::new("link-unknown");
     let board = sandbox.board();
-    board.add("A", AddTicket::default()).unwrap();
+    board.add("A", support::ticket()).unwrap();
 
     for id in [uuid::Uuid::new_v4().to_string(), "not-a-uuid".to_string()] {
         assert!(matches!(
@@ -116,7 +114,7 @@ fn set_link_with_an_unknown_or_non_uuid_id_is_the_unknown_id_failure() {
 fn the_link_round_trips_through_the_store_present_and_cleared() {
     let sandbox = Sandbox::new("link-roundtrip");
     let board = sandbox.board();
-    let added = board.add("Task", AddTicket::default()).unwrap();
+    let added = board.add("Task", support::ticket()).unwrap();
     board
         .set_link(&added.id.to_string(), Some("Ideas.md"))
         .unwrap();

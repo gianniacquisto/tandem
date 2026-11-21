@@ -14,31 +14,41 @@
 
 use rusqlite::params;
 
-use super::schema::{has_column, has_table};
 use super::write::{NewLabel, NewProject, NewTicket};
 use super::{Result, Store, Write, translate};
 
-/// One label row: its name (the key the board groups by), its ref prefix, the last
-/// number it issued, its render position and its parent project.
+/// One label row: its name (the key the board groups by), its render position and
+/// its parent project. The label owns no key and no counter: the project does
+/// (ADR 0053).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LabelRow {
     pub name: String,
-    pub key: String,
-    pub last_number: i64,
     pub position: i64,
     pub project: Option<String>,
 }
 
-/// One project row: its name and its render position.
+/// One project row: its name, its ref prefix (`key`, empty when a hand edit left
+/// it unset), the last number it issued and its render position.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ProjectRow {
     pub name: String,
+    pub key: String,
+    pub last_number: i64,
     pub position: i64,
 }
 
+/// One retired ref and the ticket it still names: `CUT-34` resolves to its
+/// ticket long after the v16 re-key moved it under the project's prefix.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AliasRow {
+    pub reference: String,
+    pub ticket_id: String,
+}
+
 /// One ticket row. `position` is the stored order (ADR 0006) and `number` the
-/// per-label number; the ref is derived from the label's key and that number by the
-/// domain, never stored.
+/// per-project number; the ref is derived from the ticket's project key and that
+/// number by the domain, never stored. `project` is `None` only on a row a hand
+/// edit left unset: the domain refuses it as corrupt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TicketRow {
     pub id: String,
@@ -46,6 +56,7 @@ pub(crate) struct TicketRow {
     pub description: Option<String>,
     pub status: String,
     pub archived: bool,
+    pub project: Option<String>,
     pub label: Option<String>,
     pub number: Option<i64>,
     pub origin: String,
@@ -74,6 +85,7 @@ pub(crate) struct BoardRows {
     pub tickets: Vec<TicketRow>,
     pub edges: Vec<EdgeRow>,
     pub projects: Vec<ProjectRow>,
+    pub aliases: Vec<AliasRow>,
 }
 
 /// One comment row, in the order it was appended.
@@ -151,63 +163,55 @@ fn read_comments(connection: &rusqlite::Connection, ticket_id: &str) -> Result<V
 /// The board as one read, on any connection: the store's read path and a write's
 /// own transaction both use it, so a check inside a transaction sees the state the
 /// transaction will commit over.
+///
+/// A file below v16 is read through the re-key in memory (see [`super::rekey`]),
+/// so a read before the first write shows the refs that write will leave.
 pub(crate) fn read_board(connection: &rusqlite::Connection) -> Result<BoardRows> {
+    if is_legacy(connection)? {
+        let legacy =
+            super::rekey::read_legacy(connection).map_err(|error| translate(error, connection))?;
+        return Ok(super::rekey::rekey(legacy));
+    }
     Ok(BoardRows {
         labels: labels(connection)?,
         tickets: tickets(connection)?,
         edges: edges(connection)?,
         projects: projects(connection)?,
+        aliases: aliases(connection)?,
     })
 }
 
-/// The table that holds the labels on this file: `labels` from schema v12, and
-/// `lanes` on a file a read reaches before its first write migrates it (a read
-/// never migrates, ADR 0031), so a v11 home still reads until then.
-fn label_table(connection: &rusqlite::Connection) -> Result<&'static str> {
-    Ok(if has_table(connection, "labels")? {
-        "labels"
-    } else {
-        "lanes"
-    })
+/// Whether the file predates v16.
+fn is_legacy(connection: &rusqlite::Connection) -> Result<bool> {
+    super::rekey::is_legacy(connection).map_err(|error| translate(error, connection))
+}
+
+fn aliases(connection: &rusqlite::Connection) -> Result<Vec<AliasRow>> {
+    let mut statement = connection
+        .prepare("SELECT reference, ticket_id FROM ticket_aliases ORDER BY rowid")
+        .map_err(|error| translate(error, connection))?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(AliasRow {
+                reference: row.get(0)?,
+                ticket_id: row.get(1)?,
+            })
+        })
+        .map_err(|error| translate(error, connection))?;
+    rows.collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(|error| translate(error, connection))
 }
 
 fn labels(connection: &rusqlite::Connection) -> Result<Vec<LabelRow>> {
-    let table = label_table(connection)?;
-    if has_column(connection, table, "project")? {
-        let mut statement = connection
-            .prepare(&format!(
-                "SELECT name, key, last_number, position, project FROM {table}
-                 ORDER BY position, rowid"
-            ))
-            .map_err(|error| translate(error, connection))?;
-        let rows = statement
-            .query_map([], |row| {
-                Ok(LabelRow {
-                    name: row.get(0)?,
-                    key: row.get(1)?,
-                    last_number: row.get(2)?,
-                    position: row.get(3)?,
-                    project: row.get(4)?,
-                })
-            })
-            .map_err(|error| translate(error, connection))?;
-        return rows
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|error| translate(error, connection));
-    }
     let mut statement = connection
-        .prepare(&format!(
-            "SELECT name, key, last_number, position FROM {table} ORDER BY position, rowid"
-        ))
+        .prepare("SELECT name, position, project FROM labels ORDER BY position, rowid")
         .map_err(|error| translate(error, connection))?;
     let rows = statement
         .query_map([], |row| {
             Ok(LabelRow {
                 name: row.get(0)?,
-                key: row.get(1)?,
-                last_number: row.get(2)?,
-                position: row.get(3)?,
-                project: None,
+                position: row.get(1)?,
+                project: row.get(2)?,
             })
         })
         .map_err(|error| translate(error, connection))?;
@@ -216,17 +220,19 @@ fn labels(connection: &rusqlite::Connection) -> Result<Vec<LabelRow>> {
 }
 
 fn projects(connection: &rusqlite::Connection) -> Result<Vec<ProjectRow>> {
-    if !has_table(connection, "projects")? {
-        return Ok(Vec::new());
-    }
     let mut statement = connection
-        .prepare("SELECT name, position FROM projects ORDER BY position, rowid")
+        .prepare(
+            "SELECT name, COALESCE(key, ''), last_number, position FROM projects
+             ORDER BY position, rowid",
+        )
         .map_err(|error| translate(error, connection))?;
     let rows = statement
         .query_map([], |row| {
             Ok(ProjectRow {
                 name: row.get(0)?,
-                position: row.get(1)?,
+                key: row.get(1)?,
+                last_number: row.get(2)?,
+                position: row.get(3)?,
             })
         })
         .map_err(|error| translate(error, connection))?;
@@ -262,12 +268,6 @@ fn select_tickets(
     values: &[&dyn rusqlite::ToSql],
     body: Body,
 ) -> Result<Vec<(i64, TicketRow)>> {
-    // The column is `lane` until the file migrates to v12 (see `label_table`).
-    let column = if label_table(connection)? == "labels" {
-        "label"
-    } else {
-        "lane"
-    };
     let (text, length) = match body {
         Body::Whole => ("description", "NULL"),
         Body::Length => ("NULL", "length(description)"),
@@ -275,8 +275,8 @@ fn select_tickets(
     };
     let mut statement = connection
         .prepare(&format!(
-            "SELECT id, title, {text}, status, archived, {column}, number, origin,
-                    assignee, link, position, created_at, completed_at, {length}, rowid
+            "SELECT id, title, {text}, status, archived, label, number, origin,
+                    assignee, link, position, created_at, completed_at, {length}, rowid, project
              FROM tickets {tail} ORDER BY position, rowid"
         ))
         .map_err(|error| translate(error, connection))?;
@@ -290,6 +290,7 @@ fn select_tickets(
                     description: row.get(2)?,
                     status: row.get(3)?,
                     archived: row.get::<_, i64>(4)? != 0,
+                    project: row.get(15)?,
                     label: row.get(5)?,
                     number: row.get(6)?,
                     origin: row.get(7)?,
@@ -320,7 +321,9 @@ fn select_tickets(
 pub(crate) struct ListScope {
     /// `Some(false)` the live rows, `Some(true)` the archive, `None` both.
     pub archived: Option<bool>,
-    /// `Some(None)` the default area, `Some(Some(name))` one label.
+    /// `Some(name)` one project.
+    pub project: Option<String>,
+    /// `Some(None)` no label, `Some(Some(name))` one label.
     pub label: Option<Option<String>>,
     /// `Some(None)` unassigned, `Some(Some(name))` one assignee.
     pub assignee: Option<Option<String>>,
@@ -333,7 +336,7 @@ pub(crate) struct ListScope {
 pub(crate) enum TicketKey {
     /// A UUID in its stored (hyphenated, lowercase) form.
     Id(String),
-    /// A label key (upper case) and a number.
+    /// A project key (upper case) and a number.
     Ref { key: String, number: i64 },
 }
 
@@ -347,16 +350,21 @@ pub(crate) enum TicketKey {
 /// or a label the label table does not carry: the shapes `Contents::from_rows`
 /// repairs by looking at the whole board) sends the read back to the whole board.
 fn read_listing(connection: &rusqlite::Connection, scope: &ListScope) -> Result<BoardRows> {
-    let column = if label_table(connection)? == "labels" {
-        "label"
-    } else {
-        "lane"
-    };
+    // A file below v16 reads whole, through the re-key: the domain applies every
+    // axis again, so the listing is the same.
+    if is_legacy(connection)? {
+        return read_board(connection);
+    }
+    let column = "label";
     let mut clauses: Vec<String> = Vec::new();
     let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     if let Some(archived) = scope.archived {
         clauses.push(format!("archived = ?{}", values.len() + 1));
         values.push(Box::new(i64::from(archived)));
+    }
+    if let Some(name) = &scope.project {
+        clauses.push(format!("project = ?{}", values.len() + 1));
+        values.push(Box::new(name.clone()));
     }
     match &scope.label {
         None => {}
@@ -392,11 +400,9 @@ fn read_listing(connection: &rusqlite::Connection, scope: &ListScope) -> Result<
 /// One ticket's rows (see [`TicketKey`]); the whole board when the key names
 /// nothing, or names more than one row.
 fn read_one(connection: &rusqlite::Connection, key: &TicketKey) -> Result<BoardRows> {
-    let column = if label_table(connection)? == "labels" {
-        "label"
-    } else {
-        "lane"
-    };
+    if is_legacy(connection)? {
+        return read_board(connection);
+    }
     let found = match key {
         TicketKey::Id(id) => select_tickets(
             connection,
@@ -405,16 +411,25 @@ fn read_one(connection: &rusqlite::Connection, key: &TicketKey) -> Result<BoardR
             Body::Whole,
         )?,
         TicketKey::Ref { key, number } => {
-            let table = label_table(connection)?;
-            select_tickets(
+            let live = select_tickets(
                 connection,
-                &format!(
-                    "WHERE number = ?2 AND {column} IN
-                        (SELECT name FROM {table} WHERE upper(key) = upper(?1))"
-                ),
+                "WHERE number = ?2 AND project IN
+                    (SELECT name FROM projects WHERE upper(key) = upper(?1))",
                 &[key as &dyn rusqlite::ToSql, number as &dyn rusqlite::ToSql],
                 Body::Whole,
-            )?
+            )?;
+            if live.is_empty() {
+                // A retired ref resolves through its alias to its ticket.
+                let reference = format!("{}-{number}", key.to_uppercase());
+                select_tickets(
+                    connection,
+                    "WHERE id IN (SELECT ticket_id FROM ticket_aliases WHERE reference = ?1)",
+                    &[&reference as &dyn rusqlite::ToSql],
+                    Body::Whole,
+                )?
+            } else {
+                live
+            }
         }
     };
     if found.len() != 1 {
@@ -458,9 +473,13 @@ fn narrowed(
             Body::Skipped,
         )?);
     }
-    let needs_whole_board = rows.iter().any(|(_, row)| match &row.label {
-        None => false,
-        Some(name) => row.number.is_none() || !labels.iter().any(|label| &label.name == name),
+    let needs_whole_board = rows.iter().any(|(_, row)| {
+        row.project.is_none()
+            || row.number.is_none()
+            || row
+                .label
+                .as_ref()
+                .is_some_and(|name| !labels.iter().any(|label| &label.name == name))
     });
     if needs_whole_board {
         return read_board(connection);
@@ -471,6 +490,7 @@ fn narrowed(
         tickets: rows.into_iter().map(|(_, row)| row).collect(),
         edges: touching,
         projects: projects(connection)?,
+        aliases: aliases(connection)?,
     })
 }
 
@@ -512,13 +532,22 @@ impl Write<'_> {
             match before.projects.iter().find(|old| old.name == new.name) {
                 Some(old) if old == new => {}
                 Some(_) => self.execute(
-                    "UPDATE projects SET position = ?2, author = ?3
+                    "UPDATE projects SET key = ?2, last_number = ?3, position = ?4, author = ?5
                      WHERE name = ?1
-                       AND (position IS NOT ?2 OR author IS NOT ?3)",
-                    params![new.name, new.position, self.actor().as_str()],
+                       AND (key IS NOT ?2 OR last_number IS NOT ?3
+                            OR position IS NOT ?4 OR author IS NOT ?5)",
+                    params![
+                        new.name,
+                        new.key,
+                        new.last_number,
+                        new.position,
+                        self.actor().as_str()
+                    ],
                 )?,
                 None => self.insert_project(NewProject {
                     name: &new.name,
+                    key: &new.key,
+                    last_number: new.last_number,
                     position: new.position,
                 })?,
             }
@@ -532,24 +561,13 @@ impl Write<'_> {
             match before.labels.iter().find(|old| old.name == new.name) {
                 Some(old) if old == new => {}
                 Some(_) => self.execute(
-                    "UPDATE labels SET key = ?2, last_number = ?3, position = ?4, project = ?5,
-                            author = ?6
+                    "UPDATE labels SET position = ?2, project = ?3, author = ?4
                      WHERE name = ?1
-                       AND (key IS NOT ?2 OR last_number IS NOT ?3
-                            OR position IS NOT ?4 OR project IS NOT ?5 OR author IS NOT ?6)",
-                    params![
-                        new.name,
-                        new.key,
-                        new.last_number,
-                        new.position,
-                        new.project,
-                        self.actor().as_str()
-                    ],
+                       AND (position IS NOT ?2 OR project IS NOT ?3 OR author IS NOT ?4)",
+                    params![new.name, new.position, new.project, self.actor().as_str()],
                 )?,
                 None => self.insert_label(NewLabel {
                     name: &new.name,
-                    key: &new.key,
-                    last_number: new.last_number,
                     position: new.position,
                     project: new.project.as_deref().unwrap_or(&new.name),
                 })?,
@@ -558,6 +576,7 @@ impl Write<'_> {
         for old in &before.tickets {
             if !after.tickets.iter().any(|new| new.id == old.id) {
                 self.execute("DELETE FROM tickets WHERE id = ?1", [&old.id])?;
+                self.execute("DELETE FROM ticket_aliases WHERE ticket_id = ?1", [&old.id])?;
             }
         }
         for new in &after.tickets {
@@ -567,7 +586,8 @@ impl Write<'_> {
                     "UPDATE tickets SET title = ?2, description = ?3, status = ?4,
                             archived = ?5, label = ?6, number = ?7, origin = ?8,
                             assignee = ?9, link = ?10, position = ?11,
-                            created_at = ?12, completed_at = ?13, author = ?14
+                            created_at = ?12, completed_at = ?13, author = ?14,
+                            project = ?15
                      WHERE id = ?1
                        AND (title IS NOT ?2 OR description IS NOT ?3
                             OR status IS NOT ?4 OR archived IS NOT ?5
@@ -575,7 +595,7 @@ impl Write<'_> {
                             OR origin IS NOT ?8 OR assignee IS NOT ?9
                             OR link IS NOT ?10 OR position IS NOT ?11
                             OR created_at IS NOT ?12 OR completed_at IS NOT ?13
-                            OR author IS NOT ?14)",
+                            OR author IS NOT ?14 OR project IS NOT ?15)",
                     params![
                         new.id,
                         new.title,
@@ -590,7 +610,8 @@ impl Write<'_> {
                         new.position,
                         new.created_at,
                         new.completed_at,
-                        self.actor().as_str()
+                        self.actor().as_str(),
+                        new.project
                     ],
                 )?,
                 None => self.insert_ticket(NewTicket {
@@ -599,6 +620,7 @@ impl Write<'_> {
                     description: new.description.as_deref(),
                     status: &new.status,
                     archived: new.archived,
+                    project: new.project.as_deref().unwrap_or(""),
                     label: new.label.as_deref(),
                     number: new.number,
                     origin: &new.origin,

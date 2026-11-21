@@ -9,7 +9,7 @@
 mod support;
 
 use support::Sandbox;
-use tandem_core::domain::{AddTicket, DescriptionBody, DomainError, Edit, Filter, SetFields};
+use tandem_core::domain::{DescriptionBody, DomainError, Edit, Filter, SetFields};
 
 #[test]
 fn an_empty_body_is_refused() {
@@ -53,7 +53,7 @@ fn the_refusal_is_a_domain_failure_with_actionable_text() {
 fn the_store_still_takes_an_empty_description_as_a_deliberate_clear() {
     let sandbox = Sandbox::new("description-body");
     let board = sandbox.board();
-    let ticket = board.add("A ticket", AddTicket::default()).unwrap();
+    let ticket = board.add("A ticket", support::ticket()).unwrap();
     board
         .set(
             &ticket.id.to_string(),

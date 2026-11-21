@@ -25,7 +25,8 @@ fn poison(sandbox: &Sandbox, sql: &str) {
 /// pile of archived tickets carrying large bodies.
 fn seeded(sandbox: &Sandbox) -> Board {
     let board = sandbox.board();
-    board.add_label("Probe", Some("PRB"), None).unwrap();
+    board.add_project("Probe", Some("PRB")).unwrap();
+    board.add_label("Probe", Some("Probe")).unwrap();
     let in_probe = |description: Option<&'static str>| AddTicket {
         label: Some("Probe"),
         description,
@@ -122,7 +123,7 @@ fn the_narrowed_reads_answer_exactly_what_the_whole_board_answers() {
             "loose note",
             AddTicket {
                 assignee: Some("human"),
-                ..AddTicket::default()
+                ..support::ticket()
             },
         )
         .unwrap();

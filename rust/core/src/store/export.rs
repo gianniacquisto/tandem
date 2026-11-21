@@ -39,6 +39,9 @@ pub(crate) const CARRIED_TABLES: &[&str] = &[
     // exported, and when. It holds no secret, and an import only lands in an
     // empty home, so it cannot forge a record into a live workspace.
     "access_record",
+    // The refs the one-prefix re-key retired (TAN-339, schema v16): a ticket's
+    // old handle must keep resolving in the home an archive restores.
+    "ticket_aliases",
     // Older stores, before their first migrating write.
     "lanes",
     // The legacy agent-session table of older stores, carried as data. It is

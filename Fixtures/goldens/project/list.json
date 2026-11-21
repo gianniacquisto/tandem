@@ -9,16 +9,18 @@
   "stdout": {
     "projects": [
       {
-        "name": "Cycle",
+        "key": "CYC",
         "labels": [
           "Cycle"
-        ]
+        ],
+        "name": "Cycle"
       },
       {
-        "name": "Port",
+        "key": "POR",
         "labels": [
           "Port"
-        ]
+        ],
+        "name": "Port"
       }
     ]
   },

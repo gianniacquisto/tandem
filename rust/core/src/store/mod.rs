@@ -40,6 +40,7 @@ mod diagnostics;
 mod export;
 mod home;
 mod members;
+mod rekey;
 // Reachable from the schema suite, which builds a v2 home to prove a read of
 // an older file never fails on a column a later migration adds.
 pub(crate) mod schema;

@@ -29,11 +29,15 @@ use super::edit::Edit;
 use super::error::DomainError;
 use super::query::{Filter, HUMAN, TicketQuery};
 use super::ticket::{Status, Ticket};
-use super::ticket_label::{Label, LabelDeletion, TicketRef};
+use super::ticket_label::{
+    Label, LabelDeletion, Project, ProjectKey, ProjectWithLabels, TicketRef,
+};
 
 /// The fields a new ticket may be given, over the title it must have.
 #[derive(Debug, Clone)]
 pub struct AddTicket<'a> {
+    /// The project the ticket lives in. A `label` alone implies its project.
+    pub project: Option<&'a str>,
     pub label: Option<&'a str>,
     pub status: Status,
     pub assignee: Option<&'a str>,
@@ -45,6 +49,7 @@ pub struct AddTicket<'a> {
 impl Default for AddTicket<'_> {
     fn default() -> Self {
         Self {
+            project: None,
             label: None,
             status: Status::Backlog,
             assignee: None,
@@ -206,76 +211,47 @@ impl Board {
 
     // MARK: - Labels
 
-    /// `add_label(name, key, project)`: append a new, empty label. The name is trimmed; an
-    /// empty or already-used name is rejected. An absent key is the first three
-    /// alphanumerics of the name; a present one is uppercased and must be
-    /// alphanumerics. An absent project creates or reuses the project named for
-    /// the label, so every existing `label add` call behaves exactly as before;
-    /// a present one must name a known project. Returns the label list after the write.
-    pub fn add_label(
-        &self,
-        name: &str,
-        key: Option<&str>,
-        project: Option<&str>,
-    ) -> Result<Vec<String>, DomainError> {
+    /// `add_label(name, project)`: append a new, empty label inside a project. The
+    /// name is trimmed; an empty or already-used name is rejected. The project is
+    /// required and must be a known one: a refusal lists them. Returns the label
+    /// list after the write.
+    pub fn add_label(&self, name: &str, project: Option<&str>) -> Result<Vec<String>, DomainError> {
         let name = name.trim();
         if name.is_empty() {
             return Err(DomainError::EmptyLabelName);
         }
-        let requested = key
-            .map(super::ticket_label::LabelKey::normalize)
-            .transpose()?;
-        let project = project.map(str::trim);
+        let project = project.map(str::trim).filter(|raw| !raw.is_empty());
         self.mutate(|contents| {
             if contents.known_labels().iter().any(|known| known == name) {
                 return Err(DomainError::DuplicateLabel(name.to_string()));
             }
-            let parent = match project {
-                Some(raw) if !raw.is_empty() => {
-                    let known = contents.known_projects();
-                    if !known.iter().any(|known| known == raw) {
-                        return Err(DomainError::UnknownProjectName {
-                            name: raw.to_string(),
-                            projects: known,
-                        });
-                    }
-                    raw.to_string()
-                }
-                _ => {
-                    if !contents.projects.iter().any(|p| p.name == name) {
-                        contents
-                            .projects
-                            .push(super::ticket_label::Project::new(name));
-                    }
-                    name.to_string()
-                }
+            let known = contents.known_projects();
+            let Some(parent) = project else {
+                return Err(DomainError::MissingProject {
+                    projects: known,
+                    for_label: true,
+                });
             };
-            let taken: Vec<String> = contents
-                .labels
-                .iter()
-                .map(|label| label.key.clone())
-                .collect();
-            let key = match requested {
-                Some(key) => key,
-                None => super::ticket_label::LabelKey::generate(name, &taken),
-            };
-            let key = unique_key(&key, contents)?;
-            contents.labels.push(Label::with_project(name, key, parent));
+            if !known.iter().any(|known| known == parent) {
+                return Err(DomainError::UnknownProjectName {
+                    name: parent.to_string(),
+                    projects: known,
+                });
+            }
+            contents.labels.push(Label::new(name, parent));
             Ok((contents.known_labels(), true))
         })
     }
 
-    /// `rename_label(from, to, key, project)`: rename a label in place, the label list and
-    /// every ticket that belongs to it, in one write. The key survives a rename by
-    /// default; a key may move it only while the label holds no numbered ticket.
-    /// The project survives by default; a present project re-parents the label
-    /// and must name a known project. Re-parenting never touches keys, numbers
-    /// or refs.
+    /// `rename_label(from, to, project)`: rename a label in place, the label list
+    /// and every ticket that belongs to it, in one write. The project survives by
+    /// default; a present project re-parents the label, must name a known project,
+    /// and is refused while the label holds any ticket (a ticket never changes
+    /// project).
     pub fn rename_label(
         &self,
         from: &str,
         to: &str,
-        key: Option<&str>,
         project: Option<&str>,
     ) -> Result<Vec<String>, DomainError> {
         let from = from.trim();
@@ -283,9 +259,6 @@ impl Board {
         if to.is_empty() {
             return Err(DomainError::EmptyLabelName);
         }
-        let requested = key
-            .map(super::ticket_label::LabelKey::normalize)
-            .transpose()?;
         let project = project.map(str::trim);
         self.mutate(|contents| {
             let Some(i) = contents.labels.iter().position(|label| label.name == from) else {
@@ -304,33 +277,25 @@ impl Board {
                 }
                 _ => None,
             };
-            let current = contents.labels[i].clone();
-            let new_key = match requested {
-                Some(requested) if requested != current.key => {
-                    let refs: Vec<String> = contents
-                        .tickets
-                        .iter()
-                        .filter(|ticket| ticket.label.as_deref() == Some(from))
-                        .filter(|ticket| ticket.number.is_some())
-                        .filter_map(|ticket| ticket.reference.clone())
-                        .collect();
-                    if !refs.is_empty() {
-                        return Err(DomainError::FrozenLabelKey {
-                            key: current.key.clone(),
-                            label: from.to_string(),
-                            refs,
-                        });
-                    }
-                    Some(unique_key(&requested, contents)?)
+            if let Some(parent) = &new_parent
+                && parent != &contents.labels[i].project
+            {
+                let held = contents
+                    .tickets
+                    .iter()
+                    .filter(|ticket| ticket.label.as_deref() == Some(from))
+                    .count();
+                if held > 0 {
+                    return Err(DomainError::LabelHoldsTickets {
+                        label: from.to_string(),
+                        tickets: held,
+                        from: contents.labels[i].project.clone(),
+                        to: parent.clone(),
+                    });
                 }
-                _ => None,
-            };
+            }
             if from == to {
                 let mut changed = false;
-                if let Some(new_key) = new_key {
-                    contents.labels[i].key = new_key;
-                    changed = true;
-                }
                 if let Some(parent) = new_parent
                     && parent != contents.labels[i].project
                 {
@@ -347,9 +312,6 @@ impl Board {
                 return Err(DomainError::DuplicateLabel(to.to_string()));
             }
             contents.labels[i].name = to.to_string();
-            if let Some(new_key) = new_key {
-                contents.labels[i].key = new_key;
-            }
             if let Some(parent) = new_parent {
                 contents.labels[i].project = parent;
             }
@@ -363,9 +325,9 @@ impl Board {
         })
     }
 
-    /// `delete_label(name)`: remove a label and move its tickets to the default area.
-    /// A label is never a way to delete tickets; the moved tickets lose their
-    /// numbers with the label, because the default area carries no ref.
+    /// `delete_label(name)`: remove a label and unlabel its tickets. They stay in
+    /// their project, with their numbers and refs; a label is never a way to
+    /// delete tickets.
     pub fn delete_label(&self, name: &str) -> Result<LabelDeletion, DomainError> {
         let name = name.trim();
         self.mutate(|contents| {
@@ -377,8 +339,6 @@ impl Board {
             for ticket in &mut contents.tickets {
                 if ticket.label.as_deref() == Some(name) {
                     ticket.label = None;
-                    ticket.number = None;
-                    ticket.reference = None;
                     moved += 1;
                 }
             }
@@ -421,14 +381,12 @@ impl Board {
     /// `projects()`: every project in render order, each with its labels in label
     /// order. Empty projects list truthfully; the board draws only projects
     /// with labels.
-    pub fn projects(&self) -> Result<Vec<super::ticket_label::ProjectWithLabels>, DomainError> {
+    pub fn projects(&self) -> Result<Vec<ProjectWithLabels>, DomainError> {
         Ok(self.load()?.projects_with_labels())
     }
 
     /// [`projects`](Self::projects) and the revision its rows are a snapshot of.
-    pub fn projects_snapshot(
-        &self,
-    ) -> Result<(Vec<super::ticket_label::ProjectWithLabels>, i64), DomainError> {
+    pub fn projects_snapshot(&self) -> Result<(Vec<ProjectWithLabels>, i64), DomainError> {
         let Some((rows, revision)) = self.store.board_snapshot()? else {
             return Ok((Vec::new(), 0));
         };
@@ -436,42 +394,51 @@ impl Board {
         Ok((contents.projects_with_labels(), revision))
     }
 
-    /// `add_project(name)`: append a new, empty project. The name is trimmed;
-    /// an empty or already-used name is rejected. Returns the project list
-    /// after the write, label-verb style.
+    /// `add_project(name, abbr)`: append a new, empty project. The name is
+    /// trimmed; an empty or already-used name is rejected. An absent key is the
+    /// first three alphanumerics of the name; a present one is uppercased and
+    /// must be alphanumerics. Either must differ from every project key and every
+    /// retired ref's prefix. Returns the project list after the write.
     pub fn add_project(
         &self,
         name: &str,
-    ) -> Result<Vec<super::ticket_label::ProjectWithLabels>, DomainError> {
+        abbr: Option<&str>,
+    ) -> Result<Vec<ProjectWithLabels>, DomainError> {
         let name = name.trim();
         if name.is_empty() {
             return Err(DomainError::EmptyProjectName);
         }
+        let requested = abbr.map(ProjectKey::normalize).transpose()?;
         self.mutate(|contents| {
             if contents.projects.iter().any(|p| p.name == name) {
                 return Err(DomainError::DuplicateProject(name.to_string()));
             }
-            contents
-                .projects
-                .push(super::ticket_label::Project::new(name));
+            let key = match requested {
+                Some(key) => unique_key(&key, contents, None)?,
+                None => ProjectKey::generate(name, &taken_keys(contents, None)),
+            };
+            contents.projects.push(Project::new(name, key));
             Ok((contents.projects_with_labels(), true))
         })
     }
 
-    /// `rename_project(from, to)`: rename a project in place, moving its labels
-    /// with it. Label names, keys, numbers and refs are unchanged; only the
-    /// parent moves. An empty or already-used name is rejected; an unknown
-    /// project names the known projects.
+    /// `rename_project(from, to, abbr)`: rename a project in place, moving its
+    /// labels and its tickets with it. Numbers and refs are unchanged. A present
+    /// key moves the prefix, and is refused once the project has issued a number.
+    /// An empty or already-used name is rejected; an unknown project names the
+    /// known projects.
     pub fn rename_project(
         &self,
         from: &str,
         to: &str,
-    ) -> Result<Vec<super::ticket_label::ProjectWithLabels>, DomainError> {
+        abbr: Option<&str>,
+    ) -> Result<Vec<ProjectWithLabels>, DomainError> {
         let from = from.trim();
         let to = to.trim();
         if to.is_empty() {
             return Err(DomainError::EmptyProjectName);
         }
+        let requested = abbr.map(ProjectKey::normalize).transpose()?;
         self.mutate(|contents| {
             let Some(i) = contents.projects.iter().position(|p| p.name == from) else {
                 return Err(DomainError::UnknownProjectName {
@@ -479,29 +446,45 @@ impl Board {
                     projects: contents.known_projects(),
                 });
             };
-            if from == to {
-                return Ok((contents.projects_with_labels(), false));
-            }
-            if contents.projects.iter().any(|p| p.name == to) {
-                return Err(DomainError::DuplicateProject(to.to_string()));
-            }
-            contents.projects[i].name = to.to_string();
-            for label in &mut contents.labels {
-                if label.project == from {
-                    label.project = to.to_string();
+            let mut changed = false;
+            if let Some(requested) = requested
+                && requested != contents.projects[i].key
+            {
+                if contents.projects[i].last_number > 0 {
+                    return Err(DomainError::FrozenProjectKey {
+                        key: contents.projects[i].key.clone(),
+                        project: from.to_string(),
+                    });
                 }
+                let key = unique_key(&requested, contents, Some(from))?;
+                contents.projects[i].key = key;
+                changed = true;
             }
-            Ok((contents.projects_with_labels(), true))
+            if from != to {
+                if contents.projects.iter().any(|p| p.name == to) {
+                    return Err(DomainError::DuplicateProject(to.to_string()));
+                }
+                contents.projects[i].name = to.to_string();
+                for label in &mut contents.labels {
+                    if label.project == from {
+                        label.project = to.to_string();
+                    }
+                }
+                for ticket in &mut contents.tickets {
+                    if ticket.project == from {
+                        ticket.project = to.to_string();
+                    }
+                }
+                changed = true;
+            }
+            Ok((contents.projects_with_labels(), changed))
         })
     }
 
-    /// `delete_project(name)`: remove an empty project. A project that still
-    /// holds labels is refused, naming those labels: re-parent first, delete
-    /// after, so a delete can never strand or silently re-home numbered labels.
-    pub fn delete_project(
-        &self,
-        name: &str,
-    ) -> Result<Vec<super::ticket_label::ProjectWithLabels>, DomainError> {
+    /// `delete_project(name)`: remove an empty project. A project that still holds
+    /// labels or tickets is refused, naming them: a delete can never strand a
+    /// ticket.
+    pub fn delete_project(&self, name: &str) -> Result<Vec<ProjectWithLabels>, DomainError> {
         let name = name.trim();
         if name.is_empty() {
             return Err(DomainError::EmptyProjectName);
@@ -519,10 +502,16 @@ impl Board {
                 .filter(|label| label.project == name)
                 .map(|label| label.name.clone())
                 .collect();
-            if !labels.is_empty() {
+            let tickets = contents
+                .tickets
+                .iter()
+                .filter(|ticket| ticket.project == name)
+                .count();
+            if !labels.is_empty() || tickets > 0 {
                 return Err(DomainError::ProjectNotEmpty {
                     project: name.to_string(),
                     labels,
+                    tickets,
                 });
             }
             contents.projects.remove(i);
@@ -532,9 +521,12 @@ impl Board {
 
     // MARK: - Add
 
-    /// `add(title, ...)`: the title is trimmed; empty is rejected. The new ticket
-    /// lands on the **top of its label** (`None` is the default area); an unknown
-    /// label is rejected. The filer is stamped here and never touched again.
+    /// `add(title, ...)`: the title is trimmed; empty is rejected. A ticket always
+    /// lives in a project: the `project` argument names it, or a `label` alone
+    /// implies the label's project, and with neither the refusal lists the
+    /// projects. A project and a label that disagree are refused. The new ticket
+    /// lands on the **top of its label** (or of the unlabelled group) and takes the
+    /// project's next number. The filer is stamped here and never touched again.
     pub fn add(&self, title: &str, fields: AddTicket<'_>) -> Result<Ticket, DomainError> {
         let title = title.trim();
         if title.is_empty() {
@@ -543,14 +535,44 @@ impl Board {
         let assignee = normalize_assignee(fields.assignee);
         let origin = normalize_origin(Some(fields.origin));
         let description = description::normalize(fields.description);
+        let label = fields.label.map(str::trim).filter(|raw| !raw.is_empty());
+        let project = fields.project.map(str::trim).filter(|raw| !raw.is_empty());
         self.mutate(|contents| {
-            contents.validate_label(fields.label)?;
+            contents.validate_label(label)?;
+            let known = contents.known_projects();
+            let label_project = label.and_then(|name| contents.label_project(name));
+            let chosen = match (project, label_project) {
+                (Some(project), Some(parent)) if project != parent => {
+                    return Err(DomainError::LabelProjectMismatch {
+                        label: label.unwrap_or_default().to_string(),
+                        label_project: parent.to_string(),
+                        project: project.to_string(),
+                    });
+                }
+                (Some(project), _) => {
+                    if !known.iter().any(|name| name == project) {
+                        return Err(DomainError::UnknownProjectName {
+                            name: project.to_string(),
+                            projects: known,
+                        });
+                    }
+                    project.to_string()
+                }
+                (None, Some(parent)) => parent.to_string(),
+                (None, None) => {
+                    return Err(DomainError::MissingProject {
+                        projects: known,
+                        for_label: false,
+                    });
+                }
+            };
             let now = unix_now();
             let mut ticket = Ticket::new(title);
             ticket.description = description.clone();
             ticket.assignee = assignee.clone();
             ticket.origin = origin.clone();
-            ticket.label = fields.label.map(str::to_string);
+            ticket.project = chosen;
+            ticket.label = label.map(str::to_string);
             ticket.set_status(fields.status, now);
             insert_at_top(&mut ticket, contents);
             Ok((ticket, true))
@@ -559,9 +581,11 @@ impl Board {
 
     // MARK: - Move and place
 
-    /// `move(id, to_label, at)`: place a ticket at a 0-based index within `to_label`
-    /// (`None` is the default area), moving it between labels when needed. `index`
-    /// is clamped into range, so `usize::MAX` appends.
+    /// `move(id, to_label, at)`: place a ticket at a 0-based index within
+    /// `to_label` (`None` is no label), inside its own project. A label of
+    /// another project is refused: a ticket never changes project, so its number
+    /// and ref never change. `index` is clamped into range, so `usize::MAX`
+    /// appends.
     pub fn move_ticket(
         &self,
         handle: &str,
@@ -571,6 +595,7 @@ impl Board {
         self.mutate(|contents| {
             let from = contents.require_ticket(handle)?.1;
             contents.validate_label(to_label)?;
+            refuse_cross_project(contents, &contents.tickets[from], to_label)?;
             let mut moved = contents.tickets.remove(from);
             insert(&mut moved, to_label, contents, at);
             Ok((moved, true))
@@ -579,8 +604,8 @@ impl Board {
 
     /// `place(id, label, status, at)`: the board's drag. **One write** that sets the
     /// label and the status together and puts the ticket at a 0-based index within
-    /// the label. A drop that lands the ticket exactly where it already was writes
-    /// nothing.
+    /// the label. A label of another project is refused. A drop that lands the
+    /// ticket exactly where it already was writes nothing.
     pub fn place(
         &self,
         handle: &str,
@@ -591,6 +616,7 @@ impl Board {
         self.mutate(|contents| {
             let from = contents.require_ticket(handle)?.1;
             contents.validate_label(label)?;
+            refuse_cross_project(contents, &contents.tickets[from], label)?;
             let before = contents.tickets.clone();
             let mut moved = contents.tickets.remove(from);
             moved.set_status(status, unix_now());
@@ -1012,58 +1038,79 @@ fn comment_from_row(row: crate::store::board_rows::CommentRow) -> Result<Comment
     })
 }
 
-/// The key `requested` must not be another label's, compared uppercased.
-fn unique_key(requested: &str, contents: &Contents) -> Result<String, DomainError> {
-    let key = requested.to_uppercase();
-    if contents
-        .labels
+/// Every key a new project key must avoid: each project's (but `except`'s own)
+/// and each retired ref's prefix.
+fn taken_keys(contents: &Contents, except: Option<&str>) -> Vec<String> {
+    let mut taken: Vec<String> = contents
+        .projects
         .iter()
-        .any(|label| label.key.eq_ignore_ascii_case(&key))
+        .filter(|project| Some(project.name.as_str()) != except)
+        .map(|project| project.key.to_uppercase())
+        .filter(|key| !key.is_empty())
+        .collect();
+    taken.extend(contents.alias_keys());
+    taken
+}
+
+/// The key `requested` must not be another project's or a retired ref's prefix,
+/// compared uppercased.
+fn unique_key(
+    requested: &str,
+    contents: &Contents,
+    except: Option<&str>,
+) -> Result<String, DomainError> {
+    let key = requested.to_uppercase();
+    if taken_keys(contents, except)
+        .iter()
+        .any(|taken| taken.eq_ignore_ascii_case(&key))
     {
-        return Err(DomainError::DuplicateLabelKey(key));
+        return Err(DomainError::DuplicateProjectKey(key));
     }
     Ok(key)
 }
 
-/// Insert a new ticket on top of its label: it takes the label's next number and its
-/// ref, and the ticket comes back as the store will read it.
-fn insert_at_top(ticket: &mut Ticket, contents: &mut Contents) {
-    if let Some(label) = ticket.label.clone() {
-        ticket.number = Some(contents.issue_number(&label));
-        let start = contents.block_start(Some(&label));
-        contents.tickets.insert(start, ticket.clone());
-        contents.refresh_refs();
-        ticket.reference = contents
-            .tickets
-            .iter()
-            .find(|candidate| candidate.id == ticket.id)
-            .and_then(|candidate| candidate.reference.clone());
-    } else {
-        let start = contents.block_start(None);
-        contents.tickets.insert(start, ticket.clone());
+/// A label of another project is refused for a ticket that has a project.
+fn refuse_cross_project(
+    contents: &Contents,
+    ticket: &Ticket,
+    label: Option<&str>,
+) -> Result<(), DomainError> {
+    let Some(label) = label else { return Ok(()) };
+    let Some(parent) = contents.label_project(label) else {
+        return Ok(());
+    };
+    if parent != ticket.project {
+        return Err(DomainError::CrossProjectMove {
+            reference: display_name(ticket),
+            from: ticket.project.clone(),
+            label: label.to_string(),
+            to: parent.to_string(),
+        });
     }
+    Ok(())
+}
+
+/// Insert a new ticket on top of its label: it takes the project's next number and
+/// its ref, and the ticket comes back as the store will read it.
+fn insert_at_top(ticket: &mut Ticket, contents: &mut Contents) {
+    ticket.number = Some(contents.issue_number(&ticket.project));
+    let start = contents.block_start(ticket.label.as_deref());
+    contents.tickets.insert(start, ticket.clone());
+    contents.refresh_refs();
+    ticket.reference = contents
+        .tickets
+        .iter()
+        .find(|candidate| candidate.id == ticket.id)
+        .and_then(|candidate| candidate.reference.clone());
 }
 
 /// The one place a label insertion's arithmetic lives: `index` is 0-based within
 /// `label` and clamped into range, so `usize::MAX` appends.
 ///
-/// The ticket's **number** moves with its label: a move into another label takes the
-/// target label's next number, while a reorder inside the same label keeps it. The
-/// default area has none, so a move there clears it.
+/// The ticket's **number** never moves: it belongs to the project, and a move
+/// stays inside the project.
 fn insert(ticket: &mut Ticket, label: Option<&str>, contents: &mut Contents, at: usize) {
-    let from = ticket.label.clone();
     ticket.label = label.map(str::to_string);
-    match label {
-        Some(label) => {
-            if from.as_deref() != Some(label) || ticket.number.is_none() {
-                ticket.number = Some(contents.issue_number(label));
-            }
-        }
-        None => {
-            ticket.number = None;
-            ticket.reference = None;
-        }
-    }
     let start = contents.block_start(label);
     let count = contents
         .tickets
@@ -1081,8 +1128,7 @@ fn insert(ticket: &mut Ticket, label: Option<&str>, contents: &mut Contents, at:
         .and_then(|candidate| candidate.reference.clone());
 }
 
-/// A ticket as a failure names it: its ref, or its title in the default area,
-/// which carries neither a number nor a ref.
+/// A ticket as a failure names it: its ref, or its title when it has none.
 fn display_name(ticket: &Ticket) -> String {
     ticket
         .reference

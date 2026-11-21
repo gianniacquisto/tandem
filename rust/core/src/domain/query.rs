@@ -19,7 +19,7 @@ pub enum AssigneeAxis {
     Named(String),
 }
 
-/// The label axis: any label, the unnamed default area, or one named label.
+/// The label axis: any label, no label (inside any project), or one named label.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LabelAxis {
     Any,
@@ -50,6 +50,8 @@ pub struct TicketQuery {
     /// a custom finished stage is found without naming its literal key.
     pub done: Option<bool>,
     pub assignee: AssigneeAxis,
+    /// One project by name, or `None` for every project.
+    pub project: Option<String>,
     pub label: LabelAxis,
     pub archived: Archived,
     /// Only the tickets waiting on an open blocker (TAN-232).
@@ -67,6 +69,7 @@ impl Default for TicketQuery {
             statuses: Vec::new(),
             done: None,
             assignee: AssigneeAxis::Any,
+            project: None,
             label: LabelAxis::Any,
             archived: Archived::Excluded,
             blocked_only: false,
@@ -98,6 +101,7 @@ impl TicketQuery {
                 Archived::Only => Some(true),
                 Archived::Included => None,
             },
+            project: self.project.clone(),
             label: match &self.label {
                 LabelAxis::Any => None,
                 LabelAxis::Unnamed => Some(None),
@@ -160,6 +164,11 @@ impl TicketQuery {
                 }
             }
         }
+        if let Some(project) = &self.project
+            && &ticket.project != project
+        {
+            return false;
+        }
         match &self.label {
             LabelAxis::Any => {}
             LabelAxis::Unnamed => {
@@ -205,11 +214,13 @@ impl TicketQuery {
     /// archived; the archive is reached by asking for it: `archived` puts it in
     /// view. Named with a filter, the archive joins that filter; named alone, the
     /// archive is the view (the app's Archived segment).
+    #[allow(clippy::too_many_arguments)]
     pub fn parse(
         filter: Option<&str>,
         text: Option<&str>,
         status: Option<&str>,
         assignee: Option<&str>,
+        project: Option<&str>,
         label: Option<&str>,
         archived: bool,
         blocked: bool,
@@ -242,6 +253,12 @@ impl TicketQuery {
         }
         if let Some(assignee) = assignee {
             query.assignee = parse_assignee(assignee);
+        }
+        if let Some(project) = project {
+            let project = project.trim();
+            if !project.is_empty() {
+                query.project = Some(project.to_string());
+            }
         }
         if let Some(label) = label {
             query.label = parse_label(label);
@@ -282,7 +299,7 @@ fn parse_assignee(raw: &str) -> AssigneeAxis {
     }
 }
 
-/// The empty value is the unnamed default area.
+/// The empty value is "no label".
 fn parse_label(raw: &str) -> LabelAxis {
     let name = raw.trim();
     if name.is_empty() {

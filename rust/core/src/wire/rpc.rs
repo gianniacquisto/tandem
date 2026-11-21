@@ -191,6 +191,7 @@ pub struct TicketListParams {
     pub text: Option<String>,
     pub status: Option<String>,
     pub assignee: Option<String>,
+    pub project: Option<String>,
     pub label: Option<String>,
     pub archived: bool,
     pub blocked: bool,
@@ -206,13 +207,15 @@ pub struct TicketIdParams {
     pub id: Option<String>,
 }
 
-/// `ticket.add`: the same fields the verb's flags carry.
+/// `ticket.add`: the same fields the verb's flags carry. A ticket always lives
+/// in a project: `project` names it, or `label` alone implies it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TicketAddParams {
     pub title: Option<String>,
     pub status: Option<String>,
     pub assignee: Option<String>,
+    pub project: Option<String>,
     pub label: Option<String>,
     pub origin: Option<String>,
     pub description: Option<String>,
@@ -273,24 +276,22 @@ pub struct CommentAddParams {
     pub body: Option<String>,
 }
 
-/// `label.add`: the name, the ref key it issues, and the parent project.
-/// An absent project creates or reuses the project named for the label.
+/// `label.add`: the name and the parent project, which is required. The key
+/// belongs to the project now, so a stale `abbr` is refused out loud.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct LabelAddParams {
     pub name: Option<String>,
-    pub abbr: Option<String>,
     pub project: Option<String>,
 }
 
-/// `label.rename`: from one name to another, optionally re-keying the refs and
-/// re-parenting the label. An absent project keeps the label's parent.
+/// `label.rename`: from one name to another, optionally re-parenting the label
+/// while it holds no ticket. An absent project keeps the label's parent.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct LabelRenameParams {
     pub from: Option<String>,
     pub to: Option<String>,
-    pub abbr: Option<String>,
     pub project: Option<String>,
 }
 
@@ -310,19 +311,23 @@ pub struct LabelMoveParams {
     pub index: Option<i64>,
 }
 
-/// `project.add`: the name, and nothing else. Add appends, there is no move.
+/// `project.add`: the name and, optionally, the ref key it issues. Add appends,
+/// there is no move.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ProjectAddParams {
     pub name: Option<String>,
+    pub abbr: Option<String>,
 }
 
-/// `project.rename`: from one name to another, moving its labels with it.
+/// `project.rename`: from one name to another, moving its labels and tickets with
+/// it, and optionally a new ref key while the project has issued no number.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ProjectRenameParams {
     pub from: Option<String>,
     pub to: Option<String>,
+    pub abbr: Option<String>,
 }
 
 /// `project.delete`: the name, and nothing else. Refused while labels belong.
@@ -395,9 +400,10 @@ impl TicketListParams {
                     "assignee",
                     string("an exact name, self for your own, or \"\" for the unowned"),
                 ),
+                ("project", string("a project name")),
                 (
                     "label",
-                    string("a label name, or \"\" for the default area"),
+                    string("a label name, or \"\" for the tickets with no label"),
                 ),
                 (
                     "archived",
@@ -425,7 +431,7 @@ impl TicketIdParams {
         object_schema(
             &[(
                 "id",
-                string("the ticket's UUID or its ref (the label key and number, TAN-42)"),
+                string("the ticket's UUID or its ref (the project key and number, TAN-42)"),
             )],
             &["id"],
         )
@@ -542,7 +548,16 @@ impl TicketAddParams {
                     "assignee",
                     string("a name, self to claim it, or human for the human"),
                 ),
-                ("label", string("the label; it must exist")),
+                (
+                    "project",
+                    string(
+                        "the project the ticket lives in; required unless label is given, which implies its project",
+                    ),
+                ),
+                (
+                    "label",
+                    string("an optional label inside the project; it must exist"),
+                ),
                 (
                     "origin",
                     string("who filed it, self for this agent; written at add, never changed"),
@@ -603,7 +618,9 @@ impl TicketMoveParams {
                 ("id", string("the ticket's UUID or its ref")),
                 (
                     "label",
-                    string("the label, or \"\" for the default area; it must exist"),
+                    string(
+                        "a label of the ticket's own project, or \"\" for no label; it must exist",
+                    ),
                 ),
                 ("index", integer("0-based within the label; omit to append")),
             ],
@@ -675,18 +692,9 @@ impl LabelAddParams {
         object_schema(
             &[
                 ("name", string("the label name; required")),
-                (
-                    "abbr",
-                    string("the ref key it issues; omit for the first three alphanumerics"),
-                ),
-                (
-                    "project",
-                    string(
-                        "the parent project; omit to create or reuse the project named for the label",
-                    ),
-                ),
+                ("project", string("the parent project; required")),
             ],
-            &["name"],
+            &["name", "project"],
         )
     }
 }
@@ -699,12 +707,10 @@ impl LabelRenameParams {
                 ("from", string("the label's current name")),
                 ("to", string("the new name")),
                 (
-                    "abbr",
-                    string("the new ref key; refused once the key is frozen"),
-                ),
-                (
                     "project",
-                    string("the new parent project; omit to keep the label's project"),
+                    string(
+                        "the new parent project; omit to keep the label's project; refused while the label holds tickets",
+                    ),
                 ),
             ],
             &["from", "to"],
@@ -713,8 +719,8 @@ impl LabelRenameParams {
 }
 
 impl LabelDeleteParams {
-    /// The tool input for `label.delete`: members fall back to the default
-    /// area, never deleted.
+    /// The tool input for `label.delete`: its tickets lose the label and stay in
+    /// their project, never deleted.
     pub fn schema() -> serde_json::Value {
         object_schema(&[("name", string("the label name"))], &["name"])
     }
@@ -739,7 +745,16 @@ impl LabelMoveParams {
 impl ProjectAddParams {
     /// The tool input for `project.add`.
     pub fn schema() -> serde_json::Value {
-        object_schema(&[("name", string("the project name; required"))], &["name"])
+        object_schema(
+            &[
+                ("name", string("the project name; required")),
+                (
+                    "abbr",
+                    string("the ref key it issues; omit for the first three alphanumerics"),
+                ),
+            ],
+            &["name"],
+        )
     }
 }
 
@@ -750,6 +765,10 @@ impl ProjectRenameParams {
             &[
                 ("from", string("the project's current name")),
                 ("to", string("the new name")),
+                (
+                    "abbr",
+                    string("the new ref key; refused once the project has issued a number"),
+                ),
             ],
             &["from", "to"],
         )
@@ -921,6 +940,7 @@ pub struct LabelDeletionReply {
 #[serde(rename_all = "camelCase")]
 pub struct ProjectEntry {
     pub name: String,
+    pub key: String,
     pub labels: Vec<String>,
 }
 

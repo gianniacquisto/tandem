@@ -93,7 +93,6 @@
         <input type="hidden" name="assignee" value="{{ form.assignee }}">
         <input type="hidden" name="text" value="{{ form.text }}">
         <input class="label-form__name" name="name" aria-label="New label name" placeholder="Label name" required>
-        <input class="label-form__key" name="abbr" aria-label="New label key" placeholder="Key">
         <button class="label-form__save" type="submit">Add</button>
       </form>
       <p class="menu__title">Rename a label</p>
@@ -106,7 +105,6 @@
         <input type="hidden" name="assignee" value="{{ form.assignee }}">
         <input type="hidden" name="text" value="{{ form.text }}">
         <input class="label-form__name" name="to" aria-label="Name of label {{ label.name }}" value="{{ label.name }}">
-        <input class="label-form__key" name="abbr" aria-label="Key for label {{ label.name }}" placeholder="Key">
         <button class="label-form__save" type="submit">Save</button>
       </form>
       {% endfor %}
@@ -126,13 +124,28 @@
         <input type="hidden" name="label" value="{{ form.label }}">
         <input type="hidden" name="assignee" value="{{ form.assignee }}">
         <input type="hidden" name="text" value="{{ form.text }}">
-        <input class="new-form__title" name="title" placeholder="Ticket title" aria-label="Ticket title" required>
-        <select class="new-form__status" name="status" aria-label="Column">
+        <input class="new-form__title" name="title" placeholder="Ticket title" aria-label="Ticket title" required{% if no_projects %} disabled{% endif %}>
+        <select class="new-form__status" name="ticket_project" aria-label="Project" required{% if no_projects %} disabled{% endif %}>
+          <option value=""{% if !project_chosen %} selected{% endif %}>Project</option>
+          {% for project in new_projects %}
+          <option value="{{ project.name }}"{% if project.selected %} selected{% endif %}>{{ project.name }}</option>
+          {% endfor %}
+        </select>
+        <select class="new-form__status" name="ticket_label" aria-label="Label"{% if !project_chosen %} disabled{% endif %}>
+          <option value="">No label</option>
+          {% for label in new_labels %}
+          <option value="{{ label.name }}" data-project="{{ label.project }}"{% if label.selected %} selected{% endif %}{% if label.hidden %} hidden{% endif %}>{{ label.name }}</option>
+          {% endfor %}
+        </select>
+        <select class="new-form__status" name="status" aria-label="Column"{% if no_projects %} disabled{% endif %}>
           {% for column in columns %}
           <option value="{{ column.status }}">{{ column.label }}</option>
           {% endfor %}
         </select>
-        <button class="new-form__create" type="submit">Create</button>
+        <button class="new-form__create" type="submit"{% if no_projects %} disabled{% endif %}>Create</button>
+        {% if no_projects %}
+        <p class="menu__title">Add one with <code>tandem-cli project add</code> first.</p>
+        {% endif %}
       </form>
     </div>
   </details>
