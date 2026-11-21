@@ -10,6 +10,8 @@
   "stdout": [
     "tandem-cli note links \u2014 the link-graph health readout.",
     "",
+    "Reports broken links (typed project: and label: links included), orphans, and folders under projects/ that match no project or label.",
+    "",
     "Usage:",
     "  tandem-cli note links"
   ],

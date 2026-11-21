@@ -8,7 +8,7 @@
 use std::path::Path;
 
 use crate::bikeshed::Bikeshed;
-use crate::bikeshed::wikilink::LinkResolution;
+use crate::bikeshed::wikilink::{BoardNames, BoardProject, LinkResolution};
 
 use super::bikeshed_support::Vault;
 
@@ -24,7 +24,12 @@ fn the_fixture_vaults_health_is_the_one_link_and_the_one_orphan() {
     let vault = fixture();
     let health = vault
         .bikeshed()
-        .health()
+        .health(&BoardNames {
+            projects: vec![BoardProject {
+                name: "fixture".to_string(),
+                labels: Vec::new(),
+            }],
+        })
         .expect("the health read runs")
         .value;
     assert!(health.broken.is_empty());
@@ -34,6 +39,7 @@ fn the_fixture_vaults_health_is_the_one_link_and_the_one_orphan() {
     );
     assert_eq!(health.counts.links, 1, "[[fixture]] in the Index");
     assert_eq!(health.orphans, vec!["daily/2026-10-30.md".to_string()]);
+    assert!(health.unmatched_folders.is_empty());
 }
 
 #[test]

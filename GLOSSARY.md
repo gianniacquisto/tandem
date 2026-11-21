@@ -106,6 +106,16 @@ _Avoid_: snapshot, dump, backup set, restore point
 Tandem's notes surface: a plain folder of notes and attachments, shared by the app and agents on the same machine and watched live by the app. The folder and the surface share one name — there is no second word for the folder.
 _Avoid_: vault, notebook, notes folder
 
+**Orphan**:
+A note with no resolved wikilink in or out (typed links count) that is not filed under a matched project folder. `note_health` and `note links` list them.
+_Avoid_: unlinked note
+
+**Project folder**:
+`projects/<project>/` in the bikeshed, matched case-insensitively to a board project. A note filed anywhere under it is not an orphan.
+
+**Label folder**:
+`projects/<project>/<label>/`, matched to one of that project's labels; a label named like its project maps to the project folder itself. A direct child folder that matches nothing is reported as an unmatched folder.
+
 **Note**:
 A single markdown file in the bikeshed. The filename is the note's identity; renaming a note is renaming the file.
 _Avoid_: document, entry, page
@@ -115,7 +125,7 @@ Changing where a note or a folder sits in the bikeshed — the name stays, the p
 _Avoid_: mv, relocate, drag (the gesture, not the operation)
 
 **Wikilink**:
-An in-note reference to another note, written `[[target]]` with an optional `#fragment` and `|alias`, resolved live by case-insensitive name against the bikeshed; a wikilink that resolves to no note is a broken link.
+An in-note reference to another note, written `[[target]]` with an optional `#fragment` and `|alias`, resolved live by case-insensitive name against the bikeshed; a wikilink that resolves to no note is a broken link. The typed form `[[project:Name]]` or `[[label:Name]]` links to a board project or label instead, resolved case-insensitively against the board (ADR 0054).
 _Avoid_: internal link, embed
 
 **Backlink**:

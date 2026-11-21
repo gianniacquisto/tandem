@@ -200,7 +200,9 @@ mod links {
         let hits = bikeshed.search("needle").expect("search runs").value;
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].path, "real.md");
-        bikeshed.health().expect("health runs");
+        bikeshed
+            .health(&crate::bikeshed::BoardNames::default())
+            .expect("health runs");
         assert!(bikeshed.backlinks("link/secret.md").is_err());
     }
 
@@ -218,7 +220,9 @@ mod links {
             .map(|node| node.path)
             .collect();
         assert_eq!(paths, vec!["a.md".to_string()]);
-        bikeshed.health().expect("health returns");
+        bikeshed
+            .health(&crate::bikeshed::BoardNames::default())
+            .expect("health returns");
         bikeshed.stats(None).expect("stats returns");
     }
 
@@ -240,7 +244,10 @@ mod links {
         assert_eq!(stats.totals.curated_notes, 0);
         let named = bikeshed.stats(Some("secret")).expect("stats runs").value;
         assert!(named.projects.is_empty());
-        let health = bikeshed.health().expect("health runs").value;
+        let health = bikeshed
+            .health(&crate::bikeshed::BoardNames::default())
+            .expect("health runs")
+            .value;
         assert_eq!(
             health.counts.notes, 0,
             "health does not read through the link"

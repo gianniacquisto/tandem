@@ -12,10 +12,17 @@
       "broken": 0,
       "links": 1,
       "notes": 3,
-      "orphans": 1
+      "orphans": 1,
+      "unmatchedFolders": 1
     },
     "orphans": [
       "daily/2026-10-30.md"
+    ],
+    "unmatchedFolders": [
+      {
+        "path": "projects/fixture",
+        "reason": "no project"
+      }
     ]
   },
   "stdoutKind": "json"

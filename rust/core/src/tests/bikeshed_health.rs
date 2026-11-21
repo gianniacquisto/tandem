@@ -3,14 +3,30 @@
 //! JSON shape `note links` prints.
 
 use crate::bikeshed::health::BikeshedHealthCounts;
-use crate::bikeshed::{BikeshedHealth, BrokenLink};
+use crate::bikeshed::wikilink::{BoardNames, BoardProject};
+use crate::bikeshed::{BikeshedHealth, BrokenLink, UnmatchedFolder};
 
 use super::bikeshed_support::Vault;
+
+fn names() -> BoardNames {
+    BoardNames {
+        projects: vec![
+            BoardProject {
+                name: "Tandem".to_string(),
+                labels: vec!["Tandem".to_string(), "cli".to_string()],
+            },
+            BoardProject {
+                name: "code-rank".to_string(),
+                labels: vec!["code-rank".to_string()],
+            },
+        ],
+    }
+}
 
 fn health(vault: &Vault) -> BikeshedHealth {
     vault
         .bikeshed()
-        .health()
+        .health(&names())
         .expect("the health read runs")
         .value
 }
@@ -93,23 +109,102 @@ fn a_note_nothing_links_to_is_an_orphan() {
 }
 
 #[test]
-fn the_hub_and_a_projects_anchor_note_are_never_orphans() {
-    let vault = Vault::new("health-anchors");
-    vault.stage("Index.md", "# Index\n\n- [[tandem]]\n");
+fn a_note_filed_under_a_project_folder_is_not_an_orphan() {
+    let vault = Vault::new("health-filed");
+    vault.stage("projects/tandem/cli/Note.md", "# Note");
+    vault.stage("projects/tandem/App/Note.md", "# App note");
     vault.stage("projects/tandem/Tandem.md", "# Tandem");
-    vault.stage("projects/tandem/Other.md", "# Other");
+    assert!(health(&vault).orphans.is_empty());
+}
+
+#[test]
+fn a_note_under_an_unknown_project_is_an_orphan() {
+    let vault = Vault::new("health-unknown");
+    vault.stage("projects/unknown/Note.md", "# Note");
+    let found = health(&vault);
+    assert_eq!(found.orphans, vec!["projects/unknown/Note.md".to_string()]);
     assert_eq!(
-        health(&vault).orphans,
-        vec!["projects/tandem/Other.md".to_string()]
+        found.unmatched_folders,
+        vec![UnmatchedFolder {
+            path: "projects/unknown".to_string(),
+            reason: "no project".to_string()
+        }]
     );
 }
 
 #[test]
-fn outgoing_links_do_not_rescue_an_orphan() {
+fn a_daily_note_linking_a_label_is_not_an_orphan() {
+    let vault = Vault::new("health-daily");
+    vault.stage("daily/2026-11-20.md", "Worked on [[label:cli]].");
+    vault.stage("daily/2026-11-21.md", "Nothing linked.");
+    let found = health(&vault);
+    assert_eq!(found.orphans, vec!["daily/2026-11-21.md".to_string()]);
+    assert_eq!(found.counts.links, 1, "a typed link counts");
+    assert!(found.broken.is_empty());
+}
+
+#[test]
+fn a_root_note_with_only_outbound_links_is_not_an_orphan() {
     let vault = Vault::new("health-outgoing");
     vault.stage("Note.md", "# Note");
     vault.stage("Lonely.md", "See [[Note]].");
-    assert_eq!(health(&vault).orphans, vec!["Lonely.md".to_string()]);
+    assert!(health(&vault).orphans.is_empty());
+}
+
+#[test]
+fn a_broken_typed_link_is_listed_with_its_line() {
+    let vault = Vault::new("health-typed-broken");
+    vault.stage("Note.md", "# Note\n\nSee [[label:clii|cli]].");
+    let found = health(&vault);
+    assert_eq!(
+        found.broken,
+        vec![BrokenLink {
+            note: "Note.md".to_string(),
+            link: "label:clii".to_string(),
+            line: 3,
+        }]
+    );
+    assert_eq!(found.counts.links, 1);
+}
+
+#[test]
+fn unmatched_folders_are_the_direct_children_that_match_nothing() {
+    let vault = Vault::new("health-unmatched");
+    vault.stage("projects/tandem/CLI/a.md", "a");
+    vault.stage("projects/tandem/App/b.md", "b");
+    vault.stage("projects/tandem/App/deep/c.md", "c");
+    vault.stage("projects/code-rank/x.md", "x");
+    vault.stage("projects/Zed/y.md", "y");
+    let found = health(&vault);
+    assert_eq!(
+        found.unmatched_folders,
+        vec![
+            UnmatchedFolder {
+                path: "projects/tandem/App".to_string(),
+                reason: "no label".to_string()
+            },
+            UnmatchedFolder {
+                path: "projects/Zed".to_string(),
+                reason: "no project".to_string()
+            },
+        ]
+    );
+    assert_eq!(found.counts.unmatched_folders, 2);
+}
+
+#[test]
+fn a_label_named_like_its_project_is_never_unmatched() {
+    let vault = Vault::new("health-same-name");
+    vault.stage("projects/code-rank/code-rank/a.md", "a");
+    vault.stage("projects/tandem/Tandem/b.md", "b");
+    assert!(health(&vault).unmatched_folders.is_empty());
+}
+
+#[test]
+fn a_vault_with_no_projects_folder_reports_no_unmatched_folders() {
+    let vault = Vault::new("health-no-projects");
+    vault.stage("Note.md", "# Note");
+    assert!(health(&vault).unmatched_folders.is_empty());
 }
 
 #[test]
@@ -139,7 +234,8 @@ fn an_empty_bikeshed_reports_zero_counts() {
             notes: 0,
             links: 0,
             broken: 0,
-            orphans: 0
+            orphans: 0,
+            unmatched_folders: 0
         }
     );
     assert_eq!(BikeshedHealth::empty(), found);
@@ -163,4 +259,18 @@ fn the_json_keeps_the_fixed_shape() {
     assert_eq!(value["counts"]["links"], 3);
     assert_eq!(value["counts"]["broken"], 1);
     assert_eq!(value["counts"]["orphans"], 1);
+    assert_eq!(value["unmatchedFolders"], serde_json::json!([]));
+    assert_eq!(value["counts"]["unmatchedFolders"], 0);
+}
+
+#[test]
+fn the_json_carries_the_unmatched_folders() {
+    let vault = Vault::new("health-json-unmatched");
+    vault.stage("projects/tandem/App/a.md", "a");
+    let value = serde_json::to_value(health(&vault)).expect("the report serializes");
+    assert_eq!(
+        value["unmatchedFolders"],
+        serde_json::json!([{"path": "projects/tandem/App", "reason": "no label"}])
+    );
+    assert_eq!(value["counts"]["unmatchedFolders"], 1);
 }

@@ -1,6 +1,6 @@
 # Wikilink rename: app-performed renames rewrite referencing wikilinks — and only wikilinks
 
-> **Status:** In force. See [the index](README.md).
+> **Status:** In force as amended. [ADR 0054](0054-notes-link-to-projects-and-labels.md) adds the typed `[[project:X]]` and `[[label:x]]` link forms. See [the index](README.md).
 
 [ADR 0004](0004-vault-protocol.md) settles how a rename-with-link-rewrite is *performed* (one-sided sidecar lock, per-file atomic rewrites before the note rename, no journal). This ADR settles what the rewrite *covers* and what the vault does with colliding names. We decided: a rename/move performed by the app rewrites every `[[wikilink]]` in the vault that resolves to the renamed note — in any form (bare, qualified, aliased), in every note's body including the note itself — and nothing else: markdown links are never rewritten, wikilinks in frontmatter are never rewritten (frontmatter stays opaque, ADR 0004), and a rename an agent performs on disk rewrites nothing, leaving visible broken links. When two notes share a basename, a bare link to that name is a **broken link**, not a silently chosen match.
 

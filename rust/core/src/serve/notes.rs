@@ -510,7 +510,7 @@ pub(super) async fn note_open(
             params.insert("mode".to_string(), "edit".to_string());
             notes_response(&context, &params, None, None, None, &headers)
         }
-        LinkResolution::Broken => {
+        LinkResolution::Broken | LinkResolution::Project(_) | LinkResolution::Label(_) => {
             if !from.is_empty() {
                 params.insert("path".to_string(), from);
             }

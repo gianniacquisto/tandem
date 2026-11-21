@@ -431,7 +431,7 @@ Writes. Destructive: it removes or overwrites.
 
 #### `note_health`
 
-Check the vault's link graph: broken links, orphans and counts, the same report note links prints.
+Check the vault's link graph: broken links (typed project: and label: links included), orphans, folders under projects/ that match no project or label, and counts, the same report note links prints.
 
 Read-only.
 

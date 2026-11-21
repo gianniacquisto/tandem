@@ -37,7 +37,7 @@ The status comes from each record's own header and from the "Prior records" list
 | 0002 | [App distribution](0002-app-distribution.md) | Superseded by 0003 | Homebrew formula and cask link. |
 | 0003 | [Distribution](0003-distribution.md) | Superseded by 0046 | Prebuilt cask. |
 | 0004 | [Vault protocol](0004-vault-protocol.md) | In force | Per-note files, the sidecar lock, atomic writes. |
-| 0005 | [Wikilink rename rewriting](0005-wikilink-rename-rewriting.md) | In force | A rename made through Tandem rewrites the links that pointed at the note. |
+| 0005 | [Wikilink rename rewriting](0005-wikilink-rename-rewriting.md) | In force as amended | A rename made through Tandem rewrites the links that pointed at the note. Its link grammar gains the typed `project:` and `label:` forms (0054). |
 | 0006 | [Stored order and sections](0006-stored-order-and-sections.md) | In force, amended by 0031 | The order now lives in `position` columns. |
 | 0007 | [Locked directory](0007-locked-directory.md) | In force | One primitive owns the lock and atomic-write mechanics. |
 | 0008 | [Vault path rule](0008-vault-path-rule.md) | In force | One validation rule for note paths. |
@@ -87,6 +87,7 @@ The status comes from each record's own header and from the "Prior records" list
 | 0051 | [A Claude Code plugin is the connector](0051-a-claude-code-plugin-is-the-connector.md) | In force | The repository is a Claude Code marketplace; the `tandem` plugin is `examples/` pinned to the latest release tag: it registers the MCP endpoint, ships the example skills and agents, and checks at session start that serve is up and current. No Tandem-owned installer (0045), serve still started by hand (0047). |
 | 0052 | [Members and personal tokens](0052-members-and-personal-tokens.md) | In force | Members (admin or member), personal tokens (`tdm_`, `/mcp` only) and sign-in keys (`tdk_`, `/login` only), stored as digests in schema v14; the actor comes from the credential, and team mode fails closed. Part 2 (CUT-39): one permission function, the last-admin rule, and the append-only access record (schema v15). Supersedes by quotation parts of 0047, 0049 and 0050. |
 | 0053 | [One prefix per project](0053-one-prefix-per-project.md) | In force | The project owns the ref key and the counter (schema v16); a ticket stores its project and never changes it; there is no default area; a label is optional inside one project; retired refs resolve through `ticket_aliases`. Amends 0039 and 0047. |
+| 0054 | [Notes link to projects and labels](0054-notes-link-to-projects-and-labels.md) | In force | Typed wikilinks `[[project:X]]` and `[[label:x]]` resolve against the board; an orphan has no link in or out and is not filed under a project folder; `note_health` reports `unmatchedFolders`; the graph's node and edge types. Amends 0005. |
 
 ## Adding a record
 
