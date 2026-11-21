@@ -74,13 +74,64 @@ fn present(text: &str) -> Option<String> {
     }
 }
 
-/// Where a wikilink target resolves, computed live from the file set.
+/// Where a wikilink target resolves, computed live from the file set and the
+/// board's names.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkResolution {
     /// Exactly one note matches; the path is bikeshed-root-relative.
     Resolved(String),
+    /// `[[project:Name]]` named a board project; carries its canonical name.
+    Project(String),
+    /// `[[label:Name]]` named a board label; carries its canonical name.
+    Label(String),
     /// Zero or multiple matches: a broken link.
     Broken,
+}
+
+/// The board's names as a plain value (ADR 0054): the projects and each
+/// project's labels. The bikeshed never opens the store; the one join point
+/// builds this from the board and passes it in.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BoardNames {
+    pub projects: Vec<BoardProject>,
+}
+
+/// One project and its labels, by name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BoardProject {
+    pub name: String,
+    pub labels: Vec<String>,
+}
+
+impl BoardNames {
+    /// The project a name matches, case-insensitively, as the board spells it.
+    pub fn project(&self, name: &str) -> Option<&BoardProject> {
+        self.projects
+            .iter()
+            .find(|project| project.name.to_lowercase() == name.to_lowercase())
+    }
+
+    /// The label a name matches, case-insensitively, as the board spells it
+    /// (label names are unique board-wide).
+    pub fn label(&self, name: &str) -> Option<&str> {
+        let lowered = name.to_lowercase();
+        self.projects
+            .iter()
+            .flat_map(|project| project.labels.iter())
+            .find(|label| label.to_lowercase() == lowered)
+            .map(String::as_str)
+    }
+}
+
+/// The typed form of a link target: `project:` or `label:` (case-insensitive
+/// prefix) and the name after it. Any other `a:b` is a plain note target.
+fn typed_target(target: &str) -> Option<(bool, &str)> {
+    let (prefix, name) = target.split_once(':')?;
+    match prefix.trim().to_lowercase().as_str() {
+        "project" => Some((true, name.trim())),
+        "label" => Some((false, name.trim())),
+        _ => None,
+    }
 }
 
 /// One wikilink occurrence in a note's text.
@@ -123,7 +174,22 @@ impl NoteIndex {
 
     /// The shared resolution rule: exactly one match, case-insensitive, with or
     /// without a trailing `.md` on the target. Zero or several is broken.
-    pub(crate) fn resolve(&self, target: &str) -> LinkResolution {
+    ///
+    /// A typed target (`project:` or `label:`) resolves first, against the
+    /// board's names; every other target is a note target.
+    pub(crate) fn resolve(&self, target: &str, names: &BoardNames) -> LinkResolution {
+        if let Some((is_project, name)) = typed_target(target) {
+            return if is_project {
+                names
+                    .project(name)
+                    .map(|project| LinkResolution::Project(project.name.clone()))
+            } else {
+                names
+                    .label(name)
+                    .map(|label| LinkResolution::Label(label.to_string()))
+            }
+            .unwrap_or(LinkResolution::Broken);
+        }
         let lowered = target.to_lowercase();
         let lowered = lowered.strip_suffix(".md").unwrap_or(&lowered);
         let matches = if target.contains('/') {
@@ -138,8 +204,12 @@ impl NoteIndex {
     }
 }
 
-/// Every wikilink occurrence in `text`, resolved against `notes`.
-pub(crate) fn link_occurrences(text: &str, notes: &[String]) -> Vec<LinkOccurrence> {
+/// Every wikilink occurrence in `text`, resolved against `notes` and `names`.
+pub(crate) fn link_occurrences(
+    text: &str,
+    notes: &[String],
+    names: &BoardNames,
+) -> Vec<LinkOccurrence> {
     let tokens = wikilink_tokens(text);
     if tokens.is_empty() {
         return Vec::new();
@@ -160,7 +230,7 @@ pub(crate) fn link_occurrences(text: &str, notes: &[String]) -> Vec<LinkOccurren
         occurrences.push(LinkOccurrence {
             start,
             end,
-            resolution: index.resolve(&link.target),
+            resolution: index.resolve(&link.target, names),
             line: line_containing(text, start).to_string(),
             link,
         });
@@ -315,7 +385,7 @@ pub(crate) fn rewrite_links(
     notes: &[String],
     mapping: &HashMap<String, String>,
 ) -> Option<String> {
-    let occurrences = link_occurrences(text, notes);
+    let occurrences = link_occurrences(text, notes, &BoardNames::default());
     if occurrences.is_empty() {
         return None;
     }

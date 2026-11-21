@@ -136,6 +136,8 @@ The convention this repository's own notes follow gives every project one entry 
 
 The prose says what the project is, how to run it and where things live; its `## Threads` list is what is open now (the board is the full list); and it links the project's Decisions, Risks, Processes and sub-pages. Each page names the date it was last true, `Reviewed <date>` - a page that has drifted is the page to fix. Tandem does not enforce the layout: it is a way to keep a wiki findable, and yours can differ.
 
+Link a note to a project or a label with `[[project:Name]]` or `[[label:Name]]`, resolved against the board. A note filed under `projects/<project>/` (a label's notes under `projects/<project>/<label>/`) is about that project. `tandem-cli note links` and the `note_health` tool list the broken links (typed ones included), the orphans (notes with no link in or out that are filed under no project folder) and the folders under `projects/` that match no project or label. See [ADR 0054](adr/0054-notes-link-to-projects-and-labels.md).
+
 Start at `~/.tandem/bikeshed/Index.md`, or the board's Notes page, when you do not know the project's name yet.
 
 A delete moves the note or folder into `~/.tandem/bikeshed/.trash/`, under a UTC timestamp folder, and the notes page offers an undo until the page moves on. Trashed notes are kept for 30 days: the next delete after that removes them for good, so the trash is not a backup, and the bytes stay recoverable only until then.

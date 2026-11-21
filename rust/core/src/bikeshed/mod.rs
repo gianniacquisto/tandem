@@ -38,9 +38,9 @@ use self::locked::LockedDirectory;
 
 use self::wikilink::{LinkOccurrence, LinkResolution, NoteIndex, link_occurrences, rewrite_links};
 
-pub use self::health::{BikeshedHealth, BikeshedHealthCounts, BrokenLink};
+pub use self::health::{BikeshedHealth, BikeshedHealthCounts, BrokenLink, UnmatchedFolder};
 pub use self::stats::{BikeshedProjectStats, BikeshedStats, BikeshedStatsTotals};
-pub use self::wikilink::{LinkResolution as Resolution, Wikilink};
+pub use self::wikilink::{BoardNames, BoardProject, LinkResolution as Resolution, Wikilink};
 
 /// The bikeshed path-hygiene rule (ADR 0008): the one place that decides whether
 /// a bikeshed-root-relative path is legal or an escape.
@@ -975,7 +975,7 @@ impl Bikeshed {
             let Ok(content) = self.read_note(note_path) else {
                 continue;
             };
-            let first = link_occurrences(&content.text, &notes)
+            let first = link_occurrences(&content.text, &notes, &BoardNames::default())
                 .into_iter()
                 .find(|occurrence| {
                     occurrence.resolution == LinkResolution::Resolved(path.to_string())
@@ -997,13 +997,24 @@ impl Bikeshed {
     // MARK: - resolve and scan
 
     /// `resolve(target)`: where a wikilink target points, live from the file set.
+    /// Typed targets (`project:`, `label:`) are broken here: no board names.
     pub fn resolve(&self, target: &str) -> LinkResolution {
-        NoteIndex::new(&self.note_paths()).resolve(target)
+        self.resolve_with(target, &BoardNames::default())
+    }
+
+    /// `resolve(target)` with the board's names, so a typed link resolves.
+    pub fn resolve_with(&self, target: &str, names: &BoardNames) -> LinkResolution {
+        NoteIndex::new(&self.note_paths()).resolve(target, names)
     }
 
     /// `links(text)`: every wikilink occurrence in a note's text.
     pub fn links(&self, text: &str) -> Vec<LinkOccurrence> {
-        link_occurrences(text, &self.note_paths())
+        self.links_with(text, &BoardNames::default())
+    }
+
+    /// `links(text)` with the board's names, so a typed link resolves.
+    pub fn links_with(&self, text: &str, names: &BoardNames) -> Vec<LinkOccurrence> {
+        link_occurrences(text, &self.note_paths(), names)
     }
 
     // MARK: - The rewrite pass

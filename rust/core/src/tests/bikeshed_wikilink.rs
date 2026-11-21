@@ -2,7 +2,7 @@
 //! fragment, the first-`#`-then-first-`|` split, the same-note form), the
 //! case-insensitive exactly-one resolution, and the scanner's exemptions.
 
-use crate::bikeshed::wikilink::{LinkResolution, Wikilink};
+use crate::bikeshed::wikilink::{BoardNames, BoardProject, LinkResolution, Wikilink};
 
 use super::bikeshed_support::Vault;
 
@@ -279,4 +279,85 @@ fn scan_indented_code_blocks_are_literal_text() {
         vault.bikeshed().links("    [[Note]]\nreal [[Note]]").len(),
         1
     );
+}
+
+// MARK: - Typed links (ADR 0054)
+
+fn names() -> BoardNames {
+    BoardNames {
+        projects: vec![BoardProject {
+            name: "Tandem".to_string(),
+            labels: vec!["Tandem".to_string(), "cli".to_string()],
+        }],
+    }
+}
+
+#[test]
+fn a_typed_project_link_resolves_ignoring_case() {
+    let vault = Vault::new("typed-project");
+    let bikeshed = vault.bikeshed();
+    assert_eq!(
+        bikeshed.resolve_with("project:tandem", &names()),
+        LinkResolution::Project("Tandem".to_string())
+    );
+    assert_eq!(
+        bikeshed.resolve_with("PROJECT:TANDEM", &names()),
+        LinkResolution::Project("Tandem".to_string())
+    );
+}
+
+#[test]
+fn a_typed_label_link_resolves_with_an_alias_or_a_fragment() {
+    let vault = Vault::new("typed-label");
+    let bikeshed = vault.bikeshed();
+    let found = bikeshed.links_with("[[label:cli|the CLI]] and [[Label:CLI#x]]", &names());
+    assert_eq!(found.len(), 2);
+    assert_eq!(
+        found[0].resolution,
+        LinkResolution::Label("cli".to_string())
+    );
+    assert_eq!(
+        found[1].resolution,
+        LinkResolution::Label("cli".to_string())
+    );
+}
+
+#[test]
+fn an_unknown_typed_name_is_broken() {
+    let vault = Vault::new("typed-broken");
+    let bikeshed = vault.bikeshed();
+    let found = bikeshed.links_with("[[label:nope]]", &names());
+    assert_eq!(found[0].resolution, LinkResolution::Broken);
+    assert_eq!(found[0].link.target, "label:nope");
+    assert_eq!(
+        bikeshed.resolve_with("project:cli", &names()),
+        LinkResolution::Broken,
+        "a label is not a project"
+    );
+}
+
+#[test]
+fn another_prefix_is_still_a_note_target() {
+    // Not a typed link: it goes to the note resolver, which finds no note
+    // named `foo:bar` and calls it broken, exactly as before typed links. (A
+    // colon cannot be staged in a file name on every platform.)
+    let vault = Vault::new("typed-other");
+    vault.stage("bar.md", "x");
+    let bikeshed = vault.bikeshed();
+    assert_eq!(
+        bikeshed.resolve_with("foo:bar", &names()),
+        LinkResolution::Broken
+    );
+    let found = bikeshed.links_with("[[foo:bar]]", &names());
+    assert_eq!(found[0].link.target, "foo:bar");
+    assert_eq!(found[0].resolution, LinkResolution::Broken);
+}
+
+#[test]
+fn a_typed_link_in_a_code_span_is_not_a_link() {
+    let vault = Vault::new("typed-code");
+    let found = vault
+        .bikeshed()
+        .links_with("a `[[label:cli]]` span", &names());
+    assert!(found.is_empty());
 }

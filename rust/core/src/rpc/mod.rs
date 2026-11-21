@@ -7,7 +7,7 @@
 //! built or parsed here: the transport and the JSON-RPC envelope are the MCP
 //! door's.
 
-use crate::bikeshed::Bikeshed;
+use crate::bikeshed::{Bikeshed, BoardNames, BoardProject};
 use crate::diagnostics;
 use crate::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, Status, TicketQuery, resolve_assignee,
@@ -378,9 +378,23 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
                 note: None,
             }))
         }
-        Method::NoteHealth(_) => Ok(Reply::NoteHealth(NoteHealthReply {
-            health: open_bikeshed(store).health().map_err(domain)?.value,
-        })),
+        Method::NoteHealth(_) => {
+            // The one join point (ADR 0054): names from the board, folders from
+            // the vault.
+            let (projects, _) = board.projects_snapshot().map_err(domain)?;
+            let names = BoardNames {
+                projects: projects
+                    .into_iter()
+                    .map(|entry| BoardProject {
+                        name: entry.name,
+                        labels: entry.labels,
+                    })
+                    .collect(),
+            };
+            Ok(Reply::NoteHealth(NoteHealthReply {
+                health: open_bikeshed(store).health(&names).map_err(domain)?.value,
+            }))
+        }
         Method::NoteSearch(params) => {
             let Some(query) = params.query.as_deref() else {
                 return Err(WireError::domain("the search carries no query"));

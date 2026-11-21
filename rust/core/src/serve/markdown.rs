@@ -235,6 +235,9 @@ fn text_with_links(text: &str, links: &Wikilinks, out: &mut String) {
                 escape_into(link.display_text(), out);
                 out.push_str("</a>");
             }
+            LinkResolution::Project(_) | LinkResolution::Label(_) => {
+                escape_into(link.display_text(), out);
+            }
             LinkResolution::Broken => {
                 out.push_str(
                     "<span class=\"wikilink wikilink--broken\" title=\"No single note named ",

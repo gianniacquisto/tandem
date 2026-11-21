@@ -465,6 +465,31 @@ fn the_revision_moves_once_per_write_that_changes_a_row() {
 }
 
 #[test]
+fn note_health_resolves_typed_links_against_the_boards_names() {
+    let sandbox = Sandbox::new("rpc-note-health-typed");
+    let store = sandbox.store();
+    handle(&store, &frame(1, "project.add", json!({"name": "P"})));
+    handle(
+        &store,
+        &frame(2, "label.add", json!({"name": "L", "project": "P"})),
+    );
+    handle(
+        &store,
+        &frame(
+            3,
+            "note.write",
+            json!({"path": "daily.md", "text": "About [[label:l]] and [[project:p]] and [[label:nope]]."}),
+        ),
+    );
+    let health = handle(&store, &frame(4, "note.health", json!({})));
+    let report = &health["result"]["health"];
+    assert_eq!(report["counts"]["links"], 3);
+    assert_eq!(report["counts"]["broken"], 1, "{report}");
+    assert_eq!(report["broken"][0]["link"], "label:nope");
+    assert_eq!(report["orphans"], json!([]));
+}
+
+#[test]
 fn the_note_methods_read_write_move_and_report_the_vault() {
     let sandbox = Sandbox::new("rpc-notes");
     let store = sandbox.store();
@@ -514,6 +539,7 @@ fn the_note_methods_read_write_move_and_report_the_vault() {
     let health = handle(&store, &frame(6, "note.health", json!({})));
     assert_eq!(health["result"]["health"]["counts"]["notes"], 2);
     assert_eq!(health["result"]["health"]["counts"]["broken"], 0);
+    assert_eq!(health["result"]["health"]["counts"]["unmatchedFolders"], 0);
 
     let moved = handle(
         &store,

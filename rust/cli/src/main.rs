@@ -24,7 +24,7 @@ use std::process::ExitCode;
 use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
 use tandem_core::archive;
-use tandem_core::bikeshed::Bikeshed;
+use tandem_core::bikeshed::{Bikeshed, BoardNames, BoardProject};
 use tandem_core::diagnostics;
 use tandem_core::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Status, TicketQuery,
@@ -902,7 +902,19 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
             print(&stats.value)
         }
         NoteCommand::Links => {
-            let health = vault.health().map_err(Failure::domain)?;
+            let projects = Board::new(Store::new(home.clone()))
+                .projects()
+                .map_err(Failure::domain)?;
+            let names = BoardNames {
+                projects: projects
+                    .into_iter()
+                    .map(|entry| BoardProject {
+                        name: entry.name,
+                        labels: entry.labels,
+                    })
+                    .collect(),
+            };
+            let health = vault.health(&names).map_err(Failure::domain)?;
             print(&health.value)
         }
         NoteCommand::Write(args) => {

@@ -898,7 +898,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "note_health",
             method_tag: "note.health",
-            description: "Check the vault's link graph: broken links, orphans and counts, the same report note links prints.",
+            description: "Check the vault's link graph: broken links (typed project: and label: links included), orphans, folders under projects/ that match no project or label, and counts, the same report note links prints.",
             input_schema: EmptyParams::schema(),
             annotations: Annotations::READ,
             method: Method::NoteHealth(EmptyParams {}),
