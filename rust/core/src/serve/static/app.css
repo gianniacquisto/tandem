@@ -2758,9 +2758,13 @@ a.menu__option {
   order: -1;
   width: 260px;
   padding: 0 10px;
-  border: var(--hairline) solid var(--line);
+  border: var(--hairline) solid var(--ink-dim);
   border-radius: var(--radius-control);
-  background: var(--paper);
+  background: var(--parchment);
+}
+
+.search--board .search__icon {
+  stroke: var(--ink);
 }
 
 .search--board:focus-within,
