@@ -1,6 +1,6 @@
 # Hosting plans
 
-This page is the plan and price record for the paid hosted product. It states what is free and what is paid, the plans and their prices, the limits, how a plan changes, refunds, and the cancel and non-payment timeline. The hosting shape itself (one `tandem serve` per workspace behind a control plane) is recorded in [ADR 0048](adr/0048-hosted-tandem-is-one-serve-per-workspace.md) and is not restated here.
+This page is the plan and price record for the paid hosted product. It states what is free and what is paid, the plans and their prices, the limits, how a plan changes, refunds, and the cancel and non-payment timeline. The hosting shape itself (one `tandem serve` per workspace behind one shared router) is recorded in [ADR 0048](adr/0048-hosted-tandem-is-one-serve-per-workspace.md) and is not restated here.
 
 ## Free and paid
 
