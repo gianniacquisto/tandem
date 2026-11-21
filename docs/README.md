@@ -28,7 +28,8 @@ Tandem is one binary, `tandem serve`, that gives you and your AI coding agents o
 | --- | --- |
 | [Configuration](configuration.md) | Every environment variable, every `tandem serve` flag, defaults, precedence and exit codes |
 | [CLI](cli.md) | Every `tandem-cli` verb and its flags, export and import, the remote target |
-| [MCP tools](mcp.md) | Every tool an agent gets at `POST /mcp`, generated from the server's own registry |
+| [MCP](mcp.md) | The connection, the call envelope, errors, and every tool with its parameters, generated from the server's own registry |
+| [HTTP API](http-api.md) | The routes for programs (`/health`, `/mcp`, `/events`, `/export`), authentication modes and the permissions of each credential |
 | [Operator API](operator.md) | `/operator/v1`, the HTTP interface a hosting service uses to manage members |
 
 ## Background
