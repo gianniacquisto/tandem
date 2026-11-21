@@ -25,12 +25,19 @@ A leading `~` in either override is expanded to your home directory, and a relat
 
 ### Serving to a network
 
-These matter only when `tandem serve` binds a non-loopback `--host`. On loopback (the default, `127.0.0.1`) the server trusts the machine, ignores `TANDEM_TOKEN` and shows no login page.
+`TANDEM_TOKEN` and `TANDEM_PUBLIC_ORIGIN` matter only when `tandem serve` binds a non-loopback `--host`. On loopback (the default, `127.0.0.1`) the server trusts the machine, ignores `TANDEM_TOKEN` and shows no login page.
 
 | Variable | Read by | Default | Meaning |
 | --- | --- | --- | --- |
-| `TANDEM_TOKEN` | `tandem serve`, `tandem-cli` | unset | **Serve:** the owner credential, at least 32 characters. Off loopback, every route but `/health` then wants `Authorization: Bearer <token>`, and a browser signs in once at `/login`. **CLI:** with `TANDEM_SERVER`, sent as the bearer header. The CLI refuses to send it over plain `http://` to a host that is not loopback, and never prints it. |
+| `TANDEM_TOKEN` | `tandem serve`, `tandem-cli` | unset | **Serve:** the owner credential, at least 32 characters. Off loopback, every route but `/health`, `/login`, `/logout` and the static assets then wants `Authorization: Bearer <token>`, and a browser signs in once at `/login`. **CLI:** with `TANDEM_SERVER`, sent as the bearer header. The CLI refuses to send it over plain `http://` to a host that is not loopback, and never prints it. |
 | `TANDEM_PUBLIC_ORIGIN` | `tandem serve` | unset | The one origin a browser sees behind a TLS proxy, such as `https://board.example.com`. Same rules as [`--public-origin`](#tandem-serve); the flag wins when both are set. |
+
+### The operator API
+
+These open `/operator/v1`, the [operator API](operator.md) a hosting service uses to manage members. Unlike the two above, they apply on any `--host`, loopback included.
+
+| Variable | Read by | Default | Meaning |
+| --- | --- | --- | --- |
 | `TANDEM_OPERATOR_KEY` | `tandem serve` | unset: `/operator/v1` answers `404` | Opens the [operator API](operator.md) and nothing else. At least 32 characters, and never equal to `TANDEM_TOKEN`. |
 | `TANDEM_OPERATOR_KEY_NEXT` | `tandem serve` | unset | A second operator key accepted beside the first, for [rotation without downtime](operator.md#the-key). Only valid when `TANDEM_OPERATOR_KEY` is set. |
 
@@ -80,7 +87,7 @@ Each page the server draws carries its release as `data-version` on `<html>`, so
 - `TANDEM_TOKEN` is set, off loopback, with fewer than 32 characters.
 - `--public-origin` or `TANDEM_PUBLIC_ORIGIN` is malformed, or is set while `--host` is loopback.
 - `TANDEM_OPERATOR_KEY` or `TANDEM_OPERATOR_KEY_NEXT` has fewer than 32 characters, equals `TANDEM_TOKEN`, or `_NEXT` is set without the first.
-- `--allow-unauthenticated` is given and the home holds members ([team mode](self-hosting.md)), which it would ignore.
+- `--allow-unauthenticated` is given and the home holds members ([team mode](self-hosting.md)), which it would ignore, or its members cannot be read.
 
 No message ever prints a secret's value.
 
@@ -103,6 +110,6 @@ Every `tandem` and `tandem-cli` verb uses the same three codes. Results go to st
 | --- | --- |
 | `0` | Success. |
 | `1` | The request was understood and refused or failed: an unknown ticket, a rule the store enforces, a failed read or write, a remote server that refused the token. |
-| `2` | A usage error (an unknown verb or flag, a missing value), or a setting `tandem serve` refuses at start-up. The usage text is printed to stderr. |
+| `2` | A usage error (an unknown verb or flag, a missing value), or a setting `tandem serve` refuses at start-up. A usage error prints the usage text to stderr; a start-up refusal prints only its reason. |
 
 `tandem doctor` exits `1` when any check fails, and still prints the whole report: each check's `ok` and `detail` say which one failed.
