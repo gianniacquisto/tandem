@@ -23,6 +23,10 @@ Agents call Tandem through the MCP tools, never through the shell.
 
 The actor that finishes a ticket's work sets the next status and, where there is a next, the next assignee, in one `ticket_set`. Before it moves a status, it appends one comment on every ticket it carried, with three short fields: **what landed**, **outcome and next status**, **issues** (or none).
 
+## Naming tickets
+
+A ticket named outside its own page carries its ref, its title, and one clause on what it asks or the state it is in. The ref alone is a pointer, never a presentation. In a table, a row may carry the title in its own cell. This rule is the only place the wording lives: the passes that report tickets point here.
+
 ## Prose
 
 No em dash (U+2014) in anything an agent writes: use a comma, a colon, a full stop or a hyphen. This covers PR bodies, ticket text, notes, commit messages and code comments.
