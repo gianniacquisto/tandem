@@ -1603,26 +1603,6 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   gap: 6px;
 }
 
-.note-footer__empty {
-  margin: 6px 0 0;
-  color: var(--ink-dim);
-  font-size: 11.5px;
-}
-
-.note-footer__rows {
-  margin: 6px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.note-footer__row-detail {
-  overflow: hidden;
-  color: var(--ink-dim);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .editor {
   display: flex;
   flex: 1 1 auto;
@@ -1655,73 +1635,6 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 .editor__empty-body {
   margin: 4px 0 0;
   font-size: 12.5px;
-}
-
-.note-footer {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  gap: 18px;
-  padding: 20px 0 28px;
-  border-top: var(--hairline) solid var(--sand);
-}
-
-.note-footer__section {
-  min-width: 0;
-}
-
-.note-footer__header {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.note-footer__title {
-  margin: 0;
-  font-size: 12.5px;
-  font-weight: 600;
-}
-
-.note-footer__count {
-  color: var(--ink-dim);
-  font-size: 11.5px;
-}
-
-.note-footer__row {
-  display: flex;
-  width: 100%;
-  flex-direction: column;
-  gap: 1px;
-  padding: 4px 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.note-footer__row:hover .note-footer__row-name {
-  text-decoration: underline;
-}
-
-.tree__label:focus-visible,
-.note-footer__row:focus-visible,
-.sheet:focus-visible,
-.button:focus-visible {
-  outline: var(--hairline) solid var(--accent);
-  outline-offset: -1px;
-}
-
-.note-footer__row-name {
-  font-size: 12.5px;
-}
-
-.note-footer__recovery {
-  padding: 4px 0;
-  color: var(--ink-dim);
-  font-size: 11.5px;
 }
 
 .conflict {
@@ -3705,12 +3618,6 @@ a.menu__option {
   line-height: 1.25;
 }
 
-.note-footer {
-  margin-top: 48px;
-  padding-top: 16px;
-  border-top: var(--hairline) solid var(--sand);
-}
-
 .tree__daily {
   margin: 0;
 }
@@ -4903,4 +4810,166 @@ a.menu__option {
 
 .wikilink--broken:hover {
   text-decoration: underline dotted;
+}
+
+/* The Relations pane: the note's backlinks, tickets and recoveries in a third
+ * column, each a collapsible section. Open by default on wide windows; below
+ * 1100px it is a drawer over the note's right side and starts closed. */
+.relations {
+  display: flex;
+  box-sizing: border-box;
+  flex: 0 0 280px;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: var(--hairline) solid var(--sand);
+  background: var(--parchment);
+}
+
+.relations[hidden] {
+  display: none;
+}
+
+.relations__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 0 12px 0 16px;
+}
+
+.relations__heading {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.relations__close,
+.relations-toggle {
+  flex: none;
+  height: var(--space-control);
+  padding: 0 10px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.relations__close:hover,
+.relations-toggle:hover {
+  background: var(--sand);
+}
+
+.relations-toggle__count {
+  margin-left: 4px;
+  color: var(--ink-dim);
+}
+
+.relations__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 16px 20px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--shadow) transparent;
+}
+
+.relations__section {
+  padding: 8px 0;
+  border-top: var(--hairline) solid var(--sand);
+}
+
+.relations__summary {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.relations__title {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.relations__count {
+  color: var(--ink-dim);
+  font-size: 11.5px;
+}
+
+.relations__empty {
+  margin: 6px 0 0;
+  color: var(--ink-dim);
+  font-size: 11.5px;
+}
+
+.relations__rows {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.relations__row {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 0;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.relations__row:hover .relations__row-name {
+  text-decoration: underline;
+}
+
+.relations__row-name,
+.relations__row-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relations__row-name {
+  font-size: 12.5px;
+}
+
+.relations__row-detail {
+  color: var(--ink-dim);
+  font-size: 11px;
+}
+
+.relations__recovery {
+  padding: 4px 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-dim);
+  font-size: 11.5px;
+}
+
+@media (max-width: 1100px) {
+  .bikeshed {
+    position: relative;
+  }
+
+  .relations {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    width: min(280px, 100%);
+    box-shadow: -4px 0 16px var(--shadow);
+  }
+
+  .relations:not(.relations--open) {
+    display: none;
+  }
+}
+
+@media (min-width: 1101px) {
+  .relations__close {
+    display: none;
+  }
 }
