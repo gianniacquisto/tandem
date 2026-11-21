@@ -396,6 +396,7 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/notes", get(notes::notes_page))
         .route("/notes/view", get(notes::note_view))
         .route("/notes/edit", get(notes::note_edit))
+        .route("/notes/open", get(notes::note_open))
         .route("/notes/preview", post(notes::note_preview))
         .route("/notes/save", post(notes::note_save))
         .route("/notes/create", post(notes::note_create))

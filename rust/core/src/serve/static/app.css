@@ -1603,26 +1603,6 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   gap: 6px;
 }
 
-.note-footer__empty {
-  margin: 6px 0 0;
-  color: var(--ink-dim);
-  font-size: 11.5px;
-}
-
-.note-footer__rows {
-  margin: 6px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.note-footer__row-detail {
-  overflow: hidden;
-  color: var(--ink-dim);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .editor {
   display: flex;
   flex: 1 1 auto;
@@ -1655,73 +1635,6 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 .editor__empty-body {
   margin: 4px 0 0;
   font-size: 12.5px;
-}
-
-.note-footer {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  gap: 18px;
-  padding: 20px 0 28px;
-  border-top: var(--hairline) solid var(--sand);
-}
-
-.note-footer__section {
-  min-width: 0;
-}
-
-.note-footer__header {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-
-.note-footer__title {
-  margin: 0;
-  font-size: 12.5px;
-  font-weight: 600;
-}
-
-.note-footer__count {
-  color: var(--ink-dim);
-  font-size: 11.5px;
-}
-
-.note-footer__row {
-  display: flex;
-  width: 100%;
-  flex-direction: column;
-  gap: 1px;
-  padding: 4px 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font: inherit;
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.note-footer__row:hover .note-footer__row-name {
-  text-decoration: underline;
-}
-
-.tree__label:focus-visible,
-.note-footer__row:focus-visible,
-.sheet:focus-visible,
-.button:focus-visible {
-  outline: var(--hairline) solid var(--accent);
-  outline-offset: -1px;
-}
-
-.note-footer__row-name {
-  font-size: 12.5px;
-}
-
-.note-footer__recovery {
-  padding: 4px 0;
-  color: var(--ink-dim);
-  font-size: 11.5px;
 }
 
 .conflict {
@@ -1793,8 +1706,16 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   background: var(--sand);
 }
 
+.tree__label:focus-visible,
+.sheet:focus-visible,
+.button:focus-visible {
+  outline: var(--hairline) solid var(--accent);
+  outline-offset: -1px;
+}
+
 /* The ticket sheet: one dialog over whichever face opened it, at a fixed
- * 580 pt width and its two heights, held inside the 760 pt floor.
+ * wide single column (the late block below states the width), held inside
+ * the 760 pt floor.
  * The backdrop's level clears every sticky and popover layer in the face
  * (the wikilink picker's 40 is the highest today), so the modal paints above
  * the board's column heads and every other surface, whatever the DOM order. */
@@ -1807,16 +1728,15 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   align-items: flex-start;
   justify-content: center;
   overflow: auto;
-  padding: 48px var(--space-gutter);
+  padding: 24px var(--space-gutter);
   background: color-mix(in srgb, var(--shadow) 55%, transparent);
 }
 
 .sheet {
   display: flex;
   flex-direction: column;
-  width: 580px;
   max-width: 100%;
-  max-height: calc(100vh - 96px);
+  max-height: calc(100vh - 48px);
   overflow: hidden;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-card);
@@ -3020,7 +2940,7 @@ a.menu__option {
 
 /* The ticket sheet: a large title over a properties block. */
 .sheet {
-  width: 640px;
+  width: min(920px, 100%);
 }
 
 .sheet__sticky {
@@ -3033,6 +2953,9 @@ a.menu__option {
   font-size: 26px;
   font-weight: 700;
   line-height: 1.25;
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
 }
 
 .sheet__title:hover,
@@ -3478,7 +3401,52 @@ a.menu__option {
   font: inherit;
   font-size: 14px;
   line-height: 1.55;
-  resize: vertical;
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
+}
+
+/* The rendered description: with JS the box is hidden until Edit. */
+.sheet__description-view,
+.sheet__comment .markdown {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.sheet__description-view {
+  padding: 10px 12px;
+  border: var(--hairline) solid transparent;
+  border-radius: var(--radius-control);
+}
+
+.sheet__description:not(.is-reading) .sheet__description-view,
+.sheet__description:not(.is-reading) .sheet__edit {
+  display: none;
+}
+
+.sheet__description.is-reading .sheet__description-field {
+  display: none;
+}
+
+.sheet__edit {
+  padding: 2px 10px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.sheet__description:hover .sheet__edit,
+.sheet__edit:focus {
+  opacity: 1;
+}
+
+.sheet__edit:hover {
+  border-color: var(--accent);
 }
 
 .sheet__description-field:hover {
@@ -3655,12 +3623,6 @@ a.menu__option {
   margin: 1.4em 0 0.4em;
   font-weight: 700;
   line-height: 1.25;
-}
-
-.note-footer {
-  margin-top: 48px;
-  padding-top: 16px;
-  border-top: var(--hairline) solid var(--sand);
 }
 
 .tree__daily {
@@ -3901,6 +3863,20 @@ a.menu__option {
 
 .lp__wiki {
   color: var(--accent-deep);
+}
+
+/* A link broken at load: dim on the broken tint, dotted. Typed since load, a
+ * link stays neutral until the next load. */
+.lp__wiki.wikilink--broken {
+  background: var(--wikilink-chip-broken);
+}
+
+/* With Cmd or Ctrl held a followable link is a hand and underlined; a plain
+ * click still places the caret. */
+.lp--mod .lp__wiki--follow:hover {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .lp__link {
@@ -4810,4 +4786,205 @@ a.menu__option {
   width: 16px;
   height: 16px;
   stroke: currentColor;
+}
+
+/* A plain [[note]] link in the read view: always underlined, so colour is not
+ * the only cue. */
+.wikilink {
+  color: var(--accent-deep);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  border-radius: 3px;
+}
+
+.wikilink:hover {
+  text-decoration-thickness: 2px;
+}
+
+.wikilink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.wikilink--broken {
+  padding: 0 3px;
+  background: var(--wikilink-chip-broken);
+  color: var(--ink-dim);
+  text-decoration: underline dotted;
+  cursor: help;
+}
+
+.wikilink--broken:hover {
+  text-decoration: underline dotted;
+}
+
+/* The Relations pane: the note's backlinks, tickets and recoveries in a third
+ * column, each a collapsible section. Open by default on wide windows; below
+ * 1100px it is a drawer over the note's right side and starts closed. */
+.relations {
+  display: flex;
+  box-sizing: border-box;
+  flex: 0 0 280px;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: var(--hairline) solid var(--sand);
+  background: var(--parchment);
+}
+
+.relations[hidden] {
+  display: none;
+}
+
+.relations__head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 0 12px 0 16px;
+}
+
+.relations__heading {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.relations__close,
+.relations-toggle {
+  flex: none;
+  height: var(--space-control);
+  padding: 0 10px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.relations__close:hover,
+.relations-toggle:hover {
+  background: var(--sand);
+}
+
+.relations-toggle:focus-visible,
+.relations__close:focus-visible,
+.relations__summary:focus-visible,
+.relations__row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.relations-toggle__count {
+  margin-left: 4px;
+  color: var(--ink-dim);
+}
+
+.relations__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 16px 20px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--shadow) transparent;
+}
+
+.relations__section {
+  padding: 8px 0;
+  border-top: var(--hairline) solid var(--sand);
+}
+
+.relations__summary {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.relations__title {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.relations__count {
+  color: var(--ink-dim);
+  font-size: 11.5px;
+}
+
+.relations__empty {
+  margin: 6px 0 0;
+  color: var(--ink-dim);
+  font-size: 11.5px;
+}
+
+.relations__rows {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.relations__row {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 0;
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.relations__row:hover .relations__row-name {
+  text-decoration: underline;
+}
+
+.relations__row-name,
+.relations__row-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.relations__row-name {
+  font-size: 12.5px;
+}
+
+.relations__row-detail {
+  color: var(--ink-dim);
+  font-size: 11px;
+}
+
+.relations__recovery {
+  padding: 4px 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-dim);
+  font-size: 11.5px;
+}
+
+@media (max-width: 1100px) {
+  .bikeshed {
+    position: relative;
+  }
+
+  .relations {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 5;
+    width: min(280px, 100%);
+    box-shadow: -4px 0 16px var(--shadow);
+  }
+
+  .relations:not(.relations--open) {
+    display: none;
+  }
+}
+
+@media (min-width: 1101px) {
+  .relations__close {
+    display: none;
+  }
 }

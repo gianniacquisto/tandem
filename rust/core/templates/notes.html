@@ -194,6 +194,9 @@
                   {% if crumb.current %}aria-current="page"{% endif %}>{{ crumb.label }}</span>
             {% endfor %}
           </nav>
+          <button class="relations-toggle" type="button" data-relations-toggle
+                  aria-controls="relations" aria-expanded="true">Relations
+            <span class="relations-toggle__count">{{ backlink_count + linked_count + recovery_count }}</span></button>
         </div>
       </header>
 
@@ -223,68 +226,11 @@
             <textarea class="note-editor" name="text" aria-label="Note markdown" hidden>
 {{ note.text }}</textarea>
           </form>
-          <div class="live" data-live>{{ note.html }}</div>
+          <div class="live" data-live data-broken-links="{{ broken_links }}">{{ note.html }}</div>
           {% else %}
           {{ note.html }}
           {% endif %}
         </div>
-
-        <footer class="note-footer" aria-label="Note links">
-          <div class="note-footer__section">
-            <header class="note-footer__header">
-              <h2 class="note-footer__title">Backlinks</h2>
-              <span class="note-footer__count">{{ backlink_count }}</span>
-            </header>
-            {% if backlinks.is_empty() %}
-            <p class="note-footer__empty">Nothing links here yet.</p>
-            {% else %}
-            <ul class="note-footer__rows">
-              {% for backlink in backlinks %}
-              <li>
-                <a class="note-footer__row" href="{{ backlink.href }}" hx-get="{{ backlink.href }}"
-                   hx-target="#notes-root" hx-swap="outerHTML">
-                  <span class="note-footer__row-name">{{ backlink.name }}</span>
-                  <span class="note-footer__row-detail">{{ backlink.line }}</span>
-                </a>
-              </li>
-              {% endfor %}
-            </ul>
-            {% endif %}
-          </div>
-
-          {% if !linked.is_empty() %}
-          <div class="note-footer__section">
-            <header class="note-footer__header">
-              <h2 class="note-footer__title">Tickets</h2>
-              <span class="note-footer__count">{{ linked_count }}</span>
-            </header>
-            <ul class="note-footer__rows">
-              {% for ticket in linked %}
-              <li>
-                <a class="note-footer__row" href="{{ ticket.href }}">
-                  <span class="note-footer__row-name">{{ ticket.reference }}</span>
-                  <span class="note-footer__row-detail">{{ ticket.title }}</span>
-                </a>
-              </li>
-              {% endfor %}
-            </ul>
-          </div>
-          {% endif %}
-
-          {% if !recoveries.is_empty() %}
-          <div class="note-footer__section note-footer__section--recovery">
-            <header class="note-footer__header">
-              <h2 class="note-footer__title">Recoveries</h2>
-              <span class="note-footer__count">{{ recovery_count }}</span>
-            </header>
-            <ul class="note-footer__rows">
-              {% for recovery in recoveries %}
-              <li class="note-footer__recovery">{{ recovery }}</li>
-              {% endfor %}
-            </ul>
-          </div>
-          {% endif %}
-        </footer>
       </div>
       {% else %}
       <div class="editor__empty">
@@ -293,5 +239,69 @@
       </div>
       {% endif %}
     </div>
+    {% if note.is_some() %}
+    <aside class="relations" id="relations" aria-label="Relations" data-relations>
+      <header class="relations__head">
+        <h2 class="relations__heading">Relations</h2>
+        <button class="relations__close" type="button" data-relations-close aria-label="Close relations">&times;</button>
+      </header>
+      <div class="relations__body">
+        <details class="relations__section" data-section="backlinks"{% if !backlinks.is_empty() %} open{% endif %}>
+          <summary class="relations__summary">
+            <span class="relations__title">Backlinks</span>
+            <span class="relations__count">{{ backlink_count }}</span>
+          </summary>
+          {% if backlinks.is_empty() %}
+          <p class="relations__empty">Nothing links here yet.</p>
+          {% else %}
+          <ul class="relations__rows">
+            {% for backlink in backlinks %}
+            <li>
+              <a class="relations__row" href="{{ backlink.href }}" hx-get="{{ backlink.href }}"
+                 hx-target="#notes-root" hx-swap="outerHTML">
+                <span class="relations__row-name">{{ backlink.name }}</span>
+                <span class="relations__row-detail">{{ backlink.line }}</span>
+              </a>
+            </li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </details>
+
+        {% if !linked.is_empty() %}
+        <details class="relations__section" data-section="tickets">
+          <summary class="relations__summary">
+            <span class="relations__title">Tickets</span>
+            <span class="relations__count">{{ linked_count }}</span>
+          </summary>
+          <ul class="relations__rows">
+            {% for ticket in linked %}
+            <li>
+              <a class="relations__row" href="{{ ticket.href }}">
+                <span class="relations__row-name">{{ ticket.reference }}</span>
+                <span class="relations__row-detail">{{ ticket.title }}</span>
+              </a>
+            </li>
+            {% endfor %}
+          </ul>
+        </details>
+        {% endif %}
+
+        {% if !recoveries.is_empty() %}
+        <details class="relations__section relations__section--recovery" data-section="recoveries" open>
+          <summary class="relations__summary">
+            <span class="relations__title">Recoveries</span>
+            <span class="relations__count">{{ recovery_count }}</span>
+          </summary>
+          <ul class="relations__rows">
+            {% for recovery in recoveries %}
+            <li class="relations__recovery">{{ recovery }}</li>
+            {% endfor %}
+          </ul>
+        </details>
+        {% endif %}
+      </div>
+    </aside>
+    {% endif %}
   </div>
 </div>

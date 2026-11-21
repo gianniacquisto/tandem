@@ -2,12 +2,14 @@
 
 **Status**: the standalone binary is the only install path (CUT-16, 2026-11-13). The Homebrew cask and its tap were retired with the Electron tree ([ADR 0046](adr/0046-tandem-serve-and-single-binary-distribution.md)); this page replaces the 2026-11-01 comparison between the cask, a piped script and a hand-run zip.
 
-A release publishes three archives, `install.sh` and one `SHA256SUMS`:
+A release publishes five archives, `install.sh` and one `SHA256SUMS`:
 
 | asset | for | verified by |
 | --- | --- | --- |
 | `tandem-<version>-darwin-arm64.tar.gz` | macOS on Apple silicon | a line in `SHA256SUMS` |
-| `tandem-<version>-linux-x86_64.tar.gz` | Linux on x86_64 | a line in `SHA256SUMS` |
+| `tandem-<version>-darwin-x86_64.tar.gz` | macOS on Intel (cross-built) | a line in `SHA256SUMS` |
+| `tandem-<version>-linux-x86_64.tar.gz` | Linux on x86_64, static musl | a line in `SHA256SUMS` |
+| `tandem-<version>-linux-arm64.tar.gz` | Linux on arm64, static musl | a line in `SHA256SUMS` |
 | `tandem-<version>-windows-x86_64.zip` | Windows on x86_64 | a line in `SHA256SUMS` |
 | `install.sh` | macOS and Linux, one line | a line in `SHA256SUMS`, and `DEFAULT_VERSION` stamped to the tag |
 | `SHA256SUMS` | the manifest | the `release` job runs the digest check over `dist` before publishing |
@@ -85,7 +87,7 @@ The manifest covers every platform's archive and `install.sh`, so the `grep` nar
 
 ## Verify the build's provenance
 
-`SHA256SUMS` proves the download is whole; it does not say who built it. Each tag's three archives also carry a signed build-provenance attestation, made by the Release workflow with GitHub's `actions/attest-build-provenance`. With the GitHub CLI:
+`SHA256SUMS` proves the download is whole; it does not say who built it. Each tag's five archives also carry a signed build-provenance attestation, made by the Release workflow with GitHub's `actions/attest-build-provenance`. With the GitHub CLI:
 
 ```sh
 gh attestation verify tandem-2.4.0-darwin-arm64.tar.gz --repo gianniacquisto/tandem

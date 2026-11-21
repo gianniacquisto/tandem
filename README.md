@@ -16,7 +16,7 @@ You and your agent share one ticket list: it files tickets you see, and it sees 
 curl -fsSL https://github.com/gianniacquisto/tandem/releases/latest/download/install.sh | sh
 ```
 
-This verifies a SHA-256 checksum and installs `tandem` (and a `tandem-cli` link) into `~/.local/bin`. Add that to your PATH if the installer says it is missing. Supported: macOS on Apple silicon and Linux on x86_64. On Windows, download the [zip](https://github.com/gianniacquisto/tandem/releases/latest), extract `tandem.exe` and put it on PATH. To **upgrade**, add `--reinstall` (running the installer again without it leaves your existing install alone), then restart `tandem serve`:
+This verifies a SHA-256 checksum and installs `tandem` (and a `tandem-cli` link) into `~/.local/bin`. Add that to your PATH if the installer says it is missing. Supported: macOS (Apple silicon and Intel) and Linux (x86_64 and arm64, static musl builds that run on any distro). On Windows, download the [zip](https://github.com/gianniacquisto/tandem/releases/latest), extract `tandem.exe` and put it on PATH. To **upgrade**, add `--reinstall` (running the installer again without it leaves your existing install alone), then restart `tandem serve`:
 
 ```sh
 curl -fsSL https://github.com/gianniacquisto/tandem/releases/latest/download/install.sh | sh -s -- --reinstall

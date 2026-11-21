@@ -173,7 +173,7 @@ pub(crate) fn link_occurrences(text: &str, notes: &[String]) -> Vec<LinkOccurren
 /// The first `]]` on the same line closes a `[[`; a newline before the close
 /// leaves the `[[` literal; a `[[` immediately preceded by `!` is an embed and
 /// therefore literal text.
-fn wikilink_tokens(text: &str) -> Vec<(usize, usize, &str)> {
+pub(crate) fn wikilink_tokens(text: &str) -> Vec<(usize, usize, &str)> {
     let bytes = text.as_bytes();
     let mut tokens = Vec::new();
     let mut i = 0;

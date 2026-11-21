@@ -275,6 +275,52 @@
     }
   });
 
+  // The description reads rendered; Edit swaps to the box. Without this script
+  // the box shows, so the plain form still saves. An empty description has no
+  // rendered block and keeps the box.
+  function growField(field) {
+    if (window.CSS && CSS.supports && CSS.supports('field-sizing', 'content')) return;
+    field.style.height = 'auto';
+    field.style.height = field.scrollHeight + 'px';
+  }
+
+  function setUpSheet() {
+    var section = document.querySelector('[data-description]');
+    if (section && section.querySelector('[data-description-view]')) {
+      section.classList.add('is-reading');
+    }
+    var fields = document.querySelectorAll('.sheet__title, .sheet__description-field');
+    for (var i = 0; i < fields.length; i++) growField(fields[i]);
+  }
+
+  document.addEventListener('click', function (event) {
+    var button = closest(event.target, '[data-description-edit]');
+    if (!button) return;
+    var section = closest(button, '[data-description]');
+    section.classList.remove('is-reading');
+    var box = section.querySelector('.sheet__description-field');
+    growField(box);
+    box.focus();
+  });
+
+  document.addEventListener('input', function (event) {
+    if (closest(event.target, '.sheet__title, .sheet__description-field')) {
+      growField(event.target);
+    }
+  });
+
+  // Enter in the title saves; a title is one line.
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter' || event.isComposing) return;
+    if (!closest(event.target, '.sheet__title')) return;
+    event.preventDefault();
+    var form = document.getElementById('sheet-save');
+    if (form) htmxPost(form, '#board-root');
+  });
+
+  document.addEventListener('DOMContentLoaded', setUpSheet);
+  document.addEventListener('htmx:afterSettle', setUpSheet);
+
   // MARK: - The notes editor
 
   // The autosave writes without swapping the pane: a swap would replace the
@@ -443,7 +489,18 @@
       } else if (match[4] || match[5]) {
         out += '<em>' + marker(token.charAt(0)) + esc(token.slice(1, -1)) + marker(token.charAt(0)) + '</em>';
       } else if (match[6]) {
-        out += '<span class="lp__wiki">' + marker('[[') + esc(token.slice(2, -2)) + marker(']]') + '</span>';
+        var inner = token.slice(2, -2);
+        var typed = /^\s*(project|label):/i.test(inner);
+        var embed = match.index > 0 && source.charAt(match.index - 1) === '!';
+        var follow = !typed && !embed;
+        var cut = inner.search(/[#|]/);
+        var name = (cut < 0 ? inner : inner.slice(0, cut)).toLowerCase();
+        var broken = follow && brokenLinks().indexOf(name) >= 0;
+        out += '<span class="lp__wiki' + (follow ? ' lp__wiki--follow' : '') +
+          (broken ? ' wikilink--broken' : '') + '"' +
+          (follow ? ' data-link="' + esc(inner).replace(/"/g, '&quot;') + '"' : '') +
+          (broken ? ' title="No single note named ' + esc(cut < 0 ? inner : inner.slice(0, cut)).replace(/"/g, '&quot;') + '"' : '') +
+          '>' + marker('[[') + esc(inner) + marker(']]') + '</span>';
       } else {
         var close = token.indexOf('](');
         out += '<span class="lp__link">' + marker('[') + esc(token.slice(1, close)) +
@@ -452,6 +509,57 @@
       last = match.index + token.length;
     }
     return out + esc(source.slice(last));
+  }
+
+  // The targets the server found broken when the page loaded, lowercased.
+  function brokenLinks() {
+    var root = document.querySelector('[data-live]');
+    try {
+      return JSON.parse((root && root.getAttribute('data-broken-links')) || '[]');
+    } catch (error) {
+      return [];
+    }
+  }
+
+  // Follow a link's raw text: the pending save lands first, then the server
+  // resolves it (ADR 0005) and the pane swaps. A save that did not land keeps
+  // the page where it is.
+  function followWikilink(raw) {
+    var form = document.getElementById('note-form');
+    if (!form || !window.htmx) return;
+    var cut = raw.search(/[#|]/);
+    var target = cut < 0 ? raw : raw.slice(0, cut);
+    var value = function (name) {
+      var input = form.querySelector('input[name="' + name + '"]');
+      return input ? input.value : '';
+    };
+    var query = new URLSearchParams({
+      target: target,
+      from: value('path'),
+      project: value('project'),
+      show_all: value('show_all')
+    });
+    flushNote().then(function (landed) {
+      if (!landed) return;
+      window.htmx.ajax('GET', '/notes/open?' + query.toString(), {
+        target: '#notes-root',
+        swap: 'outerHTML'
+      });
+    });
+  }
+
+  // The link the caret sits in, as its raw text, or null.
+  function wikilinkAt(text, offset) {
+    var re = /\[\[([^\]\n]+)\]\]/g;
+    var match;
+    while ((match = re.exec(text))) {
+      if (offset >= match.index && offset <= match.index + match[0].length) {
+        if (match.index > 0 && text.charAt(match.index - 1) === '!') return null;
+        if (/^\s*(project|label):/i.test(match[1])) return null;
+        return match[1];
+      }
+    }
+    return null;
   }
 
   var HEADING = /^(#{1,6})( +)(.*)$/;
@@ -700,13 +808,36 @@
     // would cut the selection short.
     root.addEventListener('mousedown', function (event) {
       if (self.toggleTask(event)) return;
+      if ((event.metaKey || event.ctrlKey) && event.button === 0) {
+        var wiki = event.target.closest ? event.target.closest('.lp__wiki--follow') : null;
+        if (wiki && self.root.contains(wiki)) {
+          event.preventDefault();
+          followWikilink(wiki.getAttribute('data-link') || '');
+          return;
+        }
+      }
       self.dragging = true;
     });
+
+    root.addEventListener('keyup', function (event) {
+      if (!event.metaKey && !event.ctrlKey) root.classList.remove('lp--mod');
+    });
+    root.addEventListener('blur', function () { root.classList.remove('lp--mod'); });
 
     root.addEventListener('keydown', function (event) {
       if (self.menu && !self.composing && !event.isComposing && self.menuKey(event)) return;
       var meta = event.metaKey || event.ctrlKey;
       var key = event.key.toLowerCase();
+      if (meta) root.classList.add('lp--mod');
+      if (meta && key === 'enter') {
+        var at = self.selection();
+        var raw = at ? wikilinkAt(self.text, at.end) : null;
+        if (raw !== null) {
+          event.preventDefault();
+          followWikilink(raw);
+        }
+        return;
+      }
       if (meta && key === 'z') {
         event.preventDefault();
         self.travel(event.shiftKey ? 1 : -1);
@@ -1235,6 +1366,105 @@
 
   document.addEventListener('DOMContentLoaded', setUpNote);
   document.addEventListener('htmx:afterSettle', setUpNote);
+})();
+
+// MARK: - The Relations pane beside a note
+//
+// Open state and each section's state are kept per browser, keyed by section
+// kind and not by note. Wide windows apply the stored (or default) choice;
+// narrow ones start with the drawer closed and open it only on the toggle.
+(function () {
+  var OPEN_KEY = 'tandem.relations.open';
+  var SECTIONS_KEY = 'tandem.relations.sections';
+  var narrow = window.matchMedia ? window.matchMedia('(max-width: 1100px)') : null;
+  var drawerOpen = false;
+
+  function isNarrow() {
+    return !!(narrow && narrow.matches);
+  }
+
+  function storedOpen() {
+    try {
+      var value = window.localStorage.getItem(OPEN_KEY);
+      return value === null ? true : value === '1';
+    } catch (error) {
+      return true;
+    }
+  }
+
+  function storedSections() {
+    try {
+      var parsed = JSON.parse(window.localStorage.getItem(SECTIONS_KEY) || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (error) {
+      return {};
+    }
+  }
+
+  function save(key, value) {
+    try {
+      window.localStorage.setItem(key, value);
+    } catch (error) {
+      // Private mode: the choice holds until the next redraw.
+    }
+  }
+
+  function paneOpen() {
+    return isNarrow() ? drawerOpen : storedOpen();
+  }
+
+  function applyRelations() {
+    var pane = document.getElementById('relations');
+    if (!pane) return;
+    var open = paneOpen();
+    pane.hidden = !isNarrow() && !open;
+    pane.classList.toggle('relations--open', open);
+    var toggles = document.querySelectorAll('[data-relations-toggle]');
+    for (var i = 0; i < toggles.length; i += 1) toggles[i].setAttribute('aria-expanded', open ? 'true' : 'false');
+    var stored = storedSections();
+    var sections = pane.querySelectorAll('details[data-section]');
+    for (var j = 0; j < sections.length; j += 1) {
+      var kind = sections[j].getAttribute('data-section');
+      if (typeof stored[kind] === 'boolean') sections[j].open = stored[kind];
+    }
+  }
+
+  function setPane(open) {
+    if (isNarrow()) drawerOpen = open;
+    else save(OPEN_KEY, open ? '1' : '0');
+    applyRelations();
+    if (!open) {
+      var toggle = document.querySelector('[data-relations-toggle]');
+      if (toggle) toggle.focus();
+    }
+  }
+
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    if (!target.closest) return;
+    if (target.closest('[data-relations-toggle]')) setPane(!paneOpen());
+    else if (target.closest('[data-relations-close]')) setPane(false);
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && isNarrow() && drawerOpen) setPane(false);
+  });
+
+  // toggle does not bubble: listen in the capture phase.
+  document.addEventListener('toggle', function (event) {
+    var details = event.target;
+    if (!details.getAttribute || !details.closest || !details.closest('#relations')) return;
+    var kind = details.getAttribute('data-section');
+    if (!kind) return;
+    var stored = storedSections();
+    if (stored[kind] === details.open) return;
+    stored[kind] = details.open;
+    save(SECTIONS_KEY, JSON.stringify(stored));
+  }, true);
+
+  if (narrow && narrow.addEventListener) narrow.addEventListener('change', applyRelations);
+  document.addEventListener('DOMContentLoaded', applyRelations);
+  document.addEventListener('htmx:afterSettle', applyRelations);
 })();
 
 // MARK: - The board bar's filter chips and the New ticket form

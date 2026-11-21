@@ -567,6 +567,20 @@ async fn a_card_move_keeps_the_filters_the_board_was_drawn_with() {
         css.contains(".note-tabs__tab[aria-selected=\"true\"]"),
         "the stylesheet draws the active note tab"
     );
+    for selector in [
+        ".tree__label:focus-visible",
+        ".sheet:focus-visible",
+        ".button:focus-visible",
+        ".relations-toggle:focus-visible",
+        ".relations__close:focus-visible",
+        ".relations__summary:focus-visible",
+        ".relations__row:focus-visible",
+    ] {
+        assert!(
+            css.contains(&format!("{selector},")) || css.contains(&format!("{selector} {{")),
+            "the stylesheet keeps the accent focus ring on {selector}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -873,6 +887,8 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
             for key in [
                 "tandem.collapsed",
                 "tandem.collapsedSet",
+                "tandem.relations.open",
+                "tandem.relations.sections",
                 "data-tree-action",
                 "revealedPath === undefined",
             ] {
@@ -1387,6 +1403,10 @@ async fn get_ticket_sheet_renders_markdown_blocks_metadata_row_and_comments() {
         "name=\"label\"",
         "Café alpha",
         "sheet__description-field",
+        "sheet__description-view",
+        "data-description-edit",
+        "<h",
+        "<code",
         "## Why",
         "A first comment",
         "Blocked by",
@@ -1410,6 +1430,60 @@ async fn get_ticket_sheet_renders_markdown_blocks_metadata_row_and_comments() {
         "the board sits behind the sheet"
     );
     assert!(page.contains("sheet-backdrop"), "the sheet is open");
+}
+
+#[tokio::test]
+async fn a_sheet_without_a_description_draws_the_box_and_no_rendered_block() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-empty-description");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let app = router(context(store));
+    let (status, _, body) = send(&app, sheet_get(&format!("/tickets/{}", ticket.id))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("sheet__description-field"),
+        "the box shows: {body}"
+    );
+    assert!(
+        !body.contains("sheet__description-view") && !body.contains("data-description-edit"),
+        "no empty rendered block: {body}"
+    );
+}
+
+#[tokio::test]
+async fn a_title_line_break_saves_as_a_space() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-title-newline");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let id = ticket.id.to_string();
+    let revision = store.revision().expect("the revision reads");
+    let app = router(context(store));
+    let body = format!(
+        "title=One%0ATwo%0D%0AThree&status={}&assignee=&expected_revision={revision}",
+        ticket.status.as_str()
+    );
+    let (status, _, answer) = send(&app, form_request(&format!("/tickets/{id}"), &body)).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert_eq!(board.ticket(&id).expect("reads").title, "One Two Three");
+}
+
+#[tokio::test]
+async fn the_sheet_width_rule_is_the_wide_one() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-width");
+    let app = router(context(sandbox.store()));
+    let (_, _, css) = get(&app, "/static/app.css").await;
+    assert!(css.contains("width: min(920px, 100%)"), "the sheet is wide");
+    assert!(
+        !css.contains(".sheet {\n  width: 640px")
+            && !css
+                .contains(".sheet {\n  display: flex;\n  flex-direction: column;\n  width: 580px"),
+        "no narrow sheet width is left"
+    );
 }
 
 #[tokio::test]
@@ -1688,6 +1762,65 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
         !focused.contains("data-path=\"projects/other/outside.md\""),
         "the focused tree drops another project's folder: {focused}"
     );
+}
+
+#[tokio::test]
+async fn the_notes_page_draws_the_relations_pane_with_collapsible_sections() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-relations");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let notes = vault(&store);
+    notes.create("Index.md").expect("the note is created");
+    notes.create("Other.md").expect("the note is created");
+    notes
+        .write("Other.md", "See [[Index]]", None)
+        .expect("the note is written");
+    board
+        .set_link(&ticket.id.to_string(), Some("Index.md"))
+        .expect("the ticket links the note");
+    let app = router(context(store));
+
+    let (_, _, body) = send(&app, page_get("/notes?path=Index.md")).await;
+    for marker in [
+        "<aside class=\"relations\" id=\"relations\" aria-label=\"Relations\"",
+        "data-section=\"backlinks\"",
+        "data-section=\"tickets\"",
+        "aria-controls=\"relations\"",
+        "aria-expanded=",
+        "aria-label=\"Close relations\"",
+    ] {
+        assert!(body.contains(marker), "the pane draws {marker}: {body}");
+    }
+    assert!(!body.contains("note-footer"), "the footer is gone: {body}");
+    let section = |kind: &str| {
+        let at = body
+            .find(&format!("data-section=\"{kind}\""))
+            .unwrap_or_else(|| panic!("section {kind}"));
+        let start = body[..at].rfind("<details").expect("a details");
+        let end = at + body[at..].find('>').expect("a tag end");
+        body[start..end].to_string()
+    };
+    assert!(
+        section("backlinks").contains(" open"),
+        "Backlinks starts open"
+    );
+    assert!(
+        !section("tickets").contains(" open"),
+        "Tickets starts collapsed"
+    );
+
+    // An empty Backlinks renders collapsed with its empty line.
+    let (_, _, lonely) = send(&app, page_get("/notes?path=Other.md")).await;
+    let at = lonely.find("data-section=\"backlinks\"").expect("section");
+    let start = lonely[..at].rfind("<details").expect("a details");
+    let end = at + lonely[at..].find('>').expect("a tag end");
+    assert!(
+        !lonely[start..end].contains(" open"),
+        "an empty section is collapsed"
+    );
+    assert!(lonely.contains("Nothing links here yet."), "the empty line");
 }
 
 #[tokio::test]
@@ -4725,6 +4858,7 @@ async fn every_route_and_refusal_carries_the_security_headers() {
         "/notes",
         "/notes/view",
         "/notes/edit",
+        "/notes/open",
         "/tickets/none",
         "/static/missing.css",
         "/no/such/route",
@@ -5412,6 +5546,7 @@ const ROUTE_TABLE: &[(&str, &str, &str)] = &[
     ("GET", "/notes", "/notes"),
     ("GET", "/notes/view", "/notes/view"),
     ("GET", "/notes/edit", "/notes/edit"),
+    ("GET", "/notes/open", "/notes/open"),
     ("POST", "/notes/preview", "/notes/preview"),
     ("POST", "/notes/save", "/notes/save"),
     ("POST", "/notes/create", "/notes/create"),
@@ -8721,4 +8856,114 @@ async fn the_people_screens_log_no_key_token_or_cookie() {
     ] {
         assert!(!text.contains(needle), "{needle} reached the log: {text}");
     }
+}
+
+fn wikilink_vault(notes: &crate::bikeshed::Bikeshed, text: &str) {
+    for path in ["A.md", "B.md", "x/Dup.md", "y/Dup.md"] {
+        notes.create(path).expect("the note is created");
+    }
+    notes
+        .write("A.md", text, None)
+        .expect("the note is written");
+}
+
+#[tokio::test]
+async fn the_read_view_draws_plain_wikilinks_as_links_and_broken_ones_as_spans() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-wikilinks");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    wikilink_vault(
+        &notes,
+        "[[B]] [[b|Bee]] [[Missing]] [[Dup]] [[project:Tandem]] `[[B]]`",
+    );
+    let app = router(context(store));
+
+    let (status, _, body) = send(&app, page_get("/notes?path=A.md&mode=read")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("<a class=\"wikilink\" href=\"/notes?project=&amp;path=B.md\""),
+        "{body}"
+    );
+    assert!(body.contains("title=\"B.md\">B</a>"), "{body}");
+    assert!(body.contains("title=\"B.md\">Bee</a>"), "{body}");
+    assert!(
+        body.contains(
+            "wikilink wikilink--broken\" title=\"No single note named Missing\">Missing</span>"
+        ),
+        "{body}"
+    );
+    assert!(body.contains("note named Dup\">Dup</span>"), "{body}");
+    assert!(body.contains("[[project:Tandem]]"), "{body}");
+    assert!(
+        body.contains("<code class=\"markdown__inline-code\">[[B]]</code>"),
+        "{body}"
+    );
+    assert_eq!(body.matches("class=\"wikilink\"").count(), 2, "{body}");
+}
+
+#[tokio::test]
+async fn a_hostile_wikilink_is_escaped_in_the_read_view() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-wikilinks-hostile");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    wikilink_vault(&notes, "[[<script>x|\"><img src=x>]]");
+    let app = router(context(store));
+
+    let (_, _, body) = send(&app, page_get("/notes?path=A.md&mode=read")).await;
+    assert!(!body.contains("<script>x"), "{body}");
+    assert!(!body.contains("<img src=x>"), "{body}");
+    assert!(body.contains("&lt;script&gt;x"), "{body}");
+}
+
+#[tokio::test]
+async fn notes_open_follows_a_resolved_target_and_banners_a_broken_one() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-open");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    wikilink_vault(&notes, "[[B]]");
+    notes.write("B.md", "bee body", None).expect("written");
+    let app = router(context(store));
+
+    let (status, _, body) = send(&app, page_get("/notes/open?target=b&from=A.md")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("bee body"), "{body}");
+    assert!(!body.contains("No single note named"), "{body}");
+
+    let (_, _, body) = send(&app, page_get("/notes/open?target=Missing&from=A.md")).await;
+    assert!(
+        body.contains("No single note named Missing: none exists, or two notes share the name."),
+        "{body}"
+    );
+    assert!(body.contains("\"/notes?project=&#38;path=A.md\""), "{body}");
+
+    let (status, _, body) = send(
+        &app,
+        page_get("/notes/open?target=..%2F..%2Fetc%2Fpasswd&from=A.md"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains("No single note named ../../etc/passwd"),
+        "{body}"
+    );
+    assert!(!body.contains("root:"), "{body}");
+}
+
+#[tokio::test]
+async fn the_edit_view_lists_the_targets_that_resolve_broken() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-broken-links");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    wikilink_vault(&notes, "[[B]] [[Missing]] [[Dup]] [[project:Tandem]]");
+    let app = router(context(store));
+
+    let (_, _, body) = send(&app, page_get("/notes/edit?path=A.md")).await;
+    assert!(
+        body.contains("data-broken-links=\"[&#34;dup&#34;,&#34;missing&#34;]\""),
+        "{body}"
+    );
 }
