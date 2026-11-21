@@ -13,8 +13,9 @@
 #   --reinstall   replace an existing tandem in the install directory
 #   --uninstall   remove tandem and the tandem-cli link; the tandem home stays
 #
-# Platforms: macOS on Apple silicon (darwin-arm64) and Linux on x86_64
-# (linux-x86_64). Any other pair exits 1 before downloading.
+# Platforms: macOS on Apple silicon (darwin-arm64) and Intel (darwin-x86_64),
+# and Linux on x86_64 (linux-x86_64) and arm64 (linux-arm64), both static musl.
+# Any other pair exits 1 before downloading.
 #
 # Test seams (Scripts/test_install.sh drives these; production never sets them):
 # TANDEM_BASE_URL, TANDEM_INSTALL_DIR, TANDEM_FAKE_UNAME_S, TANDEM_FAKE_UNAME_M,
@@ -91,9 +92,11 @@ os=${TANDEM_FAKE_UNAME_S:-$(uname -s)}
 arch=${TANDEM_FAKE_UNAME_M:-$(uname -m)}
 case "$os/$arch" in
   Darwin/arm64) suffix=darwin-arm64.tar.gz ;;
+  Darwin/x86_64) suffix=darwin-x86_64.tar.gz ;;
   Linux/x86_64) suffix=linux-x86_64.tar.gz ;;
+  Linux/aarch64|Linux/arm64) suffix=linux-arm64.tar.gz ;;
   *)
-    echo "install.sh: no standalone tandem archive for $os $arch; releases cover macOS arm64 and Linux x86_64." >&2
+    echo "install.sh: no standalone tandem archive for $os $arch; releases cover macOS arm64 and x86_64, and Linux x86_64 and arm64." >&2
     exit 1
     ;;
 esac

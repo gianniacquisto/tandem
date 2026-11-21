@@ -15,8 +15,8 @@ Apple silicon Mac or x86_64 Linux machine is only for shipped-binary work.
 - Any of the three CI platforms (macOS, Windows, Ubuntu) for Rust or release
   script work. CI runs the cargo gates on all three, and the installer suite
   plus the archived-binary HTTP smoke test on macOS and Linux, so a checkout
-  there builds and tests what it can run. Every tag publishes macOS arm64,
-  Linux x86_64 and Windows x86_64 archives.
+  there builds and tests what it can run. Every tag publishes five archives:
+  macOS arm64 and x86_64, static musl Linux x86_64 and arm64, and Windows x86_64.
 - Only for shipped-binary work: an Apple silicon Mac or an x86_64 Linux
   machine, for running the installer and the binary the release publishes.
   `install.sh` verifies the archive's digest and installs into
