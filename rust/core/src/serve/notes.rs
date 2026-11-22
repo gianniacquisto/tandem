@@ -44,6 +44,43 @@ pub(super) async fn note_graph(
     (status, [(header::CONTENT_TYPE, "application/json")], body).into_response()
 }
 
+/// What a `[[` link can point at: the board's projects, its labels with their
+/// project, and every note with the shortest target that resolves to it. Writes
+/// nothing; the board's names and the vault's paths are joined here, as
+/// `note_health` joins them.
+pub(super) async fn note_targets(context: Context) -> Response {
+    let board = context.board();
+    let read = board.projects_snapshot().map(|(projects, _)| projects);
+    let (status, body) = match read {
+        Ok(projects) => {
+            let by_name = |a: &str, b: &str| a.to_lowercase().cmp(&b.to_lowercase());
+            let mut project_rows: Vec<&str> = projects.iter().map(|p| p.name.as_str()).collect();
+            project_rows.sort_by(|a, b| by_name(a, b));
+            let mut label_rows: Vec<(&str, &str)> = projects
+                .iter()
+                .flat_map(|p| p.labels.iter().map(|l| (l.as_str(), p.name.as_str())))
+                .collect();
+            label_rows.sort_by(|a, b| by_name(a.0, b.0));
+            let mut note_rows = context.bikeshed().link_targets();
+            note_rows.sort_by(|a, b| by_name(&a.0, &b.0));
+            let body = serde_json::json!({
+                "projects": project_rows.iter().map(|name| serde_json::json!({ "name": name })).collect::<Vec<_>>(),
+                "labels": label_rows.iter().map(|(name, project)| serde_json::json!({ "name": name, "project": project })).collect::<Vec<_>>(),
+                "notes": note_rows.iter().map(|(path, target)| serde_json::json!({ "path": path, "target": target })).collect::<Vec<_>>(),
+            });
+            (StatusCode::OK, body.to_string())
+        }
+        Err(error) => {
+            tracing::warn!(error = ?error, "the link targets could not be read");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                serde_json::json!({ "error": error.message() }).to_string(),
+            )
+        }
+    };
+    (status, [(header::CONTENT_TYPE, "application/json")], body).into_response()
+}
+
 /// The `markdown.html` partial on its own: the notes preview's answer.
 #[derive(Template)]
 #[template(path = "markdown.html")]

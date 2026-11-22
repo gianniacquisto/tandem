@@ -979,49 +979,113 @@
     return first.concat(rest);
   }
 
+  // The editor's two menus share everything but their source. `slash` turns a
+  // line into a block; `link` writes a wikilink after `[[`. `menu.kind` is the
+  // one difference the open, check, draw and apply steps branch on.
   Live.prototype.menuInput = function (event) {
     if (this.menu) {
       this.menuCheck();
       return;
     }
-    // Typed text can arrive in one piece (a fast burst), so `/todo` counts.
-    var typed = event.inputType === 'insertText' && event.data ? /^\s*(\/\S*)$/.exec(event.data) : null;
-    if (!typed) return;
+    if (event.inputType !== 'insertText' || !event.data) return;
     var selection = this.selection();
     if (!selection || selection.start !== selection.end) return;
-    var from = selection.end - typed[1].length;
+    var caret = selection.end;
+    // `[[` opens the link menu, except inside code, where it is just text. The second `[` of a pair, or a burst of typing that carries the query
+    // with it (`[[por`), opens it.
+    var opener = /\[\[[^\]|#\n]*$/.exec(event.data);
+    var from = opener ? caret - opener[0].length : caret - 2;
+    if (this.text.slice(from, from + 2) === '[[' && !this.inCode(from)) {
+      this.menuOpen('link', from);
+      return;
+    }
+    // Typed text can arrive in one piece (a fast burst), so `/todo` counts.
+    var typed = /^\s*(\/\S*)$/.exec(event.data);
+    if (!typed) return;
+    from = caret - typed[1].length;
     // A `/` inside a word (a path, a URL, a/b) is just a slash.
     if (from > 0 && !/\s/.test(this.text.charAt(from - 1))) return;
+    this.menuOpen('slash', from);
+  };
+
+  // True when the offset sits in a fenced block or an inline code span, by the
+  // same line rules `render` draws with.
+  Live.prototype.inCode = function (offset) {
+    var lines = this.text.split('\n');
+    var index = this.lineIndex(offset);
+    var fenced = false;
+    for (var i = 0; i < index; i += 1) {
+      if (FENCE.test(lines[i])) fenced = !fenced;
+    }
+    if (fenced || FENCE.test(lines[index])) return true;
+    var column = offset - this.lineBounds(offset).from;
+    var line = lines[index];
+    var match;
+    INLINE.lastIndex = 0;
+    while ((match = INLINE.exec(line))) {
+      if (match[1] && match.index <= column && column < match.index + match[0].length) return true;
+    }
+    return false;
+  };
+
+  Live.prototype.menuOpen = function (kind, from) {
     var el = document.createElement('div');
-    el.className = 'slash';
-    el.id = 'slash-menu';
+    el.className = kind === 'link' ? 'slash slash--link' : 'slash';
+    el.id = kind === 'link' ? 'link-menu' : 'slash-menu';
     el.setAttribute('role', 'listbox');
-    el.setAttribute('aria-label', 'Turn this line into');
+    el.setAttribute('aria-label', kind === 'link' ? 'Link to' : 'Turn this line into');
     var self = this;
     // The mouse must not pull focus, or the editor blur would shut the menu
     // before the click lands.
     el.addEventListener('mousedown', function (e) { e.preventDefault(); });
     el.addEventListener('click', function (e) {
-      var row = closest(e.target, '[data-slash]');
-      if (row) self.menuApply(SLASH_ITEMS[Number(row.getAttribute('data-slash'))]);
+      var row = closest(e.target, '[data-index]');
+      if (row && self.menu) self.menuApply(self.menu.items[Number(row.getAttribute('data-index'))]);
     });
     el.addEventListener('mousemove', function (e) {
-      var row = closest(e.target, '[data-slash]');
-      if (row && self.menu && self.menu.items[self.menu.index] !== SLASH_ITEMS[Number(row.getAttribute('data-slash'))]) {
-        self.menu.index = self.menu.items.indexOf(SLASH_ITEMS[Number(row.getAttribute('data-slash'))]);
+      var row = closest(e.target, '[data-index]');
+      var at = row ? Number(row.getAttribute('data-index')) : -1;
+      if (at >= 0 && self.menu && self.menu.index !== at) {
+        self.menu.index = at;
         self.menuDraw();
       }
     });
     document.body.appendChild(el);
-    this.menu = { from: from, el: el, items: [], index: 0, missAt: -1, query: null };
+    this.menu = { kind: kind, from: from, el: el, items: [], index: 0, missAt: -1, query: null, more: 0 };
     this.root.setAttribute('aria-haspopup', 'listbox');
-    this.root.setAttribute('aria-controls', 'slash-menu');
+    this.root.setAttribute('aria-controls', el.id);
     this.root.setAttribute('aria-expanded', 'true');
+    if (kind === 'link') this.loadTargets();
     this.menuCheck();
   };
 
-  // The text after the `/` up to the caret filters the list; a caret that has
-  // left that span, or a `/` that is gone, ends it.
+  // The link targets come once per editor, from the one route that joins the
+  // board's names to the vault's notes. A failure is not kept: the next `[[`
+  // asks again.
+  Live.prototype.loadTargets = function () {
+    if (this.targets || this.targetsLoading) return;
+    var self = this;
+    this.targetsLoading = true;
+    this.targetsFailed = false;
+    fetch('/notes/targets', { headers: { Accept: 'application/json' } })
+      .then(function (response) {
+        if (!response.ok) throw new Error('targets ' + response.status);
+        return response.json();
+      })
+      .then(function (data) { self.targets = data; })
+      .catch(function () { self.targetsFailed = true; })
+      .then(function () {
+        self.targetsLoading = false;
+        if (self.menu && self.menu.kind === 'link') {
+          self.menu.query = null;
+          self.menuCheck();
+        }
+      });
+  };
+
+  // The text after the trigger up to the caret filters the list; a caret that
+  // has left that span, or a trigger that is gone, ends it. A link query that
+  // gains `]`, `|` or `#` is the human writing the link by hand.
   Live.prototype.menuCheck = function () {
     var menu = this.menu;
     if (!menu) return;
@@ -1030,16 +1094,26 @@
       this.menuClose();
       return;
     }
+    var link = menu.kind === 'link';
+    var lead = link ? '[[' : '/';
     var caret = selection.end;
-    var query = this.text.slice(menu.from + 1, caret);
-    if (caret <= menu.from || this.text.charAt(menu.from) !== '/' || query.indexOf('\n') >= 0) {
+    var query = this.text.slice(menu.from + lead.length, caret);
+    if (caret < menu.from + lead.length || this.text.substr(menu.from, lead.length) !== lead ||
+        query.indexOf('\n') >= 0 || (link && /[\]|#]/.test(query))) {
       this.menuClose();
       return;
     }
     if (query === menu.query) return;
     menu.query = query;
-    menu.items = slashMatches(query);
     menu.index = 0;
+    if (link) {
+      var found = this.targets ? linkMatches(query, this.targets, this.notePath()) : { items: [], more: 0 };
+      menu.items = found.items;
+      menu.more = found.more;
+      this.menuDraw();
+      return;
+    }
+    menu.items = slashMatches(query);
     if (!menu.items.length) {
       // A space with nothing to match is a sentence, and a couple of strays
       // after the first miss is a typo for nothing.
@@ -1054,23 +1128,60 @@
     this.menuDraw();
   };
 
+  // The path of the note being edited, so the link menu can leave it out.
+  Live.prototype.notePath = function () {
+    var form = this.store.form;
+    var input = form ? form.querySelector('input[name="path"]') : null;
+    return input ? input.value : '';
+  };
+
   Live.prototype.menuDraw = function () {
     var menu = this.menu;
+    var link = menu.kind === 'link';
     var html = '';
+    var last = '';
     for (var i = 0; i < menu.items.length; i += 1) {
       var item = menu.items[i];
       var on = i === menu.index;
-      html += '<div class="slash__item" role="option" id="slash-opt-' + item.id + '" data-slash="' +
-        SLASH_ITEMS.indexOf(item) + '" aria-selected="' + on + '">' +
-        '<span class="slash__glyph" aria-hidden="true">' + esc(item.glyph) + '</span>' +
-        '<span class="slash__label">' + esc(item.label) + '</span>' +
-        '<span class="slash__hint" aria-hidden="true">' + esc(item.hint) + '</span></div>';
+      if (link) {
+        if (item.group !== last) {
+          last = item.group;
+          html += '<div class="slash__group" role="presentation">' + esc(GROUP_TITLES[item.group]) + '</div>';
+        }
+        html += '<div class="slash__item" role="option" id="link-opt-' + i + '" data-index="' + i +
+          '" aria-selected="' + on + '" title="' + esc(item.title).replace(/"/g, '&quot;') + '">' +
+          '<span class="slash__glyph" aria-hidden="true">' + esc(GROUP_GLYPHS[item.group]) + '</span>' +
+          '<span class="slash__label">' + item.labelHtml + '</span>' +
+          (item.hint ? '<span class="slash__hint" aria-hidden="true">' + esc(item.hint) + '</span>' : '') + '</div>';
+      } else {
+        html += '<div class="slash__item" role="option" id="slash-opt-' + item.id + '" data-index="' +
+          i + '" aria-selected="' + on + '">' +
+          '<span class="slash__glyph" aria-hidden="true">' + esc(item.glyph) + '</span>' +
+          '<span class="slash__label">' + esc(item.label) + '</span>' +
+          '<span class="slash__hint" aria-hidden="true">' + esc(item.hint) + '</span></div>';
+      }
     }
-    if (!menu.items.length) html = '<div class="slash__empty">No matching block</div>';
-    menu.el.innerHTML = html;
+    if (!link) {
+      if (!menu.items.length) html = '<div class="slash__empty">No matching block</div>';
+      menu.el.innerHTML = html;
+    } else {
+      var foot = '';
+      if (this.targetsFailed && !this.targets) {
+        html = '<div class="slash__error" role="status">Could not load link targets. Keep typing to write the link by hand.</div>';
+      } else if (!menu.items.length) {
+        html = '<div class="slash__empty">No note, project or label matches "' + esc(menu.query || '') + '".</div>';
+      }
+      if (menu.more > 0) {
+        foot = '<div class="slash__foot">' + menu.more + ' more notes: type to narrow</div>';
+      }
+      menu.el.innerHTML = '<div class="slash__list">' + html + '</div>' + foot;
+      // Nothing is drawn while the first fetch runs.
+      menu.el.style.display = !this.targets && !this.targetsFailed ? 'none' : '';
+    }
     var current = menu.items[menu.index];
     if (current) {
-      this.root.setAttribute('aria-activedescendant', 'slash-opt-' + current.id);
+      this.root.setAttribute('aria-activedescendant',
+        link ? 'link-opt-' + menu.index : 'slash-opt-' + current.id);
       var row = menu.el.querySelector('[aria-selected="true"]');
       if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
     } else {
@@ -1151,6 +1262,10 @@
     var selection = this.selection();
     this.menuClose();
     if (!menu || !item || !selection) return;
+    if (menu.kind === 'link') {
+      this.applyLink(menu, item, selection.end);
+      return;
+    }
     var bounds = this.lineBounds(menu.from);
     var line = this.text.slice(bounds.from, bounds.to);
     var at = menu.from - bounds.from;
@@ -1192,6 +1307,112 @@
     this.history[this.position].at = 0;
     this.replace(bounds.from, bounds.to, out, caret);
   };
+
+  // `[[` plus the query becomes the link; a `]]` already after the caret is
+  // taken in, not doubled. One `replace`, so one undo step, and the caret lands
+  // after the closing brackets.
+  Live.prototype.applyLink = function (menu, item, caret) {
+    var link = '[[' + item.insert + ']]';
+    var end = this.text.slice(caret, caret + 2) === ']]' ? caret + 2 : caret;
+    this.history[this.position].at = 0;
+    this.replace(menu.from, end, link, menu.from + link.length);
+  };
+
+  // MARK: - The link menu's list
+
+  var GROUP_TITLES = { project: 'Projects', label: 'Labels', note: 'Notes' };
+  var GROUP_GLYPHS = { project: 'P', label: '#', note: '[[' };
+  var NOTE_CAP = 50;
+
+  // 0 starts with the query, 1 has a word that does, 2 contains it, -1 misses.
+  function matchTier(name, q) {
+    if (!q) return 0;
+    var at = name.toLowerCase().indexOf(q);
+    if (at === 0) return 0;
+    if (at < 0) return -1;
+    return /[\s_\-\/.:]/.test(name.charAt(at - 1)) ? 1 : 2;
+  }
+
+  // The name with the matched run in bold, escaped piece by piece.
+  function matchHtml(name, q) {
+    var at = q ? name.toLowerCase().indexOf(q) : -1;
+    if (at < 0) return esc(name);
+    return esc(name.slice(0, at)) + '<b class="slash__match">' + esc(name.slice(at, at + q.length)) + '</b>' +
+      esc(name.slice(at + q.length));
+  }
+
+  function byName(a, b) {
+    var x = a.name.toLowerCase();
+    var y = b.name.toLowerCase();
+    return x < y ? -1 : x > y ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+  }
+
+  // Projects, labels, then notes, each ranked: prefix, word prefix, substring,
+  // alphabetical in a tier; a note matched only by its folder comes last. A
+  // `project:` or `label:` query narrows to that group.
+  function linkMatches(query, data, self) {
+    var q = query.toLowerCase();
+    var only = '';
+    var typed = /^(project|label):/.exec(q);
+    if (typed) {
+      only = typed[1];
+      q = q.slice(typed[0].length).replace(/^\s+/, '');
+    }
+    var groups = [];
+    function rank(rows, group) {
+      var out = [];
+      for (var i = 0; i < rows.length; i += 1) {
+        var row = rows[i];
+        var tier = matchTier(row.name, q);
+        if (tier < 0 && row.folder && q && row.folder.toLowerCase().indexOf(q) >= 0) tier = 3;
+        if (tier < 0) continue;
+        row.tier = tier;
+        row.group = group;
+        out.push(row);
+      }
+      out.sort(function (a, b) { return a.tier - b.tier || byName(a, b); });
+      return out;
+    }
+    function build(row) {
+      return {
+        group: row.group,
+        insert: row.insert,
+        title: row.title,
+        hint: row.hint,
+        labelHtml: matchHtml(row.name, row.tier === 3 ? '' : q)
+      };
+    }
+    if (!only || only === 'project') {
+      groups.push(rank((data.projects || []).map(function (p) {
+        return { name: p.name, insert: 'project:' + p.name, title: p.name, hint: '' };
+      }), 'project'));
+    }
+    if (!only || only === 'label') {
+      groups.push(rank((data.labels || []).map(function (l) {
+        return { name: l.name, insert: 'label:' + l.name, title: l.project ? l.name + ' in ' + l.project : l.name, hint: l.project || '' };
+      }), 'label'));
+    }
+    var more = 0;
+    if (!only) {
+      var notes = (data.notes || []).filter(function (n) { return n.path !== self; }).map(function (n) {
+        var parts = n.path.split('/');
+        var base = parts.pop().replace(/\.md$/i, '');
+        return {
+          name: base, insert: n.target, title: n.path,
+          hint: parts.length ? parts[parts.length - 1] : '',
+          folder: parts.join('/')
+        };
+      });
+      var ranked = rank(notes, 'note');
+      more = Math.max(0, ranked.length - NOTE_CAP);
+      groups.push(ranked.slice(0, NOTE_CAP));
+    }
+    var items = [];
+    for (var g = 0; g < groups.length; g += 1) {
+      for (var r = 0; r < groups[g].length; r += 1) items.push(build(groups[g][r]));
+    }
+    return { items: items, more: more };
+  }
 
   // One listener for the page, aimed at the editor now showing: a listener per
   // editor would outlive each swap and keep its detached root alive.

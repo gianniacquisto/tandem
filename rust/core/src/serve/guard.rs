@@ -446,6 +446,7 @@ pub(super) const ROUTE_NEEDS: &[(&str, Need)] = &[
     ("/notes", Need::Permit(Permission::Board)),
     ("/notes/graph", Need::Permit(Permission::Board)),
     ("/notes/graph.json", Need::Permit(Permission::Board)),
+    ("/notes/targets", Need::Permit(Permission::Board)),
     ("/notes/view", Need::Permit(Permission::Board)),
     ("/notes/edit", Need::Permit(Permission::Board)),
     ("/notes/open", Need::Permit(Permission::Board)),
