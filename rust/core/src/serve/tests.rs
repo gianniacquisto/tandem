@@ -890,6 +890,10 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 body.contains("tandem.graph.options"),
                 "graph.js carries its options key"
             );
+            assert!(
+                body.contains("tandem.graph.pins"),
+                "graph.js carries its pins key"
+            );
         }
         if path == "/static/tandem.js" {
             for key in [
@@ -9227,6 +9231,40 @@ async fn get_notes_graph_renders_the_container_the_switch_and_keeps_the_focus() 
         !body.contains("id=\"relations\""),
         "no Relations pane in the graph view"
     );
+    // The live-simulation card: Feel with Springy pressed, Unpin, Grouped
+    // pressed by default, and the legend's new entries.
+    assert!(
+        body.contains("data-graph-feel=\"springy\" aria-pressed=\"true\""),
+        "Springy is the default feel: {body}"
+    );
+    for feel in ["calm", "bouncy"] {
+        assert!(
+            body.contains(&format!(
+                "data-graph-feel=\"{feel}\" aria-pressed=\"false\""
+            )),
+            "{feel} is offered, not pressed: {body}"
+        );
+    }
+    assert!(
+        body.contains("data-graph-unpin"),
+        "the Unpin button: {body}"
+    );
+    assert!(
+        body.contains("data-graph-daily=\"grouped\" aria-pressed=\"true\""),
+        "Grouped is the default daily mode: {body}"
+    );
+    assert!(
+        body.contains("data-graph-daily=\"free\" aria-pressed=\"false\""),
+        "Free is offered, not pressed: {body}"
+    );
+    let legend = body
+        .split("aria-label=\"Key\"")
+        .nth(1)
+        .and_then(|rest| rest.split("</ul>").next())
+        .expect("the legend");
+    for entry in ["wikilink", "in folder", "orphan", "daily note", "pinned"] {
+        assert!(legend.contains(entry), "the legend names {entry}: {legend}");
+    }
     // Wide cap: unfocused source carries no project value to match.
     let (_, _, whole) = get(&app, "/notes/graph").await;
     assert!(
