@@ -17,6 +17,11 @@
  * can be pinned, and pins are kept per browser and per focus project. With
  * `prefers-reduced-motion` the same ticks run synchronously and the picture
  * is rendered once.
+ *
+ * TAN-858 adds search through every match (ranked, counted, stepped), a
+ * keyboard walk (one roving tab stop, arrows to the neighbour in that
+ * direction) and a local graph: one node's 1 or 2 hop neighbourhood, the rest
+ * made inactive through the same `active` flag the filters use.
  */
 (function () {
   'use strict';
@@ -31,6 +36,8 @@
   var DRAG_THRESHOLD = 3;
   var DOUBLE_CLICK_MS = 300;
   var DAILY_ROOT = 'daily';
+  var GLIDE_MS = 550;
+  var GLIDE_ZOOM = 1.3;
   var DEFAULTS = { notes: true, folders: true, names: false, daily: 'grouped', feel: 'springy' };
   var FEELS = {
     springy: { keep: 0.6, charge: 1, rest: 1, spring: 1, gravity: 0.045, life: 300 },
@@ -477,6 +484,9 @@
     var capText = container.querySelector('[data-graph-cap-text]');
     var controls = container.querySelector('[data-graph-controls]');
     var search = container.querySelector('[data-graph-search]');
+    var countEl = container.querySelector('[data-graph-count]');
+    var localBar = container.querySelector('[data-graph-local]');
+    var localName = container.querySelector('[data-graph-local-name]');
     var tip = container.querySelector('[data-graph-tip]');
     var unpinButton = container.querySelector('[data-graph-unpin]');
     if (!svg || !canvas) {
@@ -491,7 +501,10 @@
     var viewport = null;
     var view = { x: 0, y: 0, k: 1 };
     var lit = null;
-    var found = null;
+    var results = [];
+    var cursor = 0;
+    var local = null;
+    var rovingId = '';
     var generation = 0;
     var focusKey = '';
     var pins = {};
@@ -651,14 +664,14 @@
       };
     }
 
-    /* The Fit button and the auto fits glide there in 600ms, ease-out cubic. */
-    function fit(animate) {
-      var target = fitTarget();
+    /* Glide the view to a target (or a function giving one each frame). */
+    function animateView(targetOf, duration) {
+      var target = typeof targetOf === 'function' ? targetOf() : targetOf;
       if (!target) {
         return;
       }
       stopViewAnimation();
-      if (!animate || reduceMotion()) {
+      if (reduceMotion()) {
         view.x = target.x;
         view.y = target.y;
         view.k = target.k;
@@ -671,14 +684,41 @@
         if (started === null) {
           started = now;
         }
-        var t = Math.min((now - started) / 600, 1);
+        var t = Math.min((now - started) / duration, 1);
         var e = easeOutCubic(t);
-        view.k = Math.exp(Math.log(from.k) + (Math.log(target.k) - Math.log(from.k)) * e);
-        view.x = from.x + (target.x - from.x) * e;
-        view.y = from.y + (target.y - from.y) * e;
+        var to = typeof targetOf === 'function' ? targetOf() || target : target;
+        view.k = Math.exp(Math.log(from.k) + (Math.log(to.k) - Math.log(from.k)) * e);
+        view.x = from.x + (to.x - from.x) * e;
+        view.y = from.y + (to.y - from.y) * e;
         applyView();
         viewFrame = t < 1 ? window.requestAnimationFrame(step) : 0;
       });
+    }
+
+    /* The Fit button and the auto fits glide there in 600ms, ease-out cubic. */
+    function fit(animate) {
+      var target = fitTarget();
+      if (!target) {
+        return;
+      }
+      if (!animate) {
+        stopViewAnimation();
+        view.x = target.x;
+        view.y = target.y;
+        view.k = target.k;
+        applyView();
+        return;
+      }
+      animateView(target, 600);
+    }
+
+    /* Centre a node in the canvas, zoomed to at least `minZoom`, in 550ms. */
+    function glideTo(node, minZoom) {
+      var k = Math.min(Math.max(view.k, minZoom), 8);
+      animateView(function () {
+        var box = svg.getBoundingClientRect();
+        return { k: k, x: box.width / 2 - node.x * k, y: box.height / 2 - node.y * k };
+      }, GLIDE_MS);
     }
 
     function nodeElement(node) {
@@ -695,7 +735,7 @@
       }
       var group = svgElement('g', {
         class: classes,
-        tabindex: '0',
+        tabindex: '-1',
         role: 'link',
         'aria-label': node.kind + ' ' + node.name + ', ' + describe(node),
         'data-id': node.id
@@ -772,7 +812,6 @@
           return;
         }
         element.classList.toggle('gnode--off', !node.active);
-        element.setAttribute('tabindex', node.active ? '0' : '-1');
         if (node.active) {
           element.removeAttribute('aria-hidden');
         } else {
@@ -785,6 +824,35 @@
         }
       });
       svg.classList.toggle('gsvg--names', !!options.names);
+      syncTabStop();
+    }
+
+    /*
+     * One tab stop into the graph: the last focused node while it is shown,
+     * else the shown node with the most connections. Hidden nodes get -1.
+     */
+    function tabStop() {
+      var remembered = byId[rovingId];
+      if (remembered && remembered.active) {
+        return remembered;
+      }
+      var best = null;
+      nodes.forEach(function (node) {
+        if (node.active && (!best || node.deg > best.deg)) {
+          best = node;
+        }
+      });
+      return best;
+    }
+
+    function syncTabStop() {
+      var stop = tabStop();
+      nodes.forEach(function (node) {
+        var element = elements[node.id];
+        if (element) {
+          element.setAttribute('tabindex', node === stop ? '0' : '-1');
+        }
+      });
     }
 
     // MARK: Which nodes and edges take part
@@ -825,9 +893,14 @@
      */
     function applyActive() {
       var before = {};
+      if (local && !wanted(local.node)) {
+        local = null;
+        syncLocalBar();
+      }
+      markLocal();
       nodes.forEach(function (node) {
         before[node.id] = node.active;
-        node.active = wanted(node);
+        node.active = wanted(node) && !node.outside;
       });
       nodes.forEach(function (node) {
         if (!node.active || before[node.id]) {
@@ -858,7 +931,89 @@
       if (lit && !lit.active) {
         clearLight();
       }
+      var held = document.activeElement;
+      if (held && held !== svg && svg.contains(held) && held.classList.contains('gnode--off')) {
+        var stop = tabStop();
+        if (stop) {
+          elements[stop.id].focus({ preventScroll: true });
+        }
+      }
+      refreshSearch();
       render();
+    }
+
+    // MARK: The local graph
+
+    /* Flag the nodes outside the centre's reach; filters shape the walk. */
+    function markLocal() {
+      nodes.forEach(function (node) {
+        node.outside = false;
+      });
+      if (!local) {
+        return;
+      }
+      var seen = {};
+      seen[local.node.id] = true;
+      var frontier = [local.node];
+      for (var hop = 0; hop < local.hops; hop += 1) {
+        var next = [];
+        frontier.forEach(function (node) {
+          Object.keys(node.near).forEach(function (id) {
+            var other = byId[id];
+            if (!seen[id] && wanted(other)) {
+              seen[id] = true;
+              next.push(other);
+            }
+          });
+        });
+        frontier = next;
+      }
+      nodes.forEach(function (node) {
+        node.outside = !seen[node.id];
+      });
+    }
+
+    function syncLocalBar() {
+      if (!localBar) {
+        return;
+      }
+      localBar.hidden = !local;
+      if (!local) {
+        return;
+      }
+      localName.textContent = local.node.name;
+      localBar.querySelectorAll('[data-graph-hops]').forEach(function (button) {
+        var pressed = button.getAttribute('data-graph-hops') === String(local.hops);
+        button.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+        if (button.parentNode) {
+          button.parentNode.setAttribute('data-value', String(local.hops));
+        }
+      });
+    }
+
+    function enterLocal(node, hops) {
+      if (!viewport || !node.active) {
+        return;
+      }
+      local = { node: node, hops: hops || (local ? local.hops : 1) };
+      rovingId = node.id;
+      syncLocalBar();
+      applyActive();
+      fitAt = 0.08;
+      fitOnSettle = true;
+      sim.reheat(0.7);
+    }
+
+    function leaveLocal() {
+      if (!local) {
+        return;
+      }
+      local = null;
+      syncLocalBar();
+      applyActive();
+      fitAt = 0.08;
+      fitOnSettle = true;
+      sim.reheat(0.6);
     }
 
     function filterChanged(heat) {
@@ -1279,6 +1434,8 @@
     svg.addEventListener('focusin', function (event) {
       var node = nodeOf(event.target);
       if (node) {
+        rovingId = node.id;
+        syncTabStop();
         light(node);
       }
     });
@@ -1289,50 +1446,227 @@
       }
     });
 
+    var ARROWS = {
+      ArrowRight: [1, 0],
+      ArrowLeft: [-1, 0],
+      ArrowDown: [0, 1],
+      ArrowUp: [0, -1]
+    };
+
+    /* The active neighbour lying most in a direction: cos >= 0.3, best score. */
+    function neighbourToward(node, direction) {
+      var best = null;
+      var bestScore = -Infinity;
+      Object.keys(node.near).forEach(function (id) {
+        var other = byId[id];
+        if (!other.active) {
+          return;
+        }
+        var dx = other.x - node.x;
+        var dy = other.y - node.y;
+        var distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance === 0) {
+          return;
+        }
+        var cos = (dx * direction[0] + dy * direction[1]) / distance;
+        if (cos < 0.3) {
+          return;
+        }
+        var score = cos * 2 - distance / 400;
+        if (score > bestScore) {
+          bestScore = score;
+          best = other;
+        }
+      });
+      return best;
+    }
+
     svg.addEventListener('keydown', function (event) {
-      if (event.key !== 'Enter') {
+      var node = nodeOf(event.target);
+      if (!node || event.altKey || event.ctrlKey || event.metaKey) {
         return;
       }
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        open(node);
+      } else if (event.key === 'p' || event.key === 'P') {
+        event.preventDefault();
+        if (node.fx !== null) {
+          unpinNode(node);
+          sim.reheat(0.3);
+        } else {
+          pinNode(node);
+        }
+      } else if (event.key === 'Escape') {
+        clearLight();
+        if (document.activeElement && document.activeElement.blur) {
+          document.activeElement.blur();
+        }
+      } else if (ARROWS[event.key]) {
+        event.preventDefault();
+        var next = neighbourToward(node, ARROWS[event.key]);
+        if (next) {
+          elements[next.id].focus({ preventScroll: true });
+          glideTo(next, 0);
+        }
+      }
+    });
+
+    svg.addEventListener('contextmenu', function (event) {
       var node = nodeOf(event.target);
       if (node) {
         event.preventDefault();
-        open(node);
+        enterLocal(node);
       }
     });
 
     // MARK: Search and the controls card
 
-    function match() {
+    /* Every shown node whose name holds the text: exact, prefix, the rest; ties by degree. */
+    function matches() {
       var text = search.value.trim().toLowerCase();
       if (!text) {
-        return null;
+        return [];
       }
-      for (var index = 0; index < nodes.length; index += 1) {
-        if (nodes[index].active && nodes[index].name.toLowerCase().indexOf(text) >= 0) {
-          return nodes[index];
+      var ranked = [];
+      nodes.forEach(function (node) {
+        if (!node.active) {
+          return;
         }
+        var name = node.name.toLowerCase();
+        var at = name.indexOf(text);
+        if (at < 0) {
+          return;
+        }
+        ranked.push({ node: node, rank: name === text ? 0 : at === 0 ? 1 : 2 });
+      });
+      ranked.sort(function (a, b) {
+        return a.rank - b.rank || b.node.deg - a.node.deg || a.node.index - b.node.index;
+      });
+      return ranked.map(function (entry) {
+        return entry.node;
+      });
+    }
+
+    function syncCount() {
+      if (!countEl) {
+        return;
       }
-      return null;
+      if (!search.value.trim()) {
+        countEl.textContent = '';
+      } else if (!results.length) {
+        countEl.textContent = 'none';
+      } else {
+        countEl.textContent = cursor + 1 + ' / ' + results.length;
+      }
+    }
+
+    function showMatch(glide) {
+      syncCount();
+      var node = results[cursor];
+      if (!node) {
+        clearLight();
+        return;
+      }
+      light(node);
+      rovingId = node.id;
+      syncTabStop();
+      if (glide) {
+        glideTo(node, GLIDE_ZOOM);
+      }
+    }
+
+    /* A filter or local graph changed what is shown: keep the current hit if it survives. */
+    function refreshSearch() {
+      if (!search || !search.value.trim()) {
+        return;
+      }
+      var current = results[cursor];
+      results = matches();
+      var at = results.indexOf(current);
+      cursor = at >= 0 ? at : 0;
+      syncCount();
+    }
+
+    function stepMatch(delta) {
+      if (!results.length) {
+        return;
+      }
+      cursor = (cursor + delta + results.length) % results.length;
+      showMatch(true);
     }
 
     search.addEventListener('input', function () {
-      found = match();
-      if (found) {
-        light(found);
-      } else {
-        clearLight();
-      }
+      results = matches();
+      cursor = 0;
+      showMatch(true);
     });
 
     search.addEventListener('keydown', function (event) {
       if (event.key === 'Enter') {
         event.preventDefault();
-        var node = found || match();
-        if (node) {
-          open(node);
-        }
+        stepMatch(event.shiftKey ? -1 : 1);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        search.value = '';
+        results = [];
+        cursor = 0;
+        syncCount();
+        clearLight();
+        search.blur();
       }
     });
+
+    function textField(target) {
+      return (
+        !!target &&
+        (target.isContentEditable ||
+          /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || ''))
+      );
+    }
+
+    /* `/`, F and Esc work from anywhere on the page, outside a text field. */
+    function onDocumentKey(event) {
+      if (!container.isConnected) {
+        document.removeEventListener('keydown', onDocumentKey);
+        return;
+      }
+      if (event.altKey || event.ctrlKey || event.metaKey || textField(event.target)) {
+        return;
+      }
+      if (event.key === '/') {
+        event.preventDefault();
+        if (controls) {
+          controls.open = true;
+        }
+        search.focus();
+        search.select();
+      } else if (event.key === 'f' || event.key === 'F') {
+        var subject = nodeOf(event.target) || lit;
+        if (subject) {
+          event.preventDefault();
+          enterLocal(subject);
+        }
+      } else if (event.key === 'Escape' && local) {
+        leaveLocal();
+      }
+    }
+    document.addEventListener('keydown', onDocumentKey);
+
+    if (localBar) {
+      localBar.querySelectorAll('[data-graph-hops]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var hops = Number(button.getAttribute('data-graph-hops'));
+          if (local && local.hops !== hops) {
+            enterLocal(local.node, hops);
+          }
+        });
+      });
+      var closeLocal = container.querySelector('[data-graph-local-close]');
+      if (closeLocal) {
+        closeLocal.addEventListener('click', leaveLocal);
+      }
+    }
 
     container.querySelectorAll('[data-graph-option]').forEach(function (box) {
       box.addEventListener('change', function () {
@@ -1417,6 +1751,10 @@
       showMessage(loading, false);
       showMessage(errorBanner, false);
       sim.stop();
+      local = null;
+      rovingId = '';
+      results = [];
+      syncLocalBar();
       var prepared = prepare(graph.nodes || [], graph.edges || []);
       nodes = prepared.nodes;
       edges = prepared.edges;
@@ -1449,6 +1787,7 @@
       );
       restorePins();
       nodes.forEach(function (node) {
+        node.outside = false;
         node.active = wanted(node);
       });
       setEdges();

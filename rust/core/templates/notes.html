@@ -239,8 +239,11 @@
           <details class="gctl" data-graph-controls>
             <summary class="gctl__summary">Graph controls</summary>
             <div class="gctl__body" role="group" aria-label="Graph controls">
-              <input class="gctl__search" type="search" placeholder="Find a note, project or label"
-                     aria-label="Find a note, project or label" autocomplete="off" data-graph-search>
+              <div class="gctl__find">
+                <input class="gctl__search" type="search" placeholder="Find a note, project or label"
+                       aria-label="Find a note, project or label" autocomplete="off" data-graph-search>
+                <span class="gctl__count" data-graph-count role="status" aria-live="polite"></span>
+              </div>
               <label class="gswitch"><span>Notes</span><input type="checkbox" role="switch" data-graph-option="notes" checked></label>
               <label class="gswitch"><span>Folders</span><input type="checkbox" role="switch" data-graph-option="folders" checked></label>
               <label class="gswitch"><span>Every name</span><input type="checkbox" role="switch" data-graph-option="names"></label>
@@ -273,8 +276,17 @@
             <li><i class="glegend__line glegend__line--contains"></i>in folder</li>
             <li><i class="glegend__mark glegend__mark--pinned"></i>pinned</li>
           </ul>
+          <div class="glocal" data-graph-local role="group" aria-label="Local graph" hidden>
+            <span class="glocal__title">Local graph of <strong data-graph-local-name></strong></span>
+            <div class="gseg" data-value="1" role="group" aria-label="Hops">
+              <button type="button" data-graph-hops="1" aria-pressed="true">1 hop</button>
+              <button type="button" data-graph-hops="2" aria-pressed="false">2 hops</button>
+            </div>
+            <button class="glocal__close" type="button" data-graph-local-close aria-label="Back to the whole graph">&times;</button>
+          </div>
           <div class="gtip" data-graph-tip role="presentation"></div>
         </div>
+        <p class="ghint" data-graph-hint>Drag, Shift-drop or double-click to pin. F or right-click for a local graph. / to search, Enter for the next match, Esc to clear. Arrow keys walk the neighbours.</p>
       </section>
       {% else %}
       {% if let Some(note) = note %}

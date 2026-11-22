@@ -9277,6 +9277,28 @@ async fn get_notes_graph_renders_the_container_the_switch_and_keeps_the_focus() 
     for entry in ["wikilink", "in folder", "orphan", "daily note", "pinned"] {
         assert!(legend.contains(entry), "the legend names {entry}: {legend}");
     }
+    // Search count, the local-graph bar (hidden at load) and the key hint.
+    assert!(
+        body.contains("data-graph-count"),
+        "the search count element: {body}"
+    );
+    let bar = body
+        .split("data-graph-local ")
+        .nth(1)
+        .and_then(|rest| rest.split('>').next())
+        .expect("the local-graph bar");
+    assert!(bar.contains("hidden"), "the bar is hidden at load: {bar}");
+    assert!(
+        body.contains("aria-label=\"Back to the whole graph\""),
+        "the close button's accessible name: {body}"
+    );
+    for hops in ["data-graph-hops=\"1\"", "data-graph-hops=\"2\""] {
+        assert!(body.contains(hops), "the hop switch has {hops}: {body}");
+    }
+    assert!(
+        body.contains("for a local graph") && body.contains("to search"),
+        "the key hint: {body}"
+    );
     // Wide cap: unfocused source carries no project value to match.
     let (_, _, whole) = get(&app, "/notes/graph").await;
     assert!(
