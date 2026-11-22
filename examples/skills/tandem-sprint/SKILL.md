@@ -5,7 +5,7 @@ description: "Run a sprint: draw a batch of ready tickets, build each through th
 
 # Tandem sprint
 
-A sprint is one invocation that takes a batch of `ready` tickets to an exit state: **scope → plan → build → gate → close**. It is a procedure, not a stored entity: the board's statuses, assignees and comment logs are its record (ADR 0045). Shaping is the standalone refine pass (`skills/tandem-refine/`), learning is the standalone `retro`; a sprint neither runs nor prompts them.
+A sprint is one invocation that takes a batch of `ready` tickets to an exit state: **scope → plan → build → gate → close**. It is a procedure, not a stored entity: the board's statuses, assignees and comment logs are its record. Shaping is the standalone refine pass (`skills/tandem-refine/`), learning is the standalone `retro`; a sprint neither runs nor prompts them.
 
 The sprint's runner is the `sprint` role. It dispatches the `builder` (`agents/builder.md`) and the `reviewer` (`agents/reviewer.md`) and writes no code itself.
 
@@ -26,8 +26,8 @@ From then on it is a ready ticket like any other. If the dead pass left an open 
 
 **Draw `ready` only**, at most five, in stored order:
 
-- skip any row whose `blocked` is true, whatever its status (the edge is the block, ADR 0035), with one line naming the blocker;
-- report `backlog` rows as `TAN-217 <title>: <gist>, needs a refine pass`, never drawn: only refine moves a ticket to `ready` (ticket naming follows the Naming tickets rule in `AGENTS.md`);
+- skip any row whose `blocked` is true, whatever its status (the edge is the block), with one line naming the blocker;
+- report `backlog` rows as `<ref> <title>: <gist>, needs a refine pass`, never drawn: only refine moves a ticket to `ready` (ticket naming follows the Naming tickets rule in `AGENTS.md`);
 - leave `on-hold` alone: it is parked on purpose;
 - a ticket with an open question, a pending human decision, or more than one pass of work is not ready: report it for refine.
 
@@ -99,7 +99,7 @@ Settle the project as well: a dead claim outside the batch goes back to `ready` 
 SPRINT: <project>: <n> landed, <n> escalated, <n> slipped, <n> parked
 ```
 
-Then one line per batch ticket (`TAN-123 <title>: landed, PR #456`), one line per skipped ticket with its reason, and what waits on the human. Every ticket named in the report follows the Naming tickets rule in `AGENTS.md`: ref, title and gist. A sprint that ends in the middle (the session dies, the human stops it) leaves dead claims, and the next sprint's §2 recovers them.
+Then one line per batch ticket (`<ref> <title>: landed, PR #<n>`), one line per skipped ticket with its reason, and what waits on the human. Every ticket named in the report follows the Naming tickets rule in `AGENTS.md`: ref, title and gist. A sprint that ends in the middle (the session dies, the human stops it) leaves dead claims, and the next sprint's §2 recovers them.
 
 ## Drain mode
 
@@ -115,4 +115,4 @@ A drain that runs out of usage dies mid-ticket like any interrupted sprint: the 
 
 ## Release
 
-**A sprint cuts no release.** A release cuts only on the human's explicit words naming the version, and the sprint never prompts for one. When asked, follow `docs/releasing.md`: tag the landed `main` head, push the tag, watch the Release workflow publish, and generate the notes with `Scripts/release-notes.sh vX.Y.Z`. Once the tag is on origin, run `Scripts/pin-plugin.sh X.Y.Z` and land the one-line change to `.claude-plugin/marketplace.json` on `main` through a PR, so the Claude Code plugin moves to the release.
+**A sprint cuts no release.** A release cuts only on the human's explicit words naming the version, and the sprint never prompts for one. When asked, follow the release procedure the repo's `AGENTS.md` names, every step of it, from the landed `main` head.

@@ -4,7 +4,7 @@ The checklist for a diff that changes a documented surface: the docs it touches 
 
 ## Read
 
-- The docs the change touches or falsifies. Docs are `README.md`, `docs/*.md`, `GLOSSARY.md`, `DESIGN.md`, the `examples/` prompts and skills, and `docs/adr/` (an ADR is amended, never silently contradicted). Code comments and rustdoc stay with the `code` lens.
+- The docs the change touches or falsifies. Docs are the README, the docs folder, the glossary and design reference, the agent prompts and skills, and the ADRs (an ADR is amended, never silently contradicted); the repo's `AGENTS.md` names any beyond these. Code comments and API doc comments stay with the `code` lens.
 - The brief's `## What` docs list, against the diff: each doc it names is touched.
 - The PR body's `## Docs` section, against both the brief's list and the diff: the files it names are in the diff, and a `none, because <reason>` holds up against what the diff changed.
 

@@ -26,9 +26,9 @@ A brief's mistakes are paid by every pass after it (the build, the gate, up to t
 
 **Design** fires on any one of these triggers, found by the scout in the ticket or in the code it touches:
 
-- it touches `rust/core/src/store/schema.rs`, a migration, or stored data;
-- it touches a published contract: an MCP tool, CLI output, a wire type, a file format;
-- it crosses more than one layer (`rust/core`, `rust/cli`, `rust/core/src/serve`);
+- it touches the schema, a migration, or stored data;
+- it touches a published contract: an API, CLI output, a wire type, a file format;
+- it crosses more than one of the layers the repo's `AGENTS.md` names;
 - it asks for something new with no `Done when` and no example of the result;
 - it would need splitting: more than one change a reviewer could merge on its own.
 

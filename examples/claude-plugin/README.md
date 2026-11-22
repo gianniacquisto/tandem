@@ -66,6 +66,5 @@ A token-guarded server (`TANDEM_TOKEN`) is not covered: the plugin sends no `Aut
 - `examples/AGENTS.md` (tier 1, the memory instructions) is not loaded: a plugin cannot add to Claude's standing instructions. Copy it into `~/.claude/CLAUDE.md` or import it from there.
 - The plugin installs nothing into `~/.tandem` and does not start the server: `tandem serve` is started by hand (ADR 0047).
 - Plugin skills and agents are namespaced: `/tandem:tandem-sprint`, the `tandem:builder` subagent. If you also copied the examples into `~/.claude/skills` or `~/.claude/agents`, both copies load; remove the hand-copied ones to keep one.
-- The skills and agents encode this repository's own workflow (roster, statuses, review gate). `tandem-team` is a roster template: the plugin ships it as is, so edit a copy if your team differs.
+- The skills and agents encode Tandem's workflow (roster, statuses, review gate). Your repo's own build, test, dev-build and release commands come from its `AGENTS.md`, which the builder and reviewer read for them. `tandem-team` is a roster template: the plugin ships it as is, so edit a copy if your team differs.
 - The agent files carry opencode fields (`mode`, `permissions`, hex `color`) that Claude Code ignores.
-- Releasing: `docs/releasing.md` has the pin step (`Scripts/pin-plugin.sh`).
