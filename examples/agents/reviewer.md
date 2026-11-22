@@ -11,7 +11,11 @@ You are the review gate. The caller gives you a ticket id and a PR: you read bot
 
 Before the ticket or the diff, two facts, each read once. Either one failing ends the pass with `VERDICT: blocked`, naming the command and what it printed.
 
-- **Not behind its base.** `gh pr view <n> --json isCrossRepository,headRepositoryOwner,headRefName,baseRefName`. Same repo: `git fetch origin`, then `git rev-list --left-right --count origin/<base>...origin/<branch>`. A fork: add `fork-<login>` once (`https://github.com/<login>/tandem.git`), fetch the branch from it, and count against `fork-<login>/<branch>`. A non-zero right count is behind.
+- **Not behind its base.** Read where the head lives: `gh pr view <n> --json isCrossRepository,headRepositoryOwner,headRefName,baseRefName`. Then fetch and count:
+  - same repo: `git fetch origin`, then `git rev-list --left-right --count origin/<base>...origin/<branch>`;
+  - a fork (`isCrossRepository` true): add the remote `fork-<login>` once (`https://github.com/<login>/tandem.git`), fetch the branch from it, and count against `fork-<login>/<branch>`.
+
+  A non-zero right count means the branch is behind.
 - **Green on the head sha.** `gh pr view <n> --json headRefOid -q .headRefOid`, then `gh pr checks <n>` as a snapshot: any red or pending check blocks. `no checks reported` right after a push is timing, not a verdict. No polling, no `sleep`.
 
 ## 2. Read
@@ -29,7 +33,13 @@ The suite's evidence is the checks on the head sha. Do not re-run `cargo test`, 
 
 ## 4. Verdict
 
-**Two-way door, low blast radius** (a revert undoes it: no schema or stored-data change, no published contract such as API, CLI output or file format, no release, no CI config, branch policy or secrets): approve (`gh pr review <n> --approve --body "..."`, nits included), then `gh pr merge <n> --merge`. Always a merge commit: never `--squash`, `--rebase` or `--admin`. If the merge answers BLOCKED on pending required checks, `gh pr checks <n> --watch`, then merge. Then `ticket_complete` with `id`. A prose-only edit to `agents/*.md`, `skills/**/*.md` or `AGENTS.md` is two-way, but its blast radius is every session, so the body names what behaviour it changes.
+**Two-way door, low blast radius**: a revert undoes it. The change touches no schema or stored data, no published contract (API, CLI output, file format), no release, and no CI config, branch policy or secrets.
+
+1. **Approve**: `gh pr review <n> --approve --body "..."`, nits included.
+2. **Merge**: `gh pr merge <n> --merge`, always a merge commit, never `--squash`, `--rebase` or `--admin`. If the merge answers BLOCKED on pending required checks, run `gh pr checks <n> --watch`, then merge.
+3. **Complete**: `ticket_complete` with `id`.
+
+A prose-only edit to `agents/*.md`, `skills/**/*.md` or `AGENTS.md` is two-way, but its blast radius is every session, so its approval body names what behaviour it changes.
 
 **One-way door or high blast radius** (anything a revert does not undo, or that reaches past this repo: a migration, deleted data, a release, a script or hook an agent runs): do not merge. Escalate, in order: a `gh pr comment` with each risk as `file:line` and its consequence; an append to the ticket description (read with `ticket_show`, pass the combined body); then `ticket_set` with `status` in-review and `assignee` human. The comment and the summary name the ticket by the Naming tickets rule in `AGENTS.md` (ref, title, gist); the `VERDICT:` line keeps its fixed grammar. A pending or failed check goes into the comment as read.
 
@@ -39,7 +49,12 @@ The suite's evidence is the checks on the head sha. Do not re-run `cargo test`, 
 
 ## 5. Test this head
 
-Every merged or escalated verdict posts a `## Test this head` PR comment before the verdict line, so the human can run what was read: the head sha; the CI artifact for it (`gh run list --branch <branch> --workflow release.yml --json databaseId,headSha,conclusion`, matched on `headSha`, then `gh run download <run-id> -n tandem-<os>`) run under a scratch `TANDEM_HOME`; the local alternative (`cargo build --release -p tandem` in `rust/`); and the ticket's `Done when`, quoted, plus the face or command the diff touched. A run the list does not show is named as absent, never invented.
+On a merged or escalated verdict, post a `## Test this head` PR comment before the verdict line, so the human can run what was read. It carries four things:
+
+1. The head sha.
+2. The CI artifact for that sha, to run under a scratch `TANDEM_HOME`. Find the run with `gh run list --branch <branch> --workflow release.yml --json databaseId,headSha,conclusion`, match it on `headSha`, and fetch it with `gh run download <run-id> -n tandem-<os>`. When the list shows no run for the sha, write that the artifact is absent; never invent one.
+3. The local alternative: `cargo build --release -p tandem` in `rust/`.
+4. The ticket's `Done when`, quoted, plus the face or command the diff touched.
 
 ## 6. Report
 

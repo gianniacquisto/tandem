@@ -17,7 +17,12 @@ Read the board in one round: `ticket_list` with `project` for the project's open
 
 ## 2. Plan the batch
 
-**Recover first.** An `in-progress` ticket whose pass has ended is a **dead claim**: its log has no live handoff and no green PR. Set it back to `ready` with the owner cleared and a comment naming the evidence, then treat it as any other ready ticket. An open PR from the dead pass is reused by the next build, not reopened.
+**Recover first.** A **dead claim** is an `in-progress` ticket whose pass has ended: its log shows no live handoff and no green PR. For each one:
+
+1. Comment with the evidence that the pass has ended.
+2. Set it to `ready` with the owner cleared.
+
+From then on it is a ready ticket like any other. If the dead pass left an open PR, the next build reuses that PR (`agents/builder.md`, step 2) rather than opening another.
 
 **Draw `ready` only**, at most five, in stored order:
 
@@ -40,7 +45,12 @@ Every dispatch names its model and effort; a subagent never inherits the session
 | `M` | one area, new behaviour, new tests | `sonnet`, low | `sonnet`, medium |
 | `L` | crosses layers, touches the schema or a published contract, or many files | `sonnet`, medium | `sonnet`, medium |
 
-**Effort is paid per turn.** A builder takes many turns and its tests are its check, so it runs low and earns medium only on an `L` ticket. A reviewer takes few turns and judgement is its whole job, so it runs medium past `S`, and never on `haiku`: the gate is where a cheap read costs most. Nothing runs at high effort: when a pass needs more, it gets a stronger model, not more effort.
+**Effort is paid per turn.**
+
+- A **builder** takes many turns, and its tests are its check, so it runs low and earns medium only on an `L` ticket.
+- A **reviewer** takes few turns, and judgement is its whole job, so it runs medium on every size past `S`.
+- The reviewer runs on `sonnet` or stronger, because the gate is where a cheap read costs most.
+- Effort tops out at medium. A pass that needs more gets a stronger model instead.
 
 **Escalate the model, never start high.** The first fix pass runs on `sonnet`, medium. The second, the last before the human, runs on `opus`, medium: the hard bug the cheaper passes could not close is where it earns its cost. No build starts on `opus`. A reviewer that answers `blocked` with `needs a stronger read` is re-dispatched once on `opus`, medium; a second such answer escalates to the human.
 
@@ -60,10 +70,15 @@ Dispatch the `reviewer`, on the model the routing picks, with the ticket id and 
 
 - **`merged`**: the reviewer completed the ticket. Every other open batch PR is now behind `main` and its next gate will say so.
 - **`escalated`**: accept it only after `ticket_show` reads status `in-review` and assignee `human`. Anything else is a failed gate: re-dispatch the reviewer once, then hand it over yourself. An escalated ticket leaves the active batch; the sprint does not wait for the human.
-- **`blocked`, behind its base**: bring it up to date yourself (`gh pr update-branch <n>`, a merge), wait for green on the new head (`gh pr checks <n> --watch`), and gate again. A conflict the update cannot merge is a fix pass.
-- **`blocked` on a red check, or `changes-requested`**: a **fix pass**, a fresh `builder` dispatch on the routing's fix-pass model, with four things and nothing else: the ticket id, the PR number, the head sha the gate read, and the finding quoted. Then gate again; a re-gate may resume its own reviewer session.
+- **`blocked`, behind its base**: the sprint updates the branch itself, and this is not a fix pass.
+  1. `gh pr update-branch <n>`, which merges `main` in.
+  2. Wait for green on the new head: `gh pr checks <n> --watch`.
+  3. Gate again.
 
-**The fix loop has a ceiling: two fix passes per ticket.** A third failing verdict escalates: a comment quoting the three findings, then `ticket_set` with `status` in-review and `assignee` human. A branch update or a capacity-cancelled CI rerun (`agents/builder.md`, step 7) is not a fix pass and does not count.
+  A conflict the update cannot merge goes to a fix pass instead.
+- **`blocked` on a red check, or `changes-requested`**: run a **fix pass**, a fresh `builder` dispatch on the routing's fix-pass model. Hand it four things and nothing else: the ticket id, the PR number, the head sha the gate read, and the finding quoted. Then gate again. A re-gate may resume its own reviewer session.
+
+**The fix loop has a ceiling: two fix passes per ticket.** A third failing verdict escalates in two writes: a comment quoting the three findings, then `ticket_set` with `status` in-review and `assignee` human. A branch update or a capacity-cancelled CI rerun (`agents/builder.md`, **Wait for green**) does not count toward the ceiling.
 
 ## 5. Close
 
