@@ -1,32 +1,66 @@
 /*
- * The notes graph (TAN-529): the typed nodes and edges `/notes/graph.json`
- * answers, laid out by a small force simulation and drawn as SVG.
+ * The notes graph (TAN-529, TAN-856): the typed nodes and edges
+ * `/notes/graph.json` answers, moved by a live force simulation and drawn as
+ * SVG.
  *
  * The browser draws what the server answers and decides no node kind or
- * orphan rule. Every node is built with DOM APIs and `textContent`, never
- * `innerHTML`, so a note called `<img onerror>` stays text. The layout runs to
- * rest off-screen in a fixed tick budget, paints once and stops: nothing
- * animates, so reduced motion needs no special case. Dragging moves the
- * dragged node and its edges only.
+ * orphan rule (ADR 0054): a note's `orphan` and `daily` flags arrive in the
+ * JSON and the browser only picks the style. Every node is built with DOM
+ * APIs and `textContent`, never `innerHTML`, so a note called `<img onerror>`
+ * stays text.
+ *
+ * The simulation is hand-written in the style of d3-force: many-body charge
+ * with collision in one pair loop, springs per edge, gravity and velocity
+ * damping, all cooled by `alpha`. It runs on `requestAnimationFrame` only
+ * while it is hot (alpha above ALPHA_MIN, or a held alphaTarget) and stops
+ * once it settles. Dragging holds a node and reheats its neighbours; a node
+ * can be pinned, and pins are kept per browser and per focus project. With
+ * `prefers-reduced-motion` the same ticks run synchronously and the picture
+ * is rendered once.
+ *
+ * TAN-858 adds search through every match (ranked, counted, stepped), a
+ * keyboard walk (one roving tab stop, arrows to the neighbour in that
+ * direction) and a local graph: one node's 1 or 2 hop neighbourhood, the rest
+ * made inactive through the same `active` flag the filters use.
  */
 (function () {
   'use strict';
 
   var OPTIONS_KEY = 'tandem.graph.options';
+  var PINS_KEY = 'tandem.graph.pins';
   var SVG_NS = 'http://www.w3.org/2000/svg';
-  var NAME_LIMIT = 24;
-  var MAX_STEP = 20;
-  var DEFAULTS = { notes: true, folders: true, names: false, daily: 'free' };
+  var NAME_LIMIT = 28;
+  var ALPHA_MIN = 0.002;
+  var MAX_SPEED = 60;
+  var REACH_SQUARED = 160000;
+  var DRAG_THRESHOLD = 3;
+  var DOUBLE_CLICK_MS = 300;
+  var DAILY_ROOT = 'daily';
+  var GLIDE_MS = 550;
+  var GLIDE_ZOOM = 1.3;
+  var DEFAULTS = { notes: true, folders: true, names: false, daily: 'grouped', feel: 'springy' };
+  var FEELS = {
+    springy: { keep: 0.6, charge: 1, rest: 1, spring: 1, gravity: 0.045, life: 300 },
+    calm: { keep: 0.35, charge: 0.85, rest: 1.05, spring: 0.7, gravity: 0.05, life: 160 },
+    bouncy: { keep: 0.82, charge: 1.15, rest: 0.95, spring: 1.6, gravity: 0.04, life: 520 }
+  };
+  var CHARGE = { project: -420, label: -200, folder: -170, note: -120 };
   var WIDE = window.matchMedia ? window.matchMedia('(min-width: 1101px)') : null;
+  var REDUCED = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 
-  // MARK: - Options kept per browser
+  function reduceMotion() {
+    return !!(REDUCED && REDUCED.matches);
+  }
+
+  // MARK: - Options and pins kept per browser
 
   function readOptions() {
     var options = {
       notes: DEFAULTS.notes,
       folders: DEFAULTS.folders,
       names: DEFAULTS.names,
-      daily: DEFAULTS.daily
+      daily: DEFAULTS.daily,
+      feel: DEFAULTS.feel
     };
     try {
       var stored = JSON.parse(window.localStorage.getItem(OPTIONS_KEY) || '{}');
@@ -38,6 +72,9 @@
         });
         if (stored.daily === 'grouped' || stored.daily === 'free') {
           options.daily = stored.daily;
+        }
+        if (typeof stored.feel === 'string' && FEELS.hasOwnProperty(stored.feel)) {
+          options.feel = stored.feel;
         }
       }
     } catch (error) {
@@ -54,7 +91,44 @@
     }
   }
 
-  // MARK: - The layout
+  function readAllPins() {
+    try {
+      var stored = JSON.parse(window.localStorage.getItem(PINS_KEY) || '{}');
+      if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+        return stored;
+      }
+    } catch (error) {
+      // A damaged value: no pins are restored.
+    }
+    return {};
+  }
+
+  function writePins(focus, pins) {
+    try {
+      var all = readAllPins();
+      if (Object.keys(pins).length) {
+        all[focus] = pins;
+      } else {
+        delete all[focus];
+      }
+      window.localStorage.setItem(PINS_KEY, JSON.stringify(all));
+    } catch (error) {
+      // Private mode: the pins last for this page only.
+    }
+  }
+
+  function validPoint(point) {
+    return (
+      Array.isArray(point) &&
+      point.length === 2 &&
+      typeof point[0] === 'number' &&
+      typeof point[1] === 'number' &&
+      isFinite(point[0]) &&
+      isFinite(point[1])
+    );
+  }
+
+  // MARK: - Data prep
 
   function shorten(name) {
     return name.length > NAME_LIMIT ? name.slice(0, NAME_LIMIT - 1) + '…' : name;
@@ -62,96 +136,323 @@
 
   function radius(node) {
     if (node.kind === 'project') {
-      return 10;
+      return 11;
     }
     if (node.kind === 'label') {
-      return 8.5;
+      return 8;
     }
-    return node.kind === 'folder' ? 5 : 4;
+    if (node.kind === 'folder') {
+      return 5.5;
+    }
+    return 3.5 + Math.min(5, Math.sqrt(node.deg) * 0.75);
   }
 
   /*
-   * Pairwise repulsion, a spring per edge (`contains` shorter than `links`),
-   * a weak pull to the centre and velocity damping, over a fixed number of
-   * ticks with a cooling factor, so it always terminates. In Free mode the
-   * `contains` edges out of the root `daily` folder add no force.
+   * One entry per node pair: two `links` between the same pair, in either
+   * direction, become one entry with `both`; `contains` edges are keyed by
+   * direction; self-edges and repeats are dropped. Each node learns its drawn
+   * degree, neighbours, incident edges and raw out/in counts of `links`.
    */
-  function layout(nodes, edges, freeDaily) {
-    var count = nodes.length;
-    var ticks = count > 600 ? 120 : 300;
+  function prepare(rawNodes, rawEdges) {
     var byId = {};
-    nodes.forEach(function (node, index) {
-      byId[node.id] = node;
+    var nodes = rawNodes.map(function (raw, index) {
+      // A tight spiral: the first settle blooms out from the middle.
       var angle = index * 2.399963;
-      var reach = 14 * Math.sqrt(index + 1);
-      node.x = Math.cos(angle) * reach;
-      node.y = Math.sin(angle) * reach;
-      node.vx = 0;
-      node.vy = 0;
+      var reach = 4 * Math.sqrt(index + 1);
+      var node = {
+        id: raw.id,
+        kind: raw.kind,
+        name: String(raw.name === undefined || raw.name === null ? '' : raw.name),
+        path: raw.path,
+        daily: !!raw.daily,
+        orphan: !!raw.orphan,
+        unmatched: raw.unmatched || null,
+        x: Math.cos(angle) * reach,
+        y: Math.sin(angle) * reach,
+        vx: 0,
+        vy: 0,
+        fx: null,
+        fy: null,
+        deg: 0,
+        out: 0,
+        inn: 0,
+        near: {},
+        edges: [],
+        count: 0,
+        active: true,
+        index: index
+      };
+      byId[node.id] = node;
+      return node;
     });
-    var springs = edges.filter(function (edge) {
-      if (!freeDaily || edge.kind !== 'contains') {
-        return true;
+    var kept = {};
+    var edges = [];
+    rawEdges.forEach(function (raw) {
+      var source = byId[raw.source];
+      var target = byId[raw.target];
+      if (!source || !target || source === target) {
+        return;
       }
-      var source = byId[edge.source];
-      return !(source && source.kind === 'folder' && source.path === 'daily');
-    });
-    for (var tick = 0; tick < ticks; tick += 1) {
-      var cooling = 1 - tick / ticks;
-      for (var i = 0; i < count; i += 1) {
-        var a = nodes[i];
-        for (var j = i + 1; j < count; j += 1) {
-          var b = nodes[j];
-          var dx = b.x - a.x;
-          var dy = b.y - a.y;
-          var squared = dx * dx + dy * dy;
-          if (squared < 0.01) {
-            dx = (i % 2 ? 0.1 : -0.1);
-            dy = (j % 2 ? 0.1 : -0.1);
-            squared = dx * dx + dy * dy;
+      if (raw.kind === 'links') {
+        var key = 'l' + [source.id, target.id].sort().join('\u0000');
+        var seen = kept[key];
+        if (seen) {
+          if (seen.source !== source && !seen.both) {
+            seen.both = true;
+            source.out += 1;
+            target.inn += 1;
           }
-          // A floor on the distance keeps two nodes almost on top of each
-          // other from throwing one another out of the picture.
-          var distance = Math.sqrt(squared);
-          var push = 1800 / Math.max(squared, 36);
-          dx = (dx / distance) * push;
-          dy = (dy / distance) * push;
-          a.vx -= dx;
-          a.vy -= dy;
-          b.vx += dx;
-          b.vy += dy;
+          return;
+        }
+        source.out += 1;
+        target.inn += 1;
+        var entry = { source: source, target: target, kind: 'links', both: false, active: true };
+        kept[key] = entry;
+        edges.push(entry);
+      } else {
+        var ckey = 'c' + source.id + '\u0000' + target.id;
+        if (kept[ckey]) {
+          return;
+        }
+        var contained = { source: source, target: target, kind: 'contains', both: false, active: true };
+        kept[ckey] = contained;
+        edges.push(contained);
+      }
+    });
+    edges.forEach(function (edge) {
+      edge.source.deg += 1;
+      edge.target.deg += 1;
+      edge.source.near[edge.target.id] = true;
+      edge.target.near[edge.source.id] = true;
+      edge.source.edges.push(edge);
+      edge.target.edges.push(edge);
+    });
+    nodes.forEach(function (node) {
+      node.r = radius(node);
+      node.charge = CHARGE[node.kind] || CHARGE.note;
+    });
+    return { nodes: nodes, edges: edges, byId: byId };
+  }
+
+  function describe(node) {
+    if (node.kind === 'note') {
+      if (node.daily && node.orphan) {
+        return 'no wikilinks yet';
+      }
+      if (node.orphan) {
+        return 'orphan: no wikilinks and not filed under a project';
+      }
+      return node.out + ' out, ' + node.inn + ' in';
+    }
+    var text = node.deg + (node.deg === 1 ? ' connection' : ' connections');
+    if (node.unmatched) {
+      text += ', ' + node.unmatched;
+    }
+    return text;
+  }
+
+  // MARK: - The simulation
+
+  function Simulation(onFrame) {
+    this.nodes = [];
+    this.edges = [];
+    this.active = [];
+    this.live = [];
+    this.alpha = 0;
+    this.alphaTarget = 0;
+    this.feel = FEELS.springy;
+    this.decay = 0;
+    this.raf = 0;
+    this.onFrame = onFrame;
+    this.onSettle = null;
+    this.setFeel('springy');
+  }
+
+  Simulation.prototype.setFeel = function (name) {
+    this.feel = FEELS[name] || FEELS.springy;
+    this.decay = 1 - Math.pow(ALPHA_MIN, 1 / this.feel.life);
+  };
+
+  Simulation.prototype.load = function (nodes, edges) {
+    this.nodes = nodes;
+    this.edges = edges;
+    this.refresh();
+  };
+
+  /* Rebuild the active lists and each node's active edge count. */
+  Simulation.prototype.refresh = function () {
+    this.active = this.nodes.filter(function (node) {
+      return node.active;
+    });
+    this.live = this.edges.filter(function (edge) {
+      return edge.active;
+    });
+    this.nodes.forEach(function (node) {
+      node.count = 0;
+    });
+    this.live.forEach(function (edge) {
+      edge.source.count += 1;
+      edge.target.count += 1;
+    });
+  };
+
+  Simulation.prototype.tick = function () {
+    var feel = this.feel;
+    var alpha = this.alpha + (this.alphaTarget - this.alpha) * this.decay;
+    this.alpha = alpha;
+    var nodes = this.active;
+    var count = nodes.length;
+    var kick = alpha * feel.charge;
+    var i;
+    var j;
+    var a;
+    var b;
+    var dx;
+    var dy;
+    var d2;
+    var distance;
+    var weight;
+
+    for (i = 0; i < count; i += 1) {
+      a = nodes[i];
+      var ax = a.x + a.vx;
+      var ay = a.y + a.vy;
+      var bigA = a.kind === 'project' || a.kind === 'label';
+      for (j = i + 1; j < count; j += 1) {
+        b = nodes[j];
+        dx = b.x + b.vx - ax;
+        dy = b.y + b.vy - ay;
+        d2 = dx * dx + dy * dy;
+        if (d2 === 0) {
+          // Coincident nodes: a small jitter tells them apart.
+          dx = ((i + j) % 2 ? 1 : -1) * 0.01 * (1 + (j % 3));
+          dy = ((i * j) % 2 ? 1 : -1) * 0.01 * (1 + (i % 3));
+          d2 = dx * dx + dy * dy;
+        }
+        if (d2 > REACH_SQUARED) {
+          continue;
+        }
+        distance = Math.sqrt(d2);
+        // Charge: each node is pushed away by the other's strength.
+        weight = kick / (d2 < 1 ? 1 : d2);
+        a.vx += dx * b.charge * weight;
+        a.vy += dy * b.charge * weight;
+        b.vx -= dx * a.charge * weight;
+        b.vy -= dy * a.charge * weight;
+        // Collision shares the loop: keep a minimum gap.
+        var bigB = b.kind === 'project' || b.kind === 'label';
+        var minimum = a.r + b.r + (bigA && bigB ? 26 : bigA || bigB ? 12 : 5);
+        if (distance < minimum) {
+          var push = ((minimum - distance) / distance) * 0.35 * 0.5;
+          a.vx -= dx * push;
+          a.vy -= dy * push;
+          b.vx += dx * push;
+          b.vy += dy * push;
         }
       }
-      springs.forEach(function (edge) {
-        var source = byId[edge.source];
-        var target = byId[edge.target];
-        var dx = target.x - source.x;
-        var dy = target.y - source.y;
-        var distance = Math.sqrt(dx * dx + dy * dy) || 1;
-        var rest = edge.kind === 'contains' ? 55 : 90;
-        var pull = (distance - rest) * 0.04;
-        dx = (dx / distance) * pull;
-        dy = (dy / distance) * pull;
-        source.vx += dx;
-        source.vy += dy;
-        target.vx -= dx;
-        target.vy -= dy;
-      });
-      nodes.forEach(function (node) {
-        node.vx -= node.x * 0.004;
-        node.vy -= node.y * 0.004;
-        var speed = Math.sqrt(node.vx * node.vx + node.vy * node.vy);
-        if (speed > MAX_STEP) {
-          node.vx = (node.vx / speed) * MAX_STEP;
-          node.vy = (node.vy / speed) * MAX_STEP;
-        }
-        node.x += node.vx * cooling;
-        node.y += node.vy * cooling;
-        node.vx *= 0.6;
-        node.vy *= 0.6;
-      });
     }
-  }
+
+    var live = this.live;
+    for (i = 0; i < live.length; i += 1) {
+      var edge = live[i];
+      var s = edge.source;
+      var t = edge.target;
+      dx = t.x + t.vx - s.x - s.vx;
+      dy = t.y + t.vy - s.y - s.vy;
+      if (dx === 0 && dy === 0) {
+        dx = 0.01;
+        dy = 0.01;
+      }
+      distance = Math.sqrt(dx * dx + dy * dy);
+      var rest = (edge.kind === 'contains' ? 26 + 7 * Math.sqrt(s.count) : 70) * feel.rest;
+      var strength = Math.min(1, (1 / Math.min(s.count, t.count)) * feel.spring);
+      var pull = ((distance - rest) / distance) * alpha * strength;
+      dx *= pull;
+      dy *= pull;
+      var bias = s.count / (s.count + t.count);
+      t.vx -= dx * bias;
+      t.vy -= dy * bias;
+      s.vx += dx * (1 - bias);
+      s.vy += dy * (1 - bias);
+    }
+
+    var gravity = feel.gravity * alpha;
+    for (i = 0; i < count; i += 1) {
+      a = nodes[i];
+      var g = a.count < 3 ? gravity * 2.2 : gravity;
+      a.vx -= a.x * g;
+      a.vy -= a.y * g;
+      if (a.fx !== null) {
+        a.x = a.fx;
+        a.y = a.fy;
+        a.vx = 0;
+        a.vy = 0;
+        continue;
+      }
+      a.vx *= feel.keep;
+      a.vy *= feel.keep;
+      var speed = Math.sqrt(a.vx * a.vx + a.vy * a.vy);
+      if (speed > MAX_SPEED) {
+        a.vx = (a.vx / speed) * MAX_SPEED;
+        a.vy = (a.vy / speed) * MAX_SPEED;
+      }
+      a.x += a.vx;
+      a.y += a.vy;
+    }
+  };
+
+  Simulation.prototype.hot = function () {
+    return this.alpha > ALPHA_MIN || this.alphaTarget > 0;
+  };
+
+  /* Reheat to at least `alpha` and make sure the frame loop is running. */
+  Simulation.prototype.reheat = function (alpha) {
+    this.alpha = Math.max(this.alpha, alpha);
+    if (reduceMotion()) {
+      if (this.alphaTarget <= 0) {
+        this.settle();
+      }
+      return;
+    }
+    this.start();
+  };
+
+  Simulation.prototype.start = function () {
+    var self = this;
+    if (this.raf) {
+      return;
+    }
+    this.raf = window.requestAnimationFrame(function frame() {
+      self.raf = 0;
+      self.tick();
+      self.onFrame(false);
+      if (self.hot()) {
+        self.raf = window.requestAnimationFrame(frame);
+      } else if (self.onSettle) {
+        self.onSettle();
+      }
+    });
+  };
+
+  /* Run ticks until cool, without a frame in between, then render once. */
+  Simulation.prototype.settle = function () {
+    var guard = 0;
+    while (this.alpha > ALPHA_MIN && guard < 4000) {
+      this.tick();
+      guard += 1;
+    }
+    this.onFrame(true);
+    if (this.onSettle) {
+      this.onSettle();
+    }
+  };
+
+  Simulation.prototype.stop = function () {
+    if (this.raf) {
+      window.cancelAnimationFrame(this.raf);
+      this.raf = 0;
+    }
+  };
 
   // MARK: - One graph on the page
 
@@ -163,15 +464,8 @@
     return element;
   }
 
-  function nodeKindLabel(node) {
-    var label = node.kind;
-    if (node.orphan) {
-      label += ', orphan';
-    }
-    if (node.unmatched) {
-      label += ', ' + node.unmatched;
-    }
-    return label;
+  function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
   }
 
   function setUp(container) {
@@ -190,7 +484,11 @@
     var capText = container.querySelector('[data-graph-cap-text]');
     var controls = container.querySelector('[data-graph-controls]');
     var search = container.querySelector('[data-graph-search]');
+    var countEl = container.querySelector('[data-graph-count]');
+    var localBar = container.querySelector('[data-graph-local]');
+    var localName = container.querySelector('[data-graph-local-name]');
     var tip = container.querySelector('[data-graph-tip]');
+    var unpinButton = container.querySelector('[data-graph-unpin]');
     if (!svg || !canvas) {
       return;
     }
@@ -200,12 +498,48 @@
     var edges = [];
     var byId = {};
     var elements = {};
-    var edgeElements = [];
     var viewport = null;
     var view = { x: 0, y: 0, k: 1 };
     var lit = null;
-    var found = null;
+    var results = [];
+    var cursor = 0;
+    var local = null;
+    var rovingId = '';
     var generation = 0;
+    var focusKey = '';
+    var pins = {};
+    var fitAt = null;
+    var fitOnSettle = false;
+    var viewFrame = 0;
+    var tapTimer = 0;
+    var lastTap = null;
+    var pointers = {};
+    var gesture = null;
+
+    try {
+      focusKey =
+        new URL(container.getAttribute('data-src') || '', window.location.href).searchParams.get(
+          'project'
+        ) || '';
+    } catch (error) {
+      focusKey = '';
+    }
+
+    var sim = new Simulation(function (immediate) {
+      render();
+      if (fitAt !== null && sim.alpha < fitAt) {
+        fitAt = null;
+        fit(!immediate);
+      }
+    });
+    sim.onSettle = function () {
+      if (fitOnSettle) {
+        fitOnSettle = false;
+        fitAt = null;
+        fit(true);
+      }
+    };
+    sim.setFeel(options.feel);
 
     // MARK: Controls
 
@@ -213,12 +547,26 @@
       container.querySelectorAll('[data-graph-option]').forEach(function (box) {
         box.checked = !!options[box.getAttribute('data-graph-option')];
       });
-      container.querySelectorAll('[data-graph-daily]').forEach(function (button) {
-        button.setAttribute(
-          'aria-pressed',
-          button.getAttribute('data-graph-daily') === options.daily ? 'true' : 'false'
-        );
+      ['daily', 'feel'].forEach(function (name) {
+        container.querySelectorAll('[data-graph-' + name + ']').forEach(function (button) {
+          button.setAttribute(
+            'aria-pressed',
+            button.getAttribute('data-graph-' + name) === options[name] ? 'true' : 'false'
+          );
+          if (button.parentNode) {
+            button.parentNode.setAttribute('data-value', options[name]);
+          }
+        });
       });
+    }
+
+    function syncUnpin() {
+      if (!unpinButton) {
+        return;
+      }
+      var count = Object.keys(pins).length;
+      unpinButton.textContent = count ? 'Unpin ' + count : 'Unpin';
+      unpinButton.disabled = count === 0;
     }
 
     function showMessage(element, show) {
@@ -229,6 +577,20 @@
 
     // MARK: Drawing
 
+    function dragging() {
+      return gesture && gesture.dragging ? gesture.node : null;
+    }
+
+    /* Above the focused node, on every frame and every pan or zoom. */
+    function placeTip() {
+      if (!lit || !tip.classList.contains('gtip--on')) {
+        return;
+      }
+      var scale = dragging() === lit ? 1.55 : 1.35;
+      tip.style.left = Math.round(lit.x * view.k + view.x) + 'px';
+      tip.style.top = Math.round(lit.y * view.k + view.y - lit.r * scale - 8) + 'px';
+    }
+
     function applyView() {
       if (viewport) {
         viewport.setAttribute(
@@ -236,77 +598,127 @@
           'translate(' + view.x + ' ' + view.y + ') scale(' + view.k + ')'
         );
       }
+      svg.style.setProperty('--k', String(view.k));
+      svg.classList.toggle('gsvg--zoomed', view.k > 1.6);
+      placeTip();
     }
 
-    function isShown(node) {
-      if (node.kind === 'note') {
-        return options.notes;
-      }
-      if (node.kind === 'folder') {
-        return options.folders;
-      }
-      return true;
+    function render() {
+      sim.active.forEach(function (node) {
+        var element = elements[node.id];
+        if (element) {
+          element.setAttribute('transform', 'translate(' + node.x + ' ' + node.y + ')');
+        }
+      });
+      sim.live.forEach(function (edge) {
+        var line = edge.line;
+        if (line) {
+          line.setAttribute('x1', edge.source.x);
+          line.setAttribute('y1', edge.source.y);
+          line.setAttribute('x2', edge.target.x);
+          line.setAttribute('y2', edge.target.y);
+        }
+      });
+      placeTip();
     }
 
-    function fit() {
+    function stopViewAnimation() {
+      if (viewFrame) {
+        window.cancelAnimationFrame(viewFrame);
+        viewFrame = 0;
+      }
+    }
+
+    function fitTarget() {
       var box = svg.getBoundingClientRect();
-      var shown = nodes.filter(isShown);
+      var shown = sim.active;
       if (!shown.length || !box.width || !box.height) {
-        return;
+        return null;
       }
       var minX = Infinity;
       var minY = Infinity;
       var maxX = -Infinity;
       var maxY = -Infinity;
       shown.forEach(function (node) {
-        minX = Math.min(minX, node.x);
-        maxX = Math.max(maxX, node.x);
-        minY = Math.min(minY, node.y);
-        maxY = Math.max(maxY, node.y + 18);
+        minX = Math.min(minX, node.x - node.r);
+        maxX = Math.max(maxX, node.x + node.r);
+        minY = Math.min(minY, node.y - node.r);
+        maxY = Math.max(maxY, node.y + node.r + 16);
       });
+      // Leave room for the controls card on the right and the key below.
+      var reserve = 0;
+      if (controls && !controls.hidden && WIDE && WIDE.matches) {
+        reserve = Math.max(0, box.right - controls.getBoundingClientRect().left + 12);
+      }
+      var left = 48;
+      var top = 48;
+      var availW = Math.max(box.width - left - 48 - reserve, 80);
+      var availH = Math.max(box.height - top - 96, 80);
       var width = Math.max(maxX - minX, 1);
       var height = Math.max(maxY - minY, 1);
-      var k = Math.min((box.width - 140) / width, (box.height - 190) / height, 1.6);
-      view.k = Math.max(k, 0.05);
-      view.x = box.width / 2 - ((minX + maxX) / 2) * view.k;
-      view.y = (box.height - 50) / 2 - ((minY + maxY) / 2) * view.k;
-      applyView();
+      var k = Math.max(Math.min(availW / width, availH / height, 1.6), 0.05);
+      return {
+        k: k,
+        x: left + availW / 2 - ((minX + maxX) / 2) * k,
+        y: top + availH / 2 - ((minY + maxY) / 2) * k
+      };
     }
 
-    function placeNode(node) {
-      var element = elements[node.id];
-      if (element) {
-        element.setAttribute('transform', 'translate(' + node.x + ' ' + node.y + ')');
+    /* Glide the view to a target (or a function giving one each frame). */
+    function animateView(targetOf, duration) {
+      var target = typeof targetOf === 'function' ? targetOf() : targetOf;
+      if (!target) {
+        return;
       }
-    }
-
-    function placeEdges(node) {
-      edgeElements.forEach(function (entry) {
-        if (entry.edge.source === node.id || entry.edge.target === node.id) {
-          var source = byId[entry.edge.source];
-          var target = byId[entry.edge.target];
-          entry.line.setAttribute('x1', source.x);
-          entry.line.setAttribute('y1', source.y);
-          entry.line.setAttribute('x2', target.x);
-          entry.line.setAttribute('y2', target.y);
+      stopViewAnimation();
+      if (reduceMotion()) {
+        view.x = target.x;
+        view.y = target.y;
+        view.k = target.k;
+        applyView();
+        return;
+      }
+      var from = { x: view.x, y: view.y, k: view.k };
+      var started = null;
+      viewFrame = window.requestAnimationFrame(function step(now) {
+        if (started === null) {
+          started = now;
         }
+        var t = Math.min((now - started) / duration, 1);
+        var e = easeOutCubic(t);
+        var to = typeof targetOf === 'function' ? targetOf() || target : target;
+        view.k = Math.exp(Math.log(from.k) + (Math.log(to.k) - Math.log(from.k)) * e);
+        view.x = from.x + (to.x - from.x) * e;
+        view.y = from.y + (to.y - from.y) * e;
+        applyView();
+        viewFrame = t < 1 ? window.requestAnimationFrame(step) : 0;
       });
     }
 
-    function applyVisibility() {
-      nodes.forEach(function (node) {
-        var element = elements[node.id];
-        element.style.display = isShown(node) ? '' : 'none';
-        element.classList.toggle(
-          'gnode--named',
-          options.names && (node.kind === 'note' || node.kind === 'folder')
-        );
-      });
-      edgeElements.forEach(function (entry) {
-        var visible =
-          isShown(byId[entry.edge.source]) && isShown(byId[entry.edge.target]);
-        entry.line.style.display = visible ? '' : 'none';
-      });
+    /* The Fit button and the auto fits glide there in 600ms, ease-out cubic. */
+    function fit(animate) {
+      var target = fitTarget();
+      if (!target) {
+        return;
+      }
+      if (!animate) {
+        stopViewAnimation();
+        view.x = target.x;
+        view.y = target.y;
+        view.k = target.k;
+        applyView();
+        return;
+      }
+      animateView(target, 600);
+    }
+
+    /* Centre a node in the canvas, zoomed to at least `minZoom`, in 550ms. */
+    function glideTo(node, minZoom) {
+      var k = Math.min(Math.max(view.k, minZoom), 8);
+      animateView(function () {
+        var box = svg.getBoundingClientRect();
+        return { k: k, x: box.width / 2 - node.x * k, y: box.height / 2 - node.y * k };
+      }, GLIDE_MS);
     }
 
     function nodeElement(node) {
@@ -315,41 +727,50 @@
         classes += ' gnode--unmatched';
       }
       if (node.kind === 'note') {
-        if (node.orphan) {
-          classes += ' gnode--orphan';
-        } else if (node.daily) {
+        if (node.daily) {
           classes += ' gnode--daily';
+        } else if (node.orphan) {
+          classes += ' gnode--orphan';
         }
       }
       var group = svgElement('g', {
         class: classes,
-        tabindex: '0',
+        tabindex: '-1',
         role: 'link',
-        'aria-label': nodeKindLabel(node) + ' ' + node.name,
+        'aria-label': node.kind + ' ' + node.name + ', ' + describe(node),
         'data-id': node.id
       });
-      var size = radius(node);
+      var size = node.r;
+      group.appendChild(svgElement('circle', { class: 'ghit', r: Math.max(size + 4, 9) }));
       if (node.kind === 'label') {
+        var reach = size * 1.25;
         group.appendChild(
-          svgElement('rect', {
+          svgElement('polygon', {
             class: 'gshape',
-            x: -6,
-            y: -6,
-            width: 12,
-            height: 12,
-            transform: 'rotate(45)'
+            points: '0,' + -reach + ' ' + reach + ',0 0,' + reach + ' ' + -reach + ',0'
           })
         );
       } else {
         group.appendChild(svgElement('circle', { class: 'gshape', r: size }));
       }
-      group.appendChild(svgElement('circle', { class: 'gring', r: size + 5 }));
+      var pin = svgElement('g', { class: 'gpin' });
+      pin.appendChild(svgElement('circle', { class: 'gpin__ring', r: size + 5 }));
+      pin.appendChild(
+        svgElement('circle', {
+          class: 'gpin__dot',
+          r: 2,
+          cx: (size + 5) * 0.72,
+          cy: -(size + 5) * 0.72
+        })
+      );
+      group.appendChild(pin);
+      group.appendChild(svgElement('circle', { class: 'gring', r: size + 6 }));
       var text = svgElement('text', {
         class:
           node.kind === 'project' || node.kind === 'label'
             ? 'glabel'
             : 'glabel glabel--minor',
-        y: size + 12,
+        y: size,
         'text-anchor': 'middle'
       });
       text.textContent = shorten(node.name);
@@ -362,34 +783,295 @@
         svg.removeChild(svg.firstChild);
       }
       elements = {};
-      edgeElements = [];
       viewport = svgElement('g', { 'data-graph-viewport': '' });
       var edgeLayer = svgElement('g');
       var nodeLayer = svgElement('g');
       edges.forEach(function (edge) {
-        var source = byId[edge.source];
-        var target = byId[edge.target];
-        var line = svgElement('line', {
-          class: 'gedge gedge--' + edge.kind,
-          x1: source.x,
-          y1: source.y,
-          x2: target.x,
-          y2: target.y
-        });
-        edgeLayer.appendChild(line);
-        edgeElements.push({ edge: edge, line: line });
+        var classes = 'gedge gedge--' + edge.kind + (edge.both ? ' gedge--both' : '');
+        edge.line = svgElement('line', { class: classes });
+        edgeLayer.appendChild(edge.line);
       });
       nodes.forEach(function (node) {
         var element = nodeElement(node);
         elements[node.id] = element;
         nodeLayer.appendChild(element);
-        placeNode(node);
+        element.classList.toggle('gnode--pinned', node.fx !== null);
       });
       viewport.appendChild(edgeLayer);
       viewport.appendChild(nodeLayer);
       svg.appendChild(viewport);
       applyVisibility();
-      fit();
+      applyView();
+      render();
+    }
+
+    function applyVisibility() {
+      nodes.forEach(function (node) {
+        var element = elements[node.id];
+        if (!element) {
+          return;
+        }
+        element.classList.toggle('gnode--off', !node.active);
+        if (node.active) {
+          element.removeAttribute('aria-hidden');
+        } else {
+          element.setAttribute('aria-hidden', 'true');
+        }
+      });
+      edges.forEach(function (edge) {
+        if (edge.line) {
+          edge.line.classList.toggle('gedge--off', !edge.active);
+        }
+      });
+      svg.classList.toggle('gsvg--names', !!options.names);
+      syncTabStop();
+    }
+
+    /*
+     * One tab stop into the graph: the last focused node while it is shown,
+     * else the shown node with the most connections. Hidden nodes get -1.
+     */
+    function tabStop() {
+      var remembered = byId[rovingId];
+      if (remembered && remembered.active) {
+        return remembered;
+      }
+      var best = null;
+      nodes.forEach(function (node) {
+        if (node.active && (!best || node.deg > best.deg)) {
+          best = node;
+        }
+      });
+      return best;
+    }
+
+    function syncTabStop() {
+      var stop = tabStop();
+      nodes.forEach(function (node) {
+        var element = elements[node.id];
+        if (element) {
+          element.setAttribute('tabindex', node === stop ? '0' : '-1');
+        }
+      });
+    }
+
+    // MARK: Which nodes and edges take part
+
+    function wanted(node) {
+      if (node.kind === 'note') {
+        return options.notes;
+      }
+      if (node.kind === 'folder') {
+        return options.folders;
+      }
+      return true;
+    }
+
+    /* Free daily mode drops the spokes out of the root daily folder. */
+    function edgeWanted(edge) {
+      if (!edge.source.active || !edge.target.active) {
+        return false;
+      }
+      return !(
+        options.daily === 'free' &&
+        edge.kind === 'contains' &&
+        edge.source.kind === 'folder' &&
+        edge.source.path === DAILY_ROOT
+      );
+    }
+
+    function setEdges() {
+      edges.forEach(function (edge) {
+        edge.active = edgeWanted(edge);
+      });
+    }
+
+    /*
+     * Toggle `active` on nodes and edges from the options, bring a returning
+     * node back beside an active neighbour, and rebuild the lists. Positions
+     * are kept: nothing is laid out cold.
+     */
+    function applyActive() {
+      var before = {};
+      if (local && !wanted(local.node)) {
+        local = null;
+        syncLocalBar();
+      }
+      markLocal();
+      nodes.forEach(function (node) {
+        before[node.id] = node.active;
+        node.active = wanted(node) && !node.outside;
+      });
+      nodes.forEach(function (node) {
+        if (!node.active || before[node.id]) {
+          return;
+        }
+        var anchor = null;
+        var ids = Object.keys(node.near);
+        for (var pass = 0; pass < 2 && !anchor; pass += 1) {
+          for (var i = 0; i < ids.length; i += 1) {
+            var other = byId[ids[i]];
+            if (other.active && (pass === 1 || before[other.id])) {
+              anchor = other;
+              break;
+            }
+          }
+        }
+        if (anchor && node.fx === null) {
+          var angle = (node.index * 2.399963) % (Math.PI * 2);
+          node.x = anchor.x + Math.cos(angle) * 15;
+          node.y = anchor.y + Math.sin(angle) * 15;
+        }
+        node.vx = 0;
+        node.vy = 0;
+      });
+      setEdges();
+      sim.refresh();
+      applyVisibility();
+      if (lit && !lit.active) {
+        clearLight();
+      }
+      var held = document.activeElement;
+      if (held && held !== svg && svg.contains(held) && held.classList.contains('gnode--off')) {
+        var stop = tabStop();
+        if (stop) {
+          elements[stop.id].focus({ preventScroll: true });
+        }
+      }
+      refreshSearch();
+      render();
+    }
+
+    // MARK: The local graph
+
+    /* Flag the nodes outside the centre's reach; filters shape the walk. */
+    function markLocal() {
+      nodes.forEach(function (node) {
+        node.outside = false;
+      });
+      if (!local) {
+        return;
+      }
+      var seen = {};
+      seen[local.node.id] = true;
+      var frontier = [local.node];
+      for (var hop = 0; hop < local.hops; hop += 1) {
+        var next = [];
+        frontier.forEach(function (node) {
+          Object.keys(node.near).forEach(function (id) {
+            var other = byId[id];
+            if (!seen[id] && wanted(other)) {
+              seen[id] = true;
+              next.push(other);
+            }
+          });
+        });
+        frontier = next;
+      }
+      nodes.forEach(function (node) {
+        node.outside = !seen[node.id];
+      });
+    }
+
+    function syncLocalBar() {
+      if (!localBar) {
+        return;
+      }
+      localBar.hidden = !local;
+      if (!local) {
+        return;
+      }
+      localName.textContent = local.node.name;
+      localBar.querySelectorAll('[data-graph-hops]').forEach(function (button) {
+        var pressed = button.getAttribute('data-graph-hops') === String(local.hops);
+        button.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+        if (button.parentNode) {
+          button.parentNode.setAttribute('data-value', String(local.hops));
+        }
+      });
+    }
+
+    function enterLocal(node, hops) {
+      if (!viewport || !node.active) {
+        return;
+      }
+      local = { node: node, hops: hops || (local ? local.hops : 1) };
+      rovingId = node.id;
+      syncLocalBar();
+      applyActive();
+      fitAt = 0.08;
+      fitOnSettle = true;
+      sim.reheat(0.7);
+    }
+
+    function leaveLocal() {
+      if (!local) {
+        return;
+      }
+      local = null;
+      syncLocalBar();
+      applyActive();
+      fitAt = 0.08;
+      fitOnSettle = true;
+      sim.reheat(0.6);
+    }
+
+    function filterChanged(heat) {
+      applyActive();
+      fitAt = 0.08;
+      sim.reheat(heat);
+    }
+
+    // MARK: Pins
+
+    function savePins() {
+      writePins(focusKey, pins);
+      syncUnpin();
+    }
+
+    function markPinned(node) {
+      var element = elements[node.id];
+      if (element) {
+        element.classList.toggle('gnode--pinned', node.fx !== null);
+      }
+    }
+
+    function pinNode(node) {
+      node.fx = node.x;
+      node.fy = node.y;
+      pins[node.id] = [Math.round(node.x * 10) / 10, Math.round(node.y * 10) / 10];
+      markPinned(node);
+      savePins();
+    }
+
+    function unpinNode(node) {
+      node.fx = null;
+      node.fy = null;
+      delete pins[node.id];
+      markPinned(node);
+      savePins();
+    }
+
+    function restorePins() {
+      var stored = readAllPins()[focusKey];
+      pins = {};
+      var dropped = false;
+      if (stored && typeof stored === 'object') {
+        Object.keys(stored).forEach(function (id) {
+          var node = byId[id];
+          if (node && validPoint(stored[id])) {
+            node.x = node.fx = stored[id][0];
+            node.y = node.fy = stored[id][1];
+            pins[id] = [stored[id][0], stored[id][1]];
+          } else {
+            dropped = true;
+          }
+        });
+      }
+      if (dropped) {
+        writePins(focusKey, pins);
+      }
+      syncUnpin();
     }
 
     // MARK: Highlight
@@ -399,41 +1081,40 @@
         return;
       }
       lit = null;
-      viewport.querySelectorAll('.gdim, .glit').forEach(function (element) {
-        element.classList.remove('gdim', 'glit');
+      svg.classList.remove('gsvg--focus');
+      svg.querySelectorAll('.gnear, .glit').forEach(function (element) {
+        element.classList.remove('gnear', 'glit');
       });
-      tip.hidden = true;
+      tip.classList.remove('gtip--on');
     }
 
     function light(node) {
-      if (!viewport) {
+      if (!viewport || !node.active) {
         return;
       }
-      clearLight();
-      lit = node;
-      var near = {};
-      near[node.id] = true;
-      edgeElements.forEach(function (entry) {
-        var incident = entry.edge.source === node.id || entry.edge.target === node.id;
-        entry.line.classList.toggle('gdim', !incident);
-        if (incident) {
-          near[entry.edge.source] = true;
-          near[entry.edge.target] = true;
-        }
-      });
-      nodes.forEach(function (other) {
-        var element = elements[other.id];
-        element.classList.toggle('gdim', !near[other.id]);
-        element.classList.toggle('glit', other === node);
-      });
-      tip.textContent = '';
-      tip.appendChild(document.createTextNode(node.name + ' '));
-      var small = document.createElement('small');
-      small.textContent = nodeKindLabel(node);
-      tip.appendChild(small);
-      tip.hidden = false;
-      tip.style.left = Math.round(node.x * view.k + view.x + 12) + 'px';
-      tip.style.top = Math.round(node.y * view.k + view.y - 28) + 'px';
+      if (lit !== node) {
+        clearLight();
+        lit = node;
+        svg.classList.add('gsvg--focus');
+        elements[node.id].classList.add('glit', 'gnear');
+        Object.keys(node.near).forEach(function (id) {
+          if (byId[id].active) {
+            elements[id].classList.add('gnear');
+          }
+        });
+        node.edges.forEach(function (edge) {
+          if (edge.active) {
+            edge.line.classList.add('gnear');
+          }
+        });
+        tip.textContent = '';
+        tip.appendChild(document.createTextNode(node.name + ' '));
+        var small = document.createElement('small');
+        small.textContent = describe(node);
+        tip.appendChild(small);
+      }
+      tip.classList.add('gtip--on');
+      placeTip();
     }
 
     // MARK: Opening a node
@@ -455,37 +1136,60 @@
         return;
       }
       if (window.htmx) {
-        window.htmx.ajax('GET', href, { target: '#notes-root', swap: 'outerHTML' });
+        // htmx owns the push: it snapshots the graph page before the swap, so
+        // Back restores a page that still holds the graph. A bare pushState
+        // after the swap left htmx a snapshot without it.
+        var source = document.createElement('span');
+        source.hidden = true;
+        source.setAttribute('hx-push-url', 'true');
+        document.body.appendChild(source);
+        window.htmx
+          .ajax('GET', href, {
+            source: source,
+            target: '#notes-root',
+            swap: 'outerHTML',
+          })
+          .then(function () {
+            source.remove();
+          });
       } else {
         window.location.href = href;
       }
     }
 
     function selectInTree(node) {
-      var chosen = null;
-      document.querySelectorAll('.tree__row').forEach(function (row) {
-        var match = row.getAttribute('data-path') === node.path;
-        row.setAttribute('aria-selected', match ? 'true' : 'false');
-        if (match) {
-          chosen = row;
-        }
-      });
-      if (chosen) {
-        chosen.scrollIntoView({ block: 'nearest' });
+      // The tree's fold state is owned by tandem.js: ask it by event.
+      document.dispatchEvent(
+        new CustomEvent('tandem:reveal-path', { detail: { path: node.path } })
+      );
+    }
+
+    function ripple(node) {
+      var element = elements[node.id];
+      if (reduceMotion() || !element) {
+        return;
       }
+      var ring = svgElement('circle', { class: 'gripple', r: node.r });
+      element.appendChild(ring);
+      var remove = function () {
+        if (ring.parentNode) {
+          ring.parentNode.removeChild(ring);
+        }
+      };
+      ring.addEventListener('animationend', remove);
+      window.setTimeout(remove, 900);
     }
 
     // MARK: Pointer: drag a node, pan the background, wheel and pinch zoom
 
-    var pointers = {};
-    var gesture = null;
-
     function nodeOf(target) {
       var element = target.closest ? target.closest('.gnode') : null;
-      return element ? byId[element.getAttribute('data-id')] : null;
+      var node = element ? byId[element.getAttribute('data-id')] : null;
+      return node && node.active ? node : null;
     }
 
     function zoomAt(factor, cx, cy) {
+      stopViewAnimation();
       var k = Math.min(Math.max(view.k * factor, 0.05), 8);
       var ratio = k / view.k;
       view.x = cx - (cx - view.x) * ratio;
@@ -501,17 +1205,113 @@
       return Math.hypot(a.x - b.x, a.y - b.y);
     }
 
+    function worldOf(event) {
+      var box = svg.getBoundingClientRect();
+      return {
+        x: (event.clientX - box.left - view.x) / view.k,
+        y: (event.clientY - box.top - view.y) / view.k
+      };
+    }
+
+    /* Past the threshold the node is held at the pointer and its neighbours follow. */
+    function beginDrag(node) {
+      gesture.dragging = true;
+      sim.alphaTarget = 0.3;
+      window.clearTimeout(tapTimer);
+      tapTimer = 0;
+      lastTap = null;
+      elements[node.id].classList.add('gnode--dragging');
+      light(node);
+      sim.reheat(0.3);
+    }
+
+    function dragTo(event) {
+      var node = gesture.node;
+      var point = worldOf(event);
+      var now = window.performance.now();
+      var dt = Math.max(now - gesture.stamp, 1);
+      // A smoothed pointer velocity, in world units per 16ms frame.
+      gesture.vx = gesture.vx * 0.7 + ((point.x - gesture.wx) / dt) * 16 * 0.3;
+      gesture.vy = gesture.vy * 0.7 + ((point.y - gesture.wy) / dt) * 16 * 0.3;
+      gesture.wx = point.x;
+      gesture.wy = point.y;
+      gesture.stamp = now;
+      node.fx = point.x;
+      node.fy = point.y;
+      node.x = point.x;
+      node.y = point.y;
+      if (reduceMotion()) {
+        for (var i = 0; i < 4; i += 1) {
+          sim.tick();
+        }
+        render();
+      } else {
+        sim.start();
+      }
+    }
+
+    function endDrag(finished, event) {
+      var node = finished.node;
+      elements[node.id].classList.remove('gnode--dragging');
+      sim.alphaTarget = 0;
+      if (event.shiftKey || pins[node.id] !== undefined) {
+        // Shift on drop pins here; a pinned node keeps its pin, moved.
+        pinNode(node);
+      } else {
+        node.fx = null;
+        node.fy = null;
+        if (!reduceMotion() && window.performance.now() - finished.stamp < 100) {
+          node.vx = finished.vx * 0.9;
+          node.vy = finished.vy * 0.9;
+        }
+      }
+      sim.reheat(0.25);
+      var under = document.elementFromPoint(event.clientX, event.clientY);
+      var over = under ? nodeOf(under) : null;
+      if (over !== node) {
+        clearLight();
+        if (over) {
+          light(over);
+        }
+      }
+    }
+
+    /* Two taps on one node within 300ms pin it; one tap opens it after that. */
+    function tapNode(node) {
+      ripple(node);
+      var now = window.performance.now();
+      window.clearTimeout(tapTimer);
+      if (lastTap && lastTap.id === node.id && now - lastTap.time < DOUBLE_CLICK_MS) {
+        tapTimer = 0;
+        lastTap = null;
+        if (node.fx !== null) {
+          unpinNode(node);
+          sim.reheat(0.3);
+        } else {
+          pinNode(node);
+        }
+        return;
+      }
+      lastTap = { id: node.id, time: now };
+      tapTimer = window.setTimeout(function () {
+        tapTimer = 0;
+        lastTap = null;
+        open(node);
+      }, DOUBLE_CLICK_MS);
+    }
+
     svg.addEventListener('pointerdown', function (event) {
       if (event.button > 0) {
         return;
       }
-      var box = svg.getBoundingClientRect();
+      stopViewAnimation();
       pointers[event.pointerId] = { x: event.clientX, y: event.clientY };
       if (Object.keys(pointers).length === 2) {
         gesture = { type: 'pinch', distance: pinchDistance() };
         return;
       }
       var node = nodeOf(event.target);
+      var point = worldOf(event);
       gesture = {
         type: node ? 'node' : 'pan',
         node: node,
@@ -520,8 +1320,12 @@
         lastX: event.clientX,
         lastY: event.clientY,
         moved: false,
-        left: box.left,
-        top: box.top
+        dragging: false,
+        wx: point.x,
+        wy: point.y,
+        vx: 0,
+        vy: 0,
+        stamp: window.performance.now()
       };
       try {
         svg.setPointerCapture(event.pointerId);
@@ -552,25 +1356,23 @@
         }
         return;
       }
-      var dx = event.clientX - gesture.lastX;
-      var dy = event.clientY - gesture.lastY;
       if (
         !gesture.moved &&
-        Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) < 4
+        Math.hypot(event.clientX - gesture.startX, event.clientY - gesture.startY) <
+          DRAG_THRESHOLD
       ) {
         return;
       }
+      var dx = event.clientX - gesture.lastX;
+      var dy = event.clientY - gesture.lastY;
       gesture.moved = true;
       gesture.lastX = event.clientX;
       gesture.lastY = event.clientY;
       if (gesture.type === 'node') {
-        gesture.node.x += dx / view.k;
-        gesture.node.y += dy / view.k;
-        placeNode(gesture.node);
-        placeEdges(gesture.node);
-        if (lit === gesture.node) {
-          light(gesture.node);
+        if (!gesture.dragging) {
+          beginDrag(gesture.node);
         }
+        dragTo(event);
       } else {
         view.x += dx;
         view.y += dy;
@@ -585,18 +1387,16 @@
       delete pointers[event.pointerId];
       svg.classList.remove('gsvg--panning');
       var finished = gesture;
-      if (Object.keys(pointers).length === 0) {
-        gesture = null;
-      } else if (finished && finished.type === 'pinch') {
+      if (Object.keys(pointers).length === 0 || (finished && finished.type === 'pinch')) {
         gesture = null;
       }
-      if (
-        finished &&
-        finished.type === 'node' &&
-        !finished.moved &&
-        event.type === 'pointerup'
-      ) {
-        open(finished.node);
+      if (!finished || finished.type !== 'node') {
+        return;
+      }
+      if (finished.dragging) {
+        endDrag(finished, event);
+      } else if (!finished.moved && event.type === 'pointerup') {
+        tapNode(finished.node);
       }
     }
 
@@ -634,85 +1434,306 @@
     svg.addEventListener('focusin', function (event) {
       var node = nodeOf(event.target);
       if (node) {
+        rovingId = node.id;
+        syncTabStop();
         light(node);
       }
     });
 
     svg.addEventListener('focusout', function () {
-      clearLight();
+      if (!gesture) {
+        clearLight();
+      }
     });
 
+    var ARROWS = {
+      ArrowRight: [1, 0],
+      ArrowLeft: [-1, 0],
+      ArrowDown: [0, 1],
+      ArrowUp: [0, -1]
+    };
+
+    /* The active neighbour lying most in a direction: cos >= 0.3, best score. */
+    function neighbourToward(node, direction) {
+      var best = null;
+      var bestScore = -Infinity;
+      Object.keys(node.near).forEach(function (id) {
+        var other = byId[id];
+        if (!other.active) {
+          return;
+        }
+        var dx = other.x - node.x;
+        var dy = other.y - node.y;
+        var distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance === 0) {
+          return;
+        }
+        var cos = (dx * direction[0] + dy * direction[1]) / distance;
+        if (cos < 0.3) {
+          return;
+        }
+        var score = cos * 2 - distance / 400;
+        if (score > bestScore) {
+          bestScore = score;
+          best = other;
+        }
+      });
+      return best;
+    }
+
     svg.addEventListener('keydown', function (event) {
-      if (event.key !== 'Enter') {
+      var node = nodeOf(event.target);
+      if (!node || event.altKey || event.ctrlKey || event.metaKey) {
         return;
       }
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        open(node);
+      } else if (event.key === 'p' || event.key === 'P') {
+        event.preventDefault();
+        if (node.fx !== null) {
+          unpinNode(node);
+          sim.reheat(0.3);
+        } else {
+          pinNode(node);
+        }
+      } else if (event.key === 'Escape') {
+        clearLight();
+        if (document.activeElement && document.activeElement.blur) {
+          document.activeElement.blur();
+        }
+      } else if (ARROWS[event.key]) {
+        event.preventDefault();
+        var next = neighbourToward(node, ARROWS[event.key]);
+        if (next) {
+          elements[next.id].focus({ preventScroll: true });
+          glideTo(next, 0);
+        }
+      }
+    });
+
+    svg.addEventListener('contextmenu', function (event) {
       var node = nodeOf(event.target);
       if (node) {
         event.preventDefault();
-        open(node);
+        enterLocal(node);
       }
     });
 
     // MARK: Search and the controls card
 
-    function match() {
-      var wanted = search.value.trim().toLowerCase();
-      if (!wanted) {
-        return null;
+    /* Every shown node whose name holds the text: exact, prefix, the rest; ties by degree. */
+    function matches() {
+      var text = search.value.trim().toLowerCase();
+      if (!text) {
+        return [];
       }
-      for (var index = 0; index < nodes.length; index += 1) {
-        if (isShown(nodes[index]) && nodes[index].name.toLowerCase().indexOf(wanted) >= 0) {
-          return nodes[index];
+      var ranked = [];
+      nodes.forEach(function (node) {
+        if (!node.active) {
+          return;
         }
+        var name = node.name.toLowerCase();
+        var at = name.indexOf(text);
+        if (at < 0) {
+          return;
+        }
+        ranked.push({ node: node, rank: name === text ? 0 : at === 0 ? 1 : 2 });
+      });
+      ranked.sort(function (a, b) {
+        return a.rank - b.rank || b.node.deg - a.node.deg || a.node.index - b.node.index;
+      });
+      return ranked.map(function (entry) {
+        return entry.node;
+      });
+    }
+
+    function syncCount() {
+      if (!countEl) {
+        return;
       }
-      return null;
+      if (!search.value.trim()) {
+        countEl.textContent = '';
+      } else if (!results.length) {
+        countEl.textContent = 'none';
+      } else {
+        countEl.textContent = cursor + 1 + ' / ' + results.length;
+      }
+    }
+
+    function showMatch(glide) {
+      syncCount();
+      var node = results[cursor];
+      if (!node) {
+        clearLight();
+        return;
+      }
+      light(node);
+      rovingId = node.id;
+      syncTabStop();
+      if (glide) {
+        glideTo(node, GLIDE_ZOOM);
+      }
+    }
+
+    /* A filter or local graph changed what is shown: keep the current hit if it survives. */
+    function refreshSearch() {
+      if (!search || !search.value.trim()) {
+        return;
+      }
+      var current = results[cursor];
+      results = matches();
+      var at = results.indexOf(current);
+      cursor = at >= 0 ? at : 0;
+      syncCount();
+    }
+
+    function stepMatch(delta) {
+      if (!results.length) {
+        return;
+      }
+      cursor = (cursor + delta + results.length) % results.length;
+      showMatch(true);
     }
 
     search.addEventListener('input', function () {
-      found = match();
-      if (found) {
-        light(found);
-      } else {
-        clearLight();
-      }
+      results = matches();
+      cursor = 0;
+      showMatch(true);
     });
 
     search.addEventListener('keydown', function (event) {
       if (event.key === 'Enter') {
         event.preventDefault();
-        var node = found || match();
-        if (node) {
-          open(node);
-        }
+        stepMatch(event.shiftKey ? -1 : 1);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        search.value = '';
+        results = [];
+        cursor = 0;
+        syncCount();
+        clearLight();
+        search.blur();
       }
     });
 
+    function textField(target) {
+      return (
+        !!target &&
+        (target.isContentEditable ||
+          /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || ''))
+      );
+    }
+
+    /* `/`, F and Esc work from anywhere on the page, outside a text field. */
+    function onDocumentKey(event) {
+      if (!container.isConnected) {
+        document.removeEventListener('keydown', onDocumentKey);
+        return;
+      }
+      if (event.altKey || event.ctrlKey || event.metaKey || textField(event.target)) {
+        return;
+      }
+      if (event.key === '/') {
+        event.preventDefault();
+        if (controls) {
+          controls.open = true;
+        }
+        search.focus();
+        search.select();
+      } else if (event.key === 'f' || event.key === 'F') {
+        var subject = nodeOf(event.target) || lit;
+        if (subject) {
+          event.preventDefault();
+          enterLocal(subject);
+        }
+      } else if (event.key === 'Escape' && local) {
+        leaveLocal();
+      }
+    }
+    document.addEventListener('keydown', onDocumentKey);
+
+    if (localBar) {
+      localBar.querySelectorAll('[data-graph-hops]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var hops = Number(button.getAttribute('data-graph-hops'));
+          if (local && local.hops !== hops) {
+            enterLocal(local.node, hops);
+          }
+        });
+      });
+      var closeLocal = container.querySelector('[data-graph-local-close]');
+      if (closeLocal) {
+        closeLocal.addEventListener('click', leaveLocal);
+      }
+    }
+
     container.querySelectorAll('[data-graph-option]').forEach(function (box) {
       box.addEventListener('change', function () {
-        options[box.getAttribute('data-graph-option')] = box.checked;
+        var name = box.getAttribute('data-graph-option');
+        options[name] = box.checked;
         writeOptions(options);
-        if (viewport) {
-          applyVisibility();
-          clearLight();
+        if (!viewport) {
+          return;
         }
+        if (name === 'names') {
+          // Every name reheats nothing.
+          applyVisibility();
+          return;
+        }
+        filterChanged(0.6);
       });
     });
 
     container.querySelectorAll('[data-graph-daily]').forEach(function (button) {
       button.addEventListener('click', function () {
-        options.daily = button.getAttribute('data-graph-daily');
+        var choice = button.getAttribute('data-graph-daily');
+        if (choice === options.daily) {
+          return;
+        }
+        options.daily = choice;
         writeOptions(options);
         syncControls();
-        if (nodes.length) {
-          layout(nodes, edges, options.daily === 'free');
-          draw();
+        if (viewport) {
+          filterChanged(0.7);
+        }
+      });
+    });
+
+    container.querySelectorAll('[data-graph-feel]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var choice = button.getAttribute('data-graph-feel');
+        if (choice === options.feel || !FEELS.hasOwnProperty(choice)) {
+          return;
+        }
+        options.feel = choice;
+        writeOptions(options);
+        sim.setFeel(choice);
+        syncControls();
+        if (viewport) {
+          sim.reheat(0.5);
         }
       });
     });
 
     var fitButton = container.querySelector('[data-graph-fit]');
     if (fitButton) {
-      fitButton.addEventListener('click', fit);
+      fitButton.addEventListener('click', function () {
+        fit(true);
+      });
+    }
+
+    if (unpinButton) {
+      unpinButton.addEventListener('click', function () {
+        var ids = Object.keys(pins);
+        if (!ids.length) {
+          return;
+        }
+        ids.forEach(function (id) {
+          unpinNode(byId[id]);
+        });
+        sim.reheat(0.3);
+      });
     }
 
     // MARK: Loading
@@ -729,18 +1750,15 @@
     function show(graph) {
       showMessage(loading, false);
       showMessage(errorBanner, false);
-      nodes = graph.nodes || [];
-      var known = {};
-      nodes.forEach(function (node) {
-        known[node.id] = true;
-      });
-      byId = {};
-      nodes.forEach(function (node) {
-        byId[node.id] = node;
-      });
-      edges = (graph.edges || []).filter(function (edge) {
-        return known[edge.source] && known[edge.target];
-      });
+      sim.stop();
+      local = null;
+      rovingId = '';
+      results = [];
+      syncLocalBar();
+      var prepared = prepare(graph.nodes || [], graph.edges || []);
+      nodes = prepared.nodes;
+      edges = prepared.edges;
+      byId = prepared.byId;
       var total = graph.total || nodes.length;
       if (graph.shown !== undefined && graph.shown < total) {
         capText.textContent =
@@ -767,8 +1785,24 @@
         'aria-label',
         'Graph of ' + nodes.length + ' notes, folders, projects and labels'
       );
-      layout(nodes, edges, options.daily === 'free');
+      restorePins();
+      nodes.forEach(function (node) {
+        node.outside = false;
+        node.active = wanted(node);
+      });
+      setEdges();
+      sim.load(nodes, edges);
       draw();
+      // The first settle fits twice: once mid-way, once when it rests.
+      fitAt = 0.12;
+      fitOnSettle = true;
+      sim.alpha = 1;
+      sim.alphaTarget = 0;
+      if (reduceMotion()) {
+        sim.settle();
+      } else {
+        sim.start();
+      }
     }
 
     function load() {
@@ -823,6 +1857,7 @@
     }
 
     syncControls();
+    syncUnpin();
     syncCard();
     load();
   }
@@ -851,6 +1886,22 @@
 
   document.addEventListener('DOMContentLoaded', init);
   document.addEventListener('htmx:afterSettle', init);
+  // A history snapshot carries the ready flag and the drawn svg: a restored
+  // container is rebuilt, not skipped.
+  document.addEventListener('htmx:historyRestore', function () {
+    var container = document.getElementById('notes-graph');
+    if (!container) {
+      return;
+    }
+    delete container.dataset.graphReady;
+    var svg = container.querySelector('[data-graph-svg]');
+    if (svg) {
+      while (svg.firstChild) {
+        svg.removeChild(svg.firstChild);
+      }
+    }
+    init();
+  });
   if (document.readyState !== 'loading') {
     init();
   }

@@ -1591,6 +1591,25 @@
     applyTree();
   });
 
+  // The graph asks for a folder's row: open its ancestors, select the row.
+  // The folder itself is not toggled.
+  document.addEventListener('tandem:reveal-path', function (event) {
+    var path = event.detail && event.detail.path;
+    if (!path) return;
+    var rows = document.querySelectorAll('.tree__row');
+    var chosen = null;
+    for (var i = 0; i < rows.length; i += 1) {
+      var match = rows[i].getAttribute('data-path') === path;
+      rows[i].setAttribute('aria-selected', match ? 'true' : 'false');
+      if (match) chosen = rows[i];
+    }
+    var shut = effectiveShut();
+    var next = withoutAncestors(shut, path);
+    if (next.length !== shut.length) saveShut(next);
+    applyTree();
+    if (chosen) chosen.scrollIntoView({ block: 'nearest' });
+  });
+
   function setUpNote() {
     // An editor of a note the page has left saves the text it holds and goes.
     if (pendingForm && !document.contains(pendingForm)) flushNote();

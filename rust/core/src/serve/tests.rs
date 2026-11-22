@@ -890,6 +890,18 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 body.contains("tandem.graph.options"),
                 "graph.js carries its options key"
             );
+            assert!(
+                body.contains("tandem.graph.pins"),
+                "graph.js carries its pins key"
+            );
+            assert!(
+                !body.contains("history.pushState"),
+                "graph.js lets htmx own the push, so Back restores a snapshot with the graph"
+            );
+            assert!(
+                body.contains("hx-push-url"),
+                "graph.js opens a node through an htmx push"
+            );
         }
         if path == "/static/tandem.js" {
             for key in [
@@ -9216,6 +9228,10 @@ async fn get_notes_graph_renders_the_container_the_switch_and_keeps_the_focus() 
         .expect("the Note side");
     assert!(!note_side.contains("aria-current"), "{note_side}");
     assert!(
+        note_side.contains("hx-push-url=\"true\"") && graph_side.contains("hx-push-url=\"true\""),
+        "both switch links push the URL: {body}"
+    );
+    assert!(
         note_side.contains("project=Alpha") && note_side.contains("show_all=1"),
         "the Note side keeps the focus: {note_side}"
     );
@@ -9226,6 +9242,62 @@ async fn get_notes_graph_renders_the_container_the_switch_and_keeps_the_focus() 
     assert!(
         !body.contains("id=\"relations\""),
         "no Relations pane in the graph view"
+    );
+    // The live-simulation card: Feel with Springy pressed, Unpin, Grouped
+    // pressed by default, and the legend's new entries.
+    assert!(
+        body.contains("data-graph-feel=\"springy\" aria-pressed=\"true\""),
+        "Springy is the default feel: {body}"
+    );
+    for feel in ["calm", "bouncy"] {
+        assert!(
+            body.contains(&format!(
+                "data-graph-feel=\"{feel}\" aria-pressed=\"false\""
+            )),
+            "{feel} is offered, not pressed: {body}"
+        );
+    }
+    assert!(
+        body.contains("data-graph-unpin"),
+        "the Unpin button: {body}"
+    );
+    assert!(
+        body.contains("data-graph-daily=\"grouped\" aria-pressed=\"true\""),
+        "Grouped is the default daily mode: {body}"
+    );
+    assert!(
+        body.contains("data-graph-daily=\"free\" aria-pressed=\"false\""),
+        "Free is offered, not pressed: {body}"
+    );
+    let legend = body
+        .split("aria-label=\"Key\"")
+        .nth(1)
+        .and_then(|rest| rest.split("</ul>").next())
+        .expect("the legend");
+    for entry in ["wikilink", "in folder", "orphan", "daily note", "pinned"] {
+        assert!(legend.contains(entry), "the legend names {entry}: {legend}");
+    }
+    // Search count, the local-graph bar (hidden at load) and the key hint.
+    assert!(
+        body.contains("data-graph-count"),
+        "the search count element: {body}"
+    );
+    let bar = body
+        .split("data-graph-local ")
+        .nth(1)
+        .and_then(|rest| rest.split('>').next())
+        .expect("the local-graph bar");
+    assert!(bar.contains("hidden"), "the bar is hidden at load: {bar}");
+    assert!(
+        body.contains("aria-label=\"Back to the whole graph\""),
+        "the close button's accessible name: {body}"
+    );
+    for hops in ["data-graph-hops=\"1\"", "data-graph-hops=\"2\""] {
+        assert!(body.contains(hops), "the hop switch has {hops}: {body}");
+    }
+    assert!(
+        body.contains("for a local graph") && body.contains("to search"),
+        "the key hint: {body}"
     );
     // Wide cap: unfocused source carries no project value to match.
     let (_, _, whole) = get(&app, "/notes/graph").await;
@@ -9258,6 +9330,7 @@ async fn get_notes_with_a_note_renders_the_switch_with_note_pressed_and_a_graph_
         .find(|piece| piece.contains("data-view=\"note\""))
         .expect("the Note side");
     assert!(note_side.contains("aria-current=\"page\""), "{note_side}");
+    assert!(note_side.contains("hx-push-url=\"true\""), "{note_side}");
     let graph_side = body
         .split("<a")
         .find(|piece| piece.contains("data-view=\"graph\""))
@@ -9266,6 +9339,7 @@ async fn get_notes_with_a_note_renders_the_switch_with_note_pressed_and_a_graph_
         graph_side.contains("/notes/graph?project=Alpha&#38;show_all=1"),
         "the Graph link keeps the focus: {graph_side}"
     );
+    assert!(graph_side.contains("hx-push-url=\"true\""), "{graph_side}");
     assert!(!body.contains("id=\"notes-graph\""));
 }
 

@@ -200,9 +200,9 @@
           </nav>
           <div class="seg" role="group" aria-label="Notes view">
             <a class="seg__item" data-view="note" href="{{ note_switch_href }}" hx-get="{{ note_switch_href }}"
-               hx-target="#notes-root" hx-swap="outerHTML"{% if graph.is_none() %} aria-current="page"{% endif %}>Note</a>
+               hx-target="#notes-root" hx-swap="outerHTML" hx-push-url="true"{% if graph.is_none() %} aria-current="page"{% endif %}>Note</a>
             <a class="seg__item" data-view="graph" href="{{ graph_switch_href }}" hx-get="{{ graph_switch_href }}"
-               hx-target="#notes-root" hx-swap="outerHTML"{% if graph.is_some() %} aria-current="page"{% endif %}>Graph</a>
+               hx-target="#notes-root" hx-swap="outerHTML" hx-push-url="true"{% if graph.is_some() %} aria-current="page"{% endif %}>Graph</a>
           </div>
           {% if note.is_some() || label_page.is_some() %}
           <button class="relations-toggle" type="button" data-relations-toggle
@@ -239,17 +239,29 @@
           <details class="gctl" data-graph-controls>
             <summary class="gctl__summary">Graph controls</summary>
             <div class="gctl__body" role="group" aria-label="Graph controls">
-              <input class="gctl__search" type="search" placeholder="Find a note, project or label"
-                     aria-label="Find a note, project or label" autocomplete="off" data-graph-search>
-              <label class="gctl__check"><input type="checkbox" data-graph-option="notes" checked> Notes</label>
-              <label class="gctl__check"><input type="checkbox" data-graph-option="folders" checked> Folders</label>
-              <label class="gctl__check"><input type="checkbox" data-graph-option="names"> Every name</label>
-              <span class="gctl__head" id="graph-daily-head">Daily notes</span>
-              <div class="gctl__row" role="group" aria-labelledby="graph-daily-head">
-                <button type="button" data-graph-daily="grouped" aria-pressed="false">Grouped</button>
-                <button type="button" data-graph-daily="free" aria-pressed="true">Free</button>
+              <div class="gctl__find">
+                <input class="gctl__search" type="search" placeholder="Find a note, project or label"
+                       aria-label="Find a note, project or label" autocomplete="off" data-graph-search>
+                <span class="gctl__count" data-graph-count role="status" aria-live="polite"></span>
               </div>
-              <div class="gctl__row"><button type="button" data-graph-fit>Fit</button></div>
+              <label class="gswitch"><span>Notes</span><input type="checkbox" role="switch" data-graph-option="notes" checked></label>
+              <label class="gswitch"><span>Folders</span><input type="checkbox" role="switch" data-graph-option="folders" checked></label>
+              <label class="gswitch"><span>Every name</span><input type="checkbox" role="switch" data-graph-option="names"></label>
+              <span class="gctl__head" id="graph-feel-head">Feel</span>
+              <div class="gseg gseg--three" data-value="springy" role="group" aria-labelledby="graph-feel-head">
+                <button type="button" data-graph-feel="springy" aria-pressed="true">Springy</button>
+                <button type="button" data-graph-feel="calm" aria-pressed="false">Calm</button>
+                <button type="button" data-graph-feel="bouncy" aria-pressed="false">Bouncy</button>
+              </div>
+              <span class="gctl__head" id="graph-daily-head">Daily notes</span>
+              <div class="gseg" data-value="grouped" role="group" aria-labelledby="graph-daily-head">
+                <button type="button" data-graph-daily="grouped" aria-pressed="true">Grouped</button>
+                <button type="button" data-graph-daily="free" aria-pressed="false">Free</button>
+              </div>
+              <div class="gctl__row">
+                <button type="button" data-graph-fit>Fit</button>
+                <button type="button" data-graph-unpin disabled>Unpin</button>
+              </div>
             </div>
           </details>
           <ul class="glegend" aria-label="Key">
@@ -260,11 +272,21 @@
             <li><i class="glegend__mark glegend__mark--note"></i>note</li>
             <li><i class="glegend__mark glegend__mark--daily"></i>daily note</li>
             <li><i class="glegend__mark glegend__mark--orphan"></i>orphan</li>
-            <li><i class="glegend__line glegend__line--contains"></i>contains</li>
-            <li><i class="glegend__line glegend__line--links"></i>links</li>
+            <li><i class="glegend__line glegend__line--links"></i>wikilink</li>
+            <li><i class="glegend__line glegend__line--contains"></i>in folder</li>
+            <li><i class="glegend__mark glegend__mark--pinned"></i>pinned</li>
           </ul>
-          <div class="gtip" data-graph-tip hidden></div>
+          <div class="glocal" data-graph-local role="group" aria-label="Local graph" hidden>
+            <span class="glocal__title">Local graph of <strong data-graph-local-name></strong></span>
+            <div class="gseg" data-value="1" role="group" aria-label="Hops">
+              <button type="button" data-graph-hops="1" aria-pressed="true">1 hop</button>
+              <button type="button" data-graph-hops="2" aria-pressed="false">2 hops</button>
+            </div>
+            <button class="glocal__close" type="button" data-graph-local-close aria-label="Back to the whole graph">&times;</button>
+          </div>
+          <div class="gtip" data-graph-tip role="presentation"></div>
         </div>
+        <p class="ghint" data-graph-hint>Drag, Shift-drop or double-click to pin. F or right-click for a local graph. / to search, Enter for the next match, Esc to clear. Arrow keys walk the neighbours.</p>
       </section>
       {% else %}
       {% if let Some(note) = note %}

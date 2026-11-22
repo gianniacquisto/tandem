@@ -5216,6 +5216,7 @@ div.relations__row {
   height: 100%;
   cursor: grab;
   touch-action: none;
+  user-select: none;
 }
 
 .gsvg--panning {
@@ -5263,11 +5264,14 @@ div.relations__row {
   right: 12px;
   z-index: 2;
   box-sizing: border-box;
-  width: 220px;
+  width: 232px;
   padding: 10px 12px;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-card);
-  background: var(--parchment);
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: 0 8px 30px color-mix(in srgb, var(--shadow) 35%, transparent);
   color: var(--ink);
   font-size: 12px;
 }
@@ -5303,24 +5307,200 @@ div.relations__row {
   font: inherit;
 }
 
+.gctl__find {
+  position: relative;
+}
+
+.gctl__find .gctl__search {
+  padding-right: 52px;
+}
+
+.gctl__count {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+/* The local-graph bar: top centre of the canvas. */
+.glocal {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  max-width: calc(100% - 280px);
+  padding: 6px 8px 6px 12px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+  box-shadow: 0 8px 30px color-mix(in srgb, var(--shadow) 35%, transparent);
+  color: var(--ink);
+  font-size: 12px;
+  transform: translateX(-50%);
+}
+
+.glocal[hidden] {
+  display: none;
+}
+
+.glocal__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.glocal .gseg button {
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.glocal__close {
+  padding: 2px 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.glocal__close:hover {
+  color: var(--ink);
+}
+
+.glocal__close:focus-visible,
+.glocal .gseg button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.ghint {
+  margin: 6px var(--space-gutter) 0;
+  color: var(--ink-dim);
+  font-size: 11.5px;
+}
+
 .gctl__search:focus-visible,
-.gctl__check input:focus-visible,
+.gswitch input:focus-visible,
+.gseg button:focus-visible,
 .gctl__row button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
-.gctl__check {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .gctl__head {
+  margin-bottom: -4px;
   color: var(--ink-dim);
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+/* A toggle switch. */
+.gswitch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.gswitch input {
+  position: relative;
+  width: 30px;
+  height: 18px;
+  margin: 0;
+  border-radius: 99px;
+  appearance: none;
+  background: var(--line);
+  cursor: pointer;
+  transition: background var(--motion-toggle) ease;
+}
+
+.gswitch input::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow) 60%, transparent);
+  content: "";
+  transition: transform var(--motion-toggle) cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+
+.gswitch input:checked {
+  background: var(--accent);
+}
+
+.gswitch input:checked::after {
+  transform: translateX(12px);
+}
+
+/* A segmented control with a sliding thumb. */
+.gseg {
+  position: relative;
+  display: grid;
+  grid-auto-columns: 1fr;
+  grid-auto-flow: column;
+  padding: 2px;
+  border-radius: var(--radius-control);
+  background: var(--sand);
+}
+
+.gseg::before {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / 2);
+  border-radius: calc(var(--radius-control) - 2px);
+  background: var(--paper);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow) 60%, transparent);
+  content: "";
+  transition: transform var(--motion-insert) cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.gseg--three::before {
+  width: calc((100% - 4px) / 3);
+}
+
+.gseg[data-value="free"]::before,
+.gseg[data-value="2"]::before,
+.gseg[data-value="calm"]::before {
+  transform: translateX(100%);
+}
+
+.gseg[data-value="bouncy"]::before {
+  transform: translateX(200%);
+}
+
+.gseg button {
+  position: relative;
+  padding: 3px 4px;
+  border: 0;
+  background: none;
+  color: var(--ink-dim);
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--motion-toggle) ease;
+}
+
+.gseg button[aria-pressed="true"] {
+  color: var(--ink);
 }
 
 .gctl__row {
@@ -5330,7 +5510,7 @@ div.relations__row {
 
 .gctl__row button {
   flex: 1;
-  padding: 2px 6px;
+  padding: 3px 6px;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-control);
   background: var(--paper);
@@ -5339,15 +5519,20 @@ div.relations__row {
   cursor: pointer;
 }
 
-.gctl__row button:hover,
-.gctl__row button[aria-pressed="true"] {
+.gctl__row button:hover:not(:disabled) {
   background: var(--sand);
+}
+
+.gctl__row button:disabled {
+  color: var(--ink-dim);
+  cursor: default;
+  opacity: 0.5;
 }
 
 @media (max-width: 1100px) {
   .gctl {
     width: auto;
-    max-width: 220px;
+    max-width: 232px;
   }
 
   .gctl__summary {
@@ -5373,7 +5558,9 @@ div.relations__row {
   padding: 6px 10px;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-control);
-  background: var(--parchment);
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   color: var(--ink-dim);
   font-size: 11.5px;
   list-style: none;
@@ -5386,6 +5573,7 @@ div.relations__row {
 }
 
 .glegend__mark {
+  position: relative;
   display: inline-block;
   box-sizing: border-box;
   width: 10px;
@@ -5426,6 +5614,23 @@ div.relations__row {
   background: var(--paper);
 }
 
+.glegend__mark--pinned {
+  width: 12px;
+  height: 12px;
+  border: 1.2px solid var(--ink);
+}
+
+.glegend__mark--pinned::after {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--ink);
+  content: "";
+}
+
 .glegend__line {
   display: inline-block;
   width: 14px;
@@ -5437,102 +5642,150 @@ div.relations__row {
   border-top-color: var(--accent);
 }
 
+.glegend__line--contains {
+  border-top: 1.5px dotted var(--ink-dim);
+}
+
+/* The tooltip floats above the focused node and fades in. */
 .gtip {
   position: absolute;
   z-index: 3;
-  max-width: 280px;
+  width: max-content;
+  max-width: 320px;
+  box-sizing: border-box;
   padding: 4px 8px;
-  overflow: hidden;
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-control);
   background: var(--card);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--shadow) 40%, transparent);
   color: var(--ink);
   font-size: 11.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  opacity: 0;
+  overflow-wrap: anywhere;
   pointer-events: none;
+  text-align: center;
+  transform: translate(-50%, -100%) scale(0.96);
+  transition:
+    opacity var(--motion-insert) ease,
+    transform var(--motion-insert) ease,
+    visibility 0s linear var(--motion-insert);
+  visibility: hidden;
+}
+
+.gtip--on {
+  opacity: 1;
+  transform: translate(-50%, -100%);
+  transition-delay: 0s;
+  visibility: visible;
 }
 
 .gtip small {
   color: var(--ink-dim);
 }
 
+/* Nodes: one custom property, `--c`, carries the colour of the kind. */
 .gnode {
-  cursor: pointer;
+  --c: var(--ink-dim);
+  cursor: grab;
   outline: none;
+  transition: opacity var(--motion-insert) ease;
 }
 
-.gnode--project .gshape {
-  fill: var(--accent);
+.gnode--dragging {
+  cursor: grabbing;
 }
 
-.gnode--label .gshape {
-  fill: var(--moss);
+.gnode--project {
+  --c: var(--accent);
 }
 
-.gnode--folder .gshape {
-  fill: var(--paper);
-  stroke: var(--ink-dim);
+.gnode--label {
+  --c: var(--moss);
+}
+
+.gnode--daily {
+  --c: var(--tone-sun);
+}
+
+.gnode--orphan {
+  --c: var(--ember);
+}
+
+.ghit {
+  fill: transparent;
+}
+
+.gshape {
+  fill: var(--c);
+  stroke: var(--paper);
   stroke-width: 1.5;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    transform var(--motion-toggle) cubic-bezier(0.2, 0.8, 0.2, 1),
+    filter var(--motion-toggle) ease;
+  vector-effect: non-scaling-stroke;
+}
+
+.gnode--folder .gshape,
+.gnode--orphan .gshape {
+  fill: var(--paper);
+  stroke: var(--c);
+  stroke-width: 1.7;
 }
 
 .gnode--unmatched .gshape {
   stroke: var(--ember);
-  stroke-dasharray: 2 2;
-}
-
-.gnode--note .gshape {
-  fill: var(--ink-dim);
-}
-
-.gnode--daily .gshape {
-  fill: var(--tone-sun);
-}
-
-.gnode--orphan .gshape {
-  fill: var(--paper);
-  stroke: var(--ember);
-  stroke-width: 1.5;
-}
-
-.gedge--contains {
-  stroke: var(--ink-dim);
-  stroke-width: 1;
-  stroke-opacity: 0.35;
-}
-
-.gedge--links {
-  stroke: var(--accent);
-  stroke-width: 1;
-  stroke-opacity: 0.55;
-}
-
-.glabel {
-  fill: var(--ink);
-  font-size: 11px;
-  paint-order: stroke;
-  pointer-events: none;
-  stroke: var(--paper);
-  stroke-linejoin: round;
-  stroke-width: 3px;
-}
-
-.glabel--minor {
-  fill: var(--ink-dim);
-  font-size: 10px;
-}
-
-.gnode:not(.gnode--named) .glabel--minor {
-  display: none;
-}
-
-.gdim {
-  opacity: 0.15;
+  stroke-dasharray: 2.5 2;
 }
 
 .glit .gshape {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--c) 65%, transparent));
+  transform: scale(1.35);
+}
+
+.gnode--dragging .gshape {
+  filter: drop-shadow(0 2px 8px color-mix(in srgb, var(--c) 70%, transparent));
+  transform: scale(1.55);
+}
+
+.gnode--off,
+.gedge--off {
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--motion-insert) ease,
+    visibility 0s linear var(--motion-insert);
+  visibility: hidden;
+}
+
+/* A pinned node wears a ring and a dot that spring in. */
+.gpin {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.3);
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    opacity var(--motion-insert) ease,
+    transform var(--motion-insert) cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.gnode--pinned .gpin {
+  opacity: 1;
+  transform: none;
+}
+
+.gpin__ring {
+  fill: none;
   stroke: var(--ink);
-  stroke-width: 2;
+  stroke-opacity: 0.55;
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.gpin__dot {
+  fill: var(--ink);
 }
 
 .gring {
@@ -5540,10 +5793,137 @@ div.relations__row {
   fill: none;
   stroke: var(--accent);
   stroke-width: 2;
+  vector-effect: non-scaling-stroke;
 }
 
 .gnode:focus-visible .gring {
   display: block;
+}
+
+/* Edges. Folder lines are dotted, wikilinks solid, two-way wikilinks thicker. */
+.gedge {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+  transition:
+    opacity var(--motion-insert) ease,
+    stroke-opacity var(--motion-insert) ease;
+  vector-effect: non-scaling-stroke;
+}
+
+.gedge--contains {
+  stroke-dasharray: 1.5 3.5;
+  stroke-linecap: round;
+}
+
+.gedge--links {
+  stroke: var(--accent);
+  stroke-opacity: 0.35;
+}
+
+.gedge--both {
+  stroke-width: 1.7;
+}
+
+/* Labels keep their screen size at any zoom: the svg carries `--k`. */
+.glabel {
+  fill: var(--ink);
+  font-size: calc(11px / var(--k, 1));
+  font-weight: 600;
+  paint-order: stroke;
+  pointer-events: none;
+  stroke: var(--paper);
+  stroke-linejoin: round;
+  stroke-width: calc(3px / var(--k, 1));
+  transform: translateY(calc(13px / var(--k, 1)));
+  transition: opacity var(--motion-insert) ease;
+}
+
+.glabel--minor {
+  fill: var(--ink-dim);
+  font-weight: 400;
+  opacity: 0;
+}
+
+.gsvg--zoomed .glabel--minor,
+.gsvg--names .glabel--minor,
+.gsvg--focus .gnear .glabel--minor {
+  opacity: 1;
+}
+
+/* Focus: everything not adjacent steps back. */
+.gsvg--focus .gnode:not(.gnear) {
+  opacity: 0.13;
+}
+
+.gsvg--focus .gedge:not(.gnear) {
+  opacity: 0.05;
+}
+
+.gsvg--focus .gedge.gnear {
+  stroke-opacity: 0.95;
+}
+
+.gsvg--focus .gedge--contains.gnear {
+  stroke: var(--ink-dim);
+}
+
+/* One-way wikilinks march from the linking note to the linked one. */
+.gsvg--focus .gedge--links.gnear:not(.gedge--both) {
+  animation: gflow calc(var(--motion-insert) * 4.5) linear infinite;
+  stroke-dasharray: 5 4;
+}
+
+@keyframes gflow {
+  to {
+    stroke-dashoffset: -9;
+  }
+}
+
+.gripple {
+  fill: none;
+  stroke: var(--c);
+  stroke-width: 2;
+  animation: gripple calc(var(--motion-insert) * 3) cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  vector-effect: non-scaling-stroke;
+}
+
+@keyframes gripple {
+  from {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(4.5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gnode,
+  .gshape,
+  .gpin,
+  .gedge,
+  .glabel,
+  .gtip,
+  .gseg::before,
+  .gseg button,
+  .gswitch input,
+  .gswitch input::after {
+    transition: none;
+  }
+
+  .gsvg--focus .gedge--links.gnear:not(.gedge--both) {
+    animation: none;
+  }
+
+  .gripple {
+    display: none;
+  }
 }
 
 .graph [hidden] {
