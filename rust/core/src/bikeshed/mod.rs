@@ -47,7 +47,9 @@ pub use self::health::{
     project_folder,
 };
 pub use self::stats::{BikeshedProjectStats, BikeshedStats, BikeshedStatsTotals};
-pub use self::wikilink::{BoardNames, BoardProject, LinkResolution as Resolution, Wikilink};
+pub use self::wikilink::{
+    BoardNames, BoardProject, ConceptKind, LinkResolution as Resolution, Wikilink,
+};
 
 /// The bikeshed path-hygiene rule (ADR 0008): the one place that decides whether
 /// a bikeshed-root-relative path is legal or an escape.
@@ -1098,6 +1100,45 @@ impl Bikeshed {
                 .into_iter()
                 .find(|occurrence| {
                     occurrence.resolution == LinkResolution::Resolved(path.to_string())
+                });
+            if let Some(occurrence) = first {
+                rows.push(Backlink {
+                    path: note_path.clone(),
+                    line: occurrence.line,
+                });
+            }
+        }
+        rows.sort_by_key(|row| sort_key(&row.path));
+        Ok(Operation {
+            value: rows,
+            note: None,
+        })
+    }
+
+    /// `typed_backlinks(kind, name, names)`: the notes with a `[[project:X]]` or
+    /// `[[label:x]]` link that resolves to the board name `name` (matched
+    /// ignoring case), one row each, with the line of the first such link.
+    pub fn typed_backlinks(
+        &self,
+        kind: ConceptKind,
+        name: &str,
+        names: &BoardNames,
+    ) -> DomainResult<Operation<Vec<Backlink>>> {
+        let wanted = name.trim().to_lowercase();
+        let notes = self.note_paths();
+        let mut rows = Vec::new();
+        for note_path in &notes {
+            let Ok(content) = self.read_note(note_path) else {
+                continue;
+            };
+            let first = link_occurrences(&content.text, &notes, names)
+                .into_iter()
+                .find(|occurrence| match (&occurrence.resolution, kind) {
+                    (LinkResolution::Project(found), ConceptKind::Project)
+                    | (LinkResolution::Label(found), ConceptKind::Label) => {
+                        found.to_lowercase() == wanted
+                    }
+                    _ => false,
                 });
             if let Some(occurrence) = first {
                 rows.push(Backlink {

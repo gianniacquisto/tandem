@@ -134,6 +134,7 @@
               <span class="tree__twisty" aria-hidden="true">▾</span>
               <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5h4.5l1.5 1.5h7v7.5h-13z"/></svg>
               <span class="tree__name">{{ row.name }}</span>
+              {% if !row.tag.is_empty() %}<span class="tree__tag{% if row.tag_warn %} tree__tag--warn{% endif %}">{{ row.tag }}</span>{% endif %}
             </span>
             {% else %}
             <a class="tree__label" href="{{ row.href }}" hx-get="{{ row.href }}"
@@ -184,7 +185,7 @@
            data-gone="{{ tab_gone }}">
         <div class="note-tabs__list" role="tablist" aria-label="Open notes"></div>
       </div>
-      {% if let Some(note) = note %}
+      {% if note.is_some() || label_page.is_some() %}
       <header class="bikeshed__breadcrumb">
         <div class="bikeshed__breadcrumb-inner">
           <nav class="bikeshed__crumbs" aria-label="Breadcrumb">
@@ -196,10 +197,12 @@
           </nav>
           <button class="relations-toggle" type="button" data-relations-toggle
                   aria-controls="relations" aria-expanded="true">Relations
-            <span class="relations-toggle__count">{{ backlink_count + linked_count + recovery_count }}</span></button>
+            <span class="relations-toggle__count">{{ relations_count }}</span></button>
         </div>
       </header>
+      {% endif %}
 
+      {% if let Some(note) = note %}
       <div class="bikeshed__page">
         <div class="page-head">
           <form class="page-title-form" method="post" action="/notes/rename" hx-post="/notes/rename"
@@ -222,6 +225,10 @@
             <input type="hidden" name="project" value="{{ active_project }}">
             <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
             <input type="hidden" name="mode" value="edit">
+            {% if !concept_kind.is_empty() %}
+            <input type="hidden" name="concept" value="{{ concept_kind }}">
+            <input type="hidden" name="concept_name" value="{{ concept_name }}">
+            {% endif %}
             <input type="hidden" name="baseline_hash" value="{{ note.baseline_hash }}" data-note-baseline>
             <textarea class="note-editor" name="text" aria-label="Note markdown" hidden>
 {{ note.text }}</textarea>
@@ -232,6 +239,13 @@
           {% endif %}
         </div>
       </div>
+      {% else if let Some(label_page) = label_page %}
+      <div class="bikeshed__page">
+        <div class="page-head">
+          <h1 class="page-title page-title--static">{{ label_page.name }}</h1>
+        </div>
+        <p class="concept__summary">{{ label_page.summary }}</p>
+      </div>
       {% else %}
       <div class="editor__empty">
         <p class="editor__empty-title">No note selected</p>
@@ -239,13 +253,14 @@
       </div>
       {% endif %}
     </div>
-    {% if note.is_some() %}
+    {% if note.is_some() || label_page.is_some() %}
     <aside class="relations" id="relations" aria-label="Relations" data-relations>
       <header class="relations__head">
         <h2 class="relations__heading">Relations</h2>
         <button class="relations__close" type="button" data-relations-close aria-label="Close relations">&times;</button>
       </header>
       <div class="relations__body">
+        {% if note_sections %}
         <details class="relations__section" data-section="backlinks"{% if !backlinks.is_empty() %} open{% endif %}>
           <summary class="relations__summary">
             <span class="relations__title">Backlinks</span>
@@ -268,7 +283,9 @@
           {% endif %}
         </details>
 
-        {% if !linked.is_empty() %}
+        {% endif %}
+
+        {% if note_sections && !linked.is_empty() %}
         <details class="relations__section" data-section="tickets">
           <summary class="relations__summary">
             <span class="relations__title">Tickets</span>
@@ -286,6 +303,37 @@
           </ul>
         </details>
         {% endif %}
+
+        {% for section in sections %}
+        <details class="relations__section" data-section="{{ section.key }}"{% if section.open %} open{% endif %}>
+          <summary class="relations__summary">
+            <span class="relations__title">{{ section.title }}</span>
+            <span class="relations__count">{{ section.rows.len() }}</span>
+          </summary>
+          {% if section.rows.is_empty() %}
+          <p class="relations__empty">{{ section.empty }}</p>
+          {% else %}
+          <ul class="relations__rows">
+            {% for row in section.rows %}
+            <li>
+              {% if let Some(href) = row.href %}
+              <a class="relations__row" href="{{ href }}"{% if row.swap %} hx-get="{{ href }}"
+                 hx-target="#notes-root" hx-swap="outerHTML"{% endif %}>
+                <span class="relations__row-name">{{ row.name }}</span>
+                <span class="relations__row-detail">{{ row.detail }}</span>
+              </a>
+              {% else %}
+              <div class="relations__row">
+                <span class="relations__row-name">{{ row.name }}</span>
+                <span class="relations__row-detail">{{ row.detail }}</span>
+              </div>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </details>
+        {% endfor %}
 
         {% if !recoveries.is_empty() %}
         <details class="relations__section relations__section--recovery" data-section="recoveries" open>
