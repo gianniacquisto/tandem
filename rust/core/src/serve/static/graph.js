@@ -981,9 +981,22 @@
         return;
       }
       if (window.htmx) {
-        window.htmx.ajax('GET', href, { target: '#notes-root', swap: 'outerHTML' });
-        // Push, not replace: Back returns to the graph.
-        window.history.pushState(null, '', href);
+        // htmx owns the push: it snapshots the graph page before the swap, so
+        // Back restores a page that still holds the graph. A bare pushState
+        // after the swap left htmx a snapshot without it.
+        var source = document.createElement('span');
+        source.hidden = true;
+        source.setAttribute('hx-push-url', 'true');
+        document.body.appendChild(source);
+        window.htmx
+          .ajax('GET', href, {
+            source: source,
+            target: '#notes-root',
+            swap: 'outerHTML',
+          })
+          .then(function () {
+            source.remove();
+          });
       } else {
         window.location.href = href;
       }

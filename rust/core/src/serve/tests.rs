@@ -894,6 +894,14 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 body.contains("tandem.graph.pins"),
                 "graph.js carries its pins key"
             );
+            assert!(
+                !body.contains("history.pushState"),
+                "graph.js lets htmx own the push, so Back restores a snapshot with the graph"
+            );
+            assert!(
+                body.contains("hx-push-url"),
+                "graph.js opens a node through an htmx push"
+            );
         }
         if path == "/static/tandem.js" {
             for key in [
