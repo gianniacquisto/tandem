@@ -981,24 +981,32 @@
         return;
       }
       if (window.htmx) {
-        window.htmx.ajax('GET', href, { target: '#notes-root', swap: 'outerHTML' });
+        // htmx owns the push: it snapshots the graph page before the swap, so
+        // Back restores a page that still holds the graph. A bare pushState
+        // after the swap left htmx a snapshot without it.
+        var source = document.createElement('span');
+        source.hidden = true;
+        source.setAttribute('hx-push-url', 'true');
+        document.body.appendChild(source);
+        window.htmx
+          .ajax('GET', href, {
+            source: source,
+            target: '#notes-root',
+            swap: 'outerHTML',
+          })
+          .then(function () {
+            source.remove();
+          });
       } else {
         window.location.href = href;
       }
     }
 
     function selectInTree(node) {
-      var chosen = null;
-      document.querySelectorAll('.tree__row').forEach(function (row) {
-        var match = row.getAttribute('data-path') === node.path;
-        row.setAttribute('aria-selected', match ? 'true' : 'false');
-        if (match) {
-          chosen = row;
-        }
-      });
-      if (chosen) {
-        chosen.scrollIntoView({ block: 'nearest' });
-      }
+      // The tree's fold state is owned by tandem.js: ask it by event.
+      document.dispatchEvent(
+        new CustomEvent('tandem:reveal-path', { detail: { path: node.path } })
+      );
     }
 
     function ripple(node) {
@@ -1539,6 +1547,22 @@
 
   document.addEventListener('DOMContentLoaded', init);
   document.addEventListener('htmx:afterSettle', init);
+  // A history snapshot carries the ready flag and the drawn svg: a restored
+  // container is rebuilt, not skipped.
+  document.addEventListener('htmx:historyRestore', function () {
+    var container = document.getElementById('notes-graph');
+    if (!container) {
+      return;
+    }
+    delete container.dataset.graphReady;
+    var svg = container.querySelector('[data-graph-svg]');
+    if (svg) {
+      while (svg.firstChild) {
+        svg.removeChild(svg.firstChild);
+      }
+    }
+    init();
+  });
   if (document.readyState !== 'loading') {
     init();
   }
