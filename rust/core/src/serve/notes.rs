@@ -158,9 +158,25 @@ struct ConflictView {
     baseline_hash: String,
 }
 
+/// What the graph view's container carries for `graph.js`: where the JSON
+/// lives and the URL prefixes a node click follows. The browser appends the
+/// node's own path or name, so the focus params ride along.
+struct GraphPane {
+    src: String,
+    note_href: String,
+    concept_href: String,
+}
+
 #[derive(Template)]
 #[template(path = "notes.html")]
 struct NotesView {
+    /// `Some` draws the graph in the main column, `None` the note view.
+    graph: Option<GraphPane>,
+    /// The Note | Graph switch's two links, both keeping the focus params.
+    note_switch_href: String,
+    graph_switch_href: String,
+    /// Where the focus picker's form goes: `/notes` or `/notes/graph`.
+    focus_action: &'static str,
     rows: Vec<TreeRowView>,
     project_options: Vec<ProjectOption>,
     active_project: String,
@@ -226,6 +242,41 @@ fn notes_href(project: &str, show_all: bool, path: Option<&str>, mode: Option<&s
     match serde_urlencoded::to_string(&pairs) {
         Ok(query) => format!("/notes?{query}"),
         Err(_) => "/notes".to_string(),
+    }
+}
+
+/// The graph view's own URL, keeping the focus and the show-all escape.
+fn graph_href(project: &str, show_all: bool) -> String {
+    let mut pairs: Vec<(&str, String)> = vec![("project", project.to_string())];
+    if show_all {
+        pairs.push(("show_all", "1".to_string()));
+    }
+    match serde_urlencoded::to_string(&pairs) {
+        Ok(query) => format!("/notes/graph?{query}"),
+        Err(_) => "/notes/graph".to_string(),
+    }
+}
+
+/// What the graph container carries: the JSON source (scoped by the focus) and
+/// the click prefixes, each already holding the focus params.
+fn graph_pane(project: &str, show_all: bool) -> GraphPane {
+    let mut pairs: Vec<(&str, String)> = vec![("project", project.to_string())];
+    if show_all {
+        pairs.push(("show_all", "1".to_string()));
+    }
+    let query = serde_urlencoded::to_string(&pairs).unwrap_or_default();
+    let src = if project.is_empty() {
+        "/notes/graph.json".to_string()
+    } else {
+        match serde_urlencoded::to_string([("project", project)]) {
+            Ok(query) => format!("/notes/graph.json?{query}"),
+            Err(_) => "/notes/graph.json".to_string(),
+        }
+    };
+    GraphPane {
+        src,
+        note_href: format!("/notes?{query}"),
+        concept_href: format!("/notes/concept?{query}"),
     }
 }
 
@@ -459,6 +510,7 @@ fn render_notes(
 ) -> Result<NotesView, String> {
     let project = field(params, "project").trim().to_string();
     let show_all = !matches!(field(params, "show_all"), "" | "0" | "false");
+    let graph_view = field(params, "view") == "graph";
     let mut path = params
         .get("path")
         .map(|value| value.trim().to_string())
@@ -914,6 +966,10 @@ fn render_notes(
         .map_or(String::new(), |pane| note_name(&pane.path));
 
     Ok(NotesView {
+        graph: graph_view.then(|| graph_pane(&project, show_all)),
+        note_switch_href: notes_href(&project, show_all, None, None),
+        graph_switch_href: graph_href(&project, show_all),
+        focus_action: if graph_view { "/notes/graph" } else { "/notes" },
         rows,
         project_options,
         active_project: field(params, "project").to_string(),
@@ -1037,6 +1093,20 @@ pub(super) async fn notes_page(
     Query(params): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
+    notes_response(&context, &params, None, None, None, &headers)
+}
+
+/// `GET /notes/graph`: the notes face with the graph in the main column. No
+/// note is open, so a stray `path` or concept never reaches the page.
+pub(super) async fn note_graph_page(
+    context: Context,
+    Query(mut params): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Response {
+    for key in ["path", "concept", "concept_name", "mode"] {
+        params.remove(key);
+    }
+    params.insert("view".to_string(), "graph".to_string());
     notes_response(&context, &params, None, None, None, &headers)
 }
 

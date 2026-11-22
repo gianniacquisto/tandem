@@ -61,6 +61,11 @@ static ASSETS: LazyLock<Vec<Asset>> = LazyLock::new(|| {
             include_bytes!("static/tandem.js").as_slice(),
         ),
         (
+            "graph.js",
+            "text/javascript; charset=utf-8",
+            include_bytes!("static/graph.js").as_slice(),
+        ),
+        (
             "icon.svg",
             "image/svg+xml",
             include_bytes!("static/icon.svg").as_slice(),
@@ -96,6 +101,7 @@ pub(super) struct Urls {
     pub(super) sse: String,
     pub(super) theme: String,
     pub(super) tandem: String,
+    pub(super) graph: String,
     pub(super) icon: String,
 }
 
@@ -111,6 +117,7 @@ pub(super) fn urls() -> Urls {
         sse: url("sse.js"),
         theme: url("theme.js"),
         tandem: url("tandem.js"),
+        graph: url("graph.js"),
         icon: url("icon.svg"),
     }
 }

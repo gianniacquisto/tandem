@@ -874,6 +874,7 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
         ("/static/htmx.min.js", "text/javascript; charset=utf-8"),
         ("/static/sse.js", "text/javascript; charset=utf-8"),
         ("/static/tandem.js", "text/javascript; charset=utf-8"),
+        ("/static/graph.js", "text/javascript; charset=utf-8"),
         ("/static/icon.svg", "image/svg+xml"),
     ] {
         let (status, headers, body) = get(&app, path).await;
@@ -884,6 +885,12 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
             "{path} carries its type"
         );
         assert!(!body.is_empty(), "{path} carries its bytes");
+        if path == "/static/graph.js" {
+            assert!(
+                body.contains("tandem.graph.options"),
+                "graph.js carries its options key"
+            );
+        }
         if path == "/static/tandem.js" {
             for key in [
                 "tandem.collapsed",
@@ -982,6 +989,10 @@ async fn the_shell_links_content_hashed_assets() {
     assert!(
         body.contains(&format!("src=\"{}\"", urls.tandem)),
         "the shell links the hashed tandem.js"
+    );
+    assert!(
+        body.contains(&format!("src=\"{}\" defer", urls.graph)),
+        "the shell links the hashed graph.js with defer: {body}"
     );
     assert!(
         !body.contains("href=\"/static/app.css\""),
@@ -5556,6 +5567,7 @@ const ROUTE_TABLE: &[(&str, &str, &str)] = &[
         "/people/bob/tokens/1/revoke",
     ),
     ("GET", "/notes", "/notes"),
+    ("GET", "/notes/graph", "/notes/graph"),
     ("GET", "/notes/graph.json", "/notes/graph.json"),
     ("GET", "/notes/view", "/notes/view"),
     ("GET", "/notes/edit", "/notes/edit"),
@@ -9113,6 +9125,96 @@ fn the_notes_graph_route_needs_what_the_notes_face_needs() {
         guard::route_need("/notes/graph.json"),
         guard::route_need("/notes")
     );
+}
+
+#[tokio::test]
+async fn get_notes_graph_renders_the_container_the_switch_and_keeps_the_focus() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-graph-page");
+    let store = sandbox.store();
+    setup_board(&store);
+    let notes = vault(&store);
+    notes
+        .create("projects/alpha/Inside.md")
+        .expect("the note is created");
+    let app = router(context(store));
+
+    let (status, _, body) = get(&app, "/notes/graph?project=Alpha&show_all=1").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body.contains("id=\"notes-graph\""), "the container: {body}");
+    assert!(
+        body.contains("data-src=\"/notes/graph.json?project=Alpha\""),
+        "the JSON source carries the focus: {body}"
+    );
+    assert!(
+        body.contains("aria-label=\"Notes view\""),
+        "the Note | Graph switch: {body}"
+    );
+    let graph_side = body
+        .split("<a")
+        .find(|piece| piece.contains("data-view=\"graph\""))
+        .expect("the Graph side");
+    assert!(
+        graph_side.contains("aria-current=\"page\""),
+        "Graph is the current side: {graph_side}"
+    );
+    let note_side = body
+        .split("<a")
+        .find(|piece| piece.contains("data-view=\"note\""))
+        .expect("the Note side");
+    assert!(!note_side.contains("aria-current"), "{note_side}");
+    assert!(
+        note_side.contains("project=Alpha") && note_side.contains("show_all=1"),
+        "the Note side keeps the focus: {note_side}"
+    );
+    assert!(
+        !body.contains("data-relations-toggle"),
+        "no Relations toggle in the graph view: {body}"
+    );
+    assert!(
+        !body.contains("id=\"relations\""),
+        "no Relations pane in the graph view"
+    );
+    // Wide cap: unfocused source carries no project value to match.
+    let (_, _, whole) = get(&app, "/notes/graph").await;
+    assert!(
+        whole.contains("data-src=\"/notes/graph.json\""),
+        "no focus, no query: {whole}"
+    );
+}
+
+#[tokio::test]
+async fn get_notes_with_a_note_renders_the_switch_with_note_pressed_and_a_graph_link() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-graph-switch");
+    let store = sandbox.store();
+    setup_board(&store);
+    let notes = vault(&store);
+    notes
+        .create("projects/alpha/Inside.md")
+        .expect("the note is created");
+    let app = router(context(store));
+
+    let (status, _, body) = get(
+        &app,
+        "/notes?path=projects/alpha/Inside.md&project=Alpha&show_all=1",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let note_side = body
+        .split("<a")
+        .find(|piece| piece.contains("data-view=\"note\""))
+        .expect("the Note side");
+    assert!(note_side.contains("aria-current=\"page\""), "{note_side}");
+    let graph_side = body
+        .split("<a")
+        .find(|piece| piece.contains("data-view=\"graph\""))
+        .expect("the Graph side");
+    assert!(
+        graph_side.contains("/notes/graph?project=Alpha&#38;show_all=1"),
+        "the Graph link keeps the focus: {graph_side}"
+    );
+    assert!(!body.contains("id=\"notes-graph\""));
 }
 
 // MARK: - Typed links: chips, project and label pages, tree tags, Today's note

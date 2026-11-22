@@ -63,7 +63,7 @@
 
   <div class="bikeshed">
     <aside class="bikeshed__tree" aria-label="Bikeshed notes">
-      <form class="focus" method="get" action="/notes" hx-get="/notes" hx-target="#notes-root" hx-swap="outerHTML">
+      <form class="focus" method="get" action="{{ focus_action }}" hx-get="{{ focus_action }}" hx-target="#notes-root" hx-swap="outerHTML">
         {% if let Some(path) = path %}
         <input type="hidden" name="path" value="{{ path }}">
         {% endif %}
@@ -185,23 +185,88 @@
            data-gone="{{ tab_gone }}">
         <div class="note-tabs__list" role="tablist" aria-label="Open notes"></div>
       </div>
-      {% if note.is_some() || label_page.is_some() %}
       <header class="bikeshed__breadcrumb">
         <div class="bikeshed__breadcrumb-inner">
           <nav class="bikeshed__crumbs" aria-label="Breadcrumb">
+            {% if graph.is_some() %}
+            <span class="bikeshed__crumb bikeshed__crumb--current" aria-current="page">Graph</span>
+            {% else %}
             {% for crumb in crumbs %}
             {% if !crumb.first %}<span class="bikeshed__crumb-sep" aria-hidden="true">/</span>{% endif %}
             <span class="bikeshed__crumb{% if crumb.current %} bikeshed__crumb--current{% endif %}"
                   {% if crumb.current %}aria-current="page"{% endif %}>{{ crumb.label }}</span>
             {% endfor %}
+            {% endif %}
           </nav>
+          <div class="seg" role="group" aria-label="Notes view">
+            <a class="seg__item" data-view="note" href="{{ note_switch_href }}" hx-get="{{ note_switch_href }}"
+               hx-target="#notes-root" hx-swap="outerHTML"{% if graph.is_none() %} aria-current="page"{% endif %}>Note</a>
+            <a class="seg__item" data-view="graph" href="{{ graph_switch_href }}" hx-get="{{ graph_switch_href }}"
+               hx-target="#notes-root" hx-swap="outerHTML"{% if graph.is_some() %} aria-current="page"{% endif %}>Graph</a>
+          </div>
+          {% if note.is_some() || label_page.is_some() %}
           <button class="relations-toggle" type="button" data-relations-toggle
                   aria-controls="relations" aria-expanded="true">Relations
             <span class="relations-toggle__count">{{ relations_count }}</span></button>
+          {% endif %}
         </div>
       </header>
-      {% endif %}
 
+      {% if let Some(graph) = graph %}
+      <section id="notes-graph" class="graph" data-src="{{ graph.src }}"
+               data-note-href="{{ graph.note_href }}" data-concept-href="{{ graph.concept_href }}">
+        <div class="banner" role="alert" data-graph-error hidden>
+          <span data-graph-error-text></span>
+          <button class="banner__dismiss" type="button" data-graph-retry>Retry</button>
+          <button class="banner__dismiss" type="button" data-graph-dismiss>Dismiss</button>
+        </div>
+        <div class="banner banner--notice" role="status" data-graph-cap hidden>
+          <span data-graph-cap-text></span>
+        </div>
+        <div class="gwrap" data-graph-canvas>
+          <svg class="gsvg" role="img" aria-label="Graph of the notes, folders, projects and labels" data-graph-svg></svg>
+          <p class="gstatus" data-graph-loading>Drawing the graph</p>
+          <div class="gempty" data-graph-empty hidden>
+            <strong class="gempty__title">No notes yet</strong>
+            <span>The graph draws your notes, their folders and the projects and labels they link to.</span>
+            <form method="post" action="/notes/new" hx-post="/notes/new" hx-target="#notes-root" hx-swap="outerHTML">
+              <input type="hidden" name="project" value="{{ active_project }}">
+              <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
+              <input type="hidden" name="dir" value="">
+              <button class="button" type="submit">New note</button>
+            </form>
+          </div>
+          <details class="gctl" data-graph-controls>
+            <summary class="gctl__summary">Graph controls</summary>
+            <div class="gctl__body" role="group" aria-label="Graph controls">
+              <input class="gctl__search" type="search" placeholder="Find a note, project or label"
+                     aria-label="Find a note, project or label" autocomplete="off" data-graph-search>
+              <label class="gctl__check"><input type="checkbox" data-graph-option="notes" checked> Notes</label>
+              <label class="gctl__check"><input type="checkbox" data-graph-option="folders" checked> Folders</label>
+              <label class="gctl__check"><input type="checkbox" data-graph-option="names"> Every name</label>
+              <span class="gctl__head" id="graph-daily-head">Daily notes</span>
+              <div class="gctl__row" role="group" aria-labelledby="graph-daily-head">
+                <button type="button" data-graph-daily="grouped" aria-pressed="false">Grouped</button>
+                <button type="button" data-graph-daily="free" aria-pressed="true">Free</button>
+              </div>
+              <div class="gctl__row"><button type="button" data-graph-fit>Fit</button></div>
+            </div>
+          </details>
+          <ul class="glegend" aria-label="Key">
+            <li><i class="glegend__mark glegend__mark--project"></i>project</li>
+            <li><i class="glegend__mark glegend__mark--label"></i>label</li>
+            <li><i class="glegend__mark glegend__mark--folder"></i>folder</li>
+            <li><i class="glegend__mark glegend__mark--unmatched"></i>folder, no label or project</li>
+            <li><i class="glegend__mark glegend__mark--note"></i>note</li>
+            <li><i class="glegend__mark glegend__mark--daily"></i>daily note</li>
+            <li><i class="glegend__mark glegend__mark--orphan"></i>orphan</li>
+            <li><i class="glegend__line glegend__line--contains"></i>contains</li>
+            <li><i class="glegend__line glegend__line--links"></i>links</li>
+          </ul>
+          <div class="gtip" data-graph-tip hidden></div>
+        </div>
+      </section>
+      {% else %}
       {% if let Some(note) = note %}
       <div class="bikeshed__page">
         <div class="page-head">
@@ -251,6 +316,7 @@
         <p class="editor__empty-title">No note selected</p>
         <p class="editor__empty-body">Pick a note in the tree.</p>
       </div>
+      {% endif %}
       {% endif %}
     </div>
     {% if note.is_some() || label_page.is_some() %}
