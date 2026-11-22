@@ -200,9 +200,9 @@
           </nav>
           <div class="seg" role="group" aria-label="Notes view">
             <a class="seg__item" data-view="note" href="{{ note_switch_href }}" hx-get="{{ note_switch_href }}"
-               hx-target="#notes-root" hx-swap="outerHTML"{% if graph.is_none() %} aria-current="page"{% endif %}>Note</a>
+               hx-target="#notes-root" hx-swap="outerHTML" hx-push-url="true"{% if graph.is_none() %} aria-current="page"{% endif %}>Note</a>
             <a class="seg__item" data-view="graph" href="{{ graph_switch_href }}" hx-get="{{ graph_switch_href }}"
-               hx-target="#notes-root" hx-swap="outerHTML"{% if graph.is_some() %} aria-current="page"{% endif %}>Graph</a>
+               hx-target="#notes-root" hx-swap="outerHTML" hx-push-url="true"{% if graph.is_some() %} aria-current="page"{% endif %}>Graph</a>
           </div>
           {% if note.is_some() || label_page.is_some() %}
           <button class="relations-toggle" type="button" data-relations-toggle

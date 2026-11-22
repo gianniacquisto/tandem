@@ -9220,6 +9220,10 @@ async fn get_notes_graph_renders_the_container_the_switch_and_keeps_the_focus() 
         .expect("the Note side");
     assert!(!note_side.contains("aria-current"), "{note_side}");
     assert!(
+        note_side.contains("hx-push-url=\"true\"") && graph_side.contains("hx-push-url=\"true\""),
+        "both switch links push the URL: {body}"
+    );
+    assert!(
         note_side.contains("project=Alpha") && note_side.contains("show_all=1"),
         "the Note side keeps the focus: {note_side}"
     );
@@ -9296,6 +9300,7 @@ async fn get_notes_with_a_note_renders_the_switch_with_note_pressed_and_a_graph_
         .find(|piece| piece.contains("data-view=\"note\""))
         .expect("the Note side");
     assert!(note_side.contains("aria-current=\"page\""), "{note_side}");
+    assert!(note_side.contains("hx-push-url=\"true\""), "{note_side}");
     let graph_side = body
         .split("<a")
         .find(|piece| piece.contains("data-view=\"graph\""))
@@ -9304,6 +9309,7 @@ async fn get_notes_with_a_note_renders_the_switch_with_note_pressed_and_a_graph_
         graph_side.contains("/notes/graph?project=Alpha&#38;show_all=1"),
         "the Graph link keeps the focus: {graph_side}"
     );
+    assert!(graph_side.contains("hx-push-url=\"true\""), "{graph_side}");
     assert!(!body.contains("id=\"notes-graph\""));
 }
 
