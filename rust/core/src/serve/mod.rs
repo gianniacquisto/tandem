@@ -397,6 +397,7 @@ fn routes() -> Router<Arc<SessionContext>> {
             axum::routing::patch(operator::set_role).delete(operator::remove),
         )
         .route("/notes", get(notes::notes_page))
+        .route("/notes/graph", get(notes::note_graph_page))
         .route("/notes/graph.json", get(notes::note_graph))
         .route("/notes/view", get(notes::note_view))
         .route("/notes/edit", get(notes::note_edit))
