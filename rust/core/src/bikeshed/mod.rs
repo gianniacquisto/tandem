@@ -38,7 +38,8 @@ use crate::store::StoreError;
 use self::locked::LockedDirectory;
 
 use self::wikilink::{
-    LinkOccurrence, LinkResolution, NoteIndex, link_occurrences, rewrite_links, rewrite_typed_links,
+    LinkOccurrence, LinkResolution, NoteIndex, link_occurrences, rewrite_links,
+    rewrite_typed_links, shortest_targets,
 };
 
 pub use self::graph::{GraphScope, NoteGraph, NoteGraphEdge, NoteGraphNode};
@@ -47,7 +48,9 @@ pub use self::health::{
     project_folder,
 };
 pub use self::stats::{BikeshedProjectStats, BikeshedStats, BikeshedStatsTotals};
-pub use self::wikilink::{BoardNames, BoardProject, LinkResolution as Resolution, Wikilink};
+pub use self::wikilink::{
+    BoardNames, BoardProject, ConceptKind, LinkResolution as Resolution, Wikilink,
+};
 
 /// The bikeshed path-hygiene rule (ADR 0008): the one place that decides whether
 /// a bikeshed-root-relative path is legal or an escape.
@@ -1113,6 +1116,45 @@ impl Bikeshed {
         })
     }
 
+    /// `typed_backlinks(kind, name, names)`: the notes with a `[[project:X]]` or
+    /// `[[label:x]]` link that resolves to the board name `name` (matched
+    /// ignoring case), one row each, with the line of the first such link.
+    pub fn typed_backlinks(
+        &self,
+        kind: ConceptKind,
+        name: &str,
+        names: &BoardNames,
+    ) -> DomainResult<Operation<Vec<Backlink>>> {
+        let wanted = name.trim().to_lowercase();
+        let notes = self.note_paths();
+        let mut rows = Vec::new();
+        for note_path in &notes {
+            let Ok(content) = self.read_note(note_path) else {
+                continue;
+            };
+            let first = link_occurrences(&content.text, &notes, names)
+                .into_iter()
+                .find(|occurrence| match (&occurrence.resolution, kind) {
+                    (LinkResolution::Project(found), ConceptKind::Project)
+                    | (LinkResolution::Label(found), ConceptKind::Label) => {
+                        found.to_lowercase() == wanted
+                    }
+                    _ => false,
+                });
+            if let Some(occurrence) = first {
+                rows.push(Backlink {
+                    path: note_path.clone(),
+                    line: occurrence.line,
+                });
+            }
+        }
+        rows.sort_by_key(|row| sort_key(&row.path));
+        Ok(Operation {
+            value: rows,
+            note: None,
+        })
+    }
+
     // MARK: - resolve and scan
 
     /// `resolve(target)`: where a wikilink target points, live from the file set.
@@ -1124,6 +1166,12 @@ impl Bikeshed {
     /// `resolve(target)` with the board's names, so a typed link resolves.
     pub fn resolve_with(&self, target: &str, names: &BoardNames) -> LinkResolution {
         NoteIndex::new(&self.note_paths()).resolve(target, names)
+    }
+
+    /// `link_targets()`: each note's path with the shortest `[[` target that
+    /// resolves back to it (the picker's one source for what to write).
+    pub fn link_targets(&self) -> Vec<(String, String)> {
+        shortest_targets(&self.note_paths())
     }
 
     /// `links(text)`: every wikilink occurrence in a note's text.

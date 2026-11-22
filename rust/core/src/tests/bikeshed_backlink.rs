@@ -202,3 +202,66 @@ fn backlinks_are_recomputed_after_rename() {
         DomainError::UnknownNote("B.md".to_string())
     );
 }
+
+fn board() -> crate::bikeshed::BoardNames {
+    use crate::bikeshed::{BoardNames, BoardProject};
+    BoardNames {
+        projects: vec![BoardProject {
+            name: "Tandem".to_string(),
+            labels: vec!["Tandem".to_string(), "cli".to_string()],
+        }],
+    }
+}
+
+fn typed(bikeshed: &Bikeshed, kind: crate::bikeshed::ConceptKind, name: &str) -> Vec<Backlink> {
+    bikeshed
+        .typed_backlinks(kind, name, &board())
+        .expect("the typed backlinks read")
+        .value
+}
+
+#[test]
+fn typed_backlinks_list_the_notes_and_lines_for_a_label_and_a_project_ignoring_case() {
+    use crate::bikeshed::ConceptKind;
+
+    let vault = Vault::new("backlink-typed");
+    vault.stage(
+        "daily/2026-11-20.md",
+        "About: [[project:Tandem]] [[label:cli]]",
+    );
+    vault.stage(
+        "A.md",
+        "first\nthe door: [[Label:CLI|the cli]]\nagain [[label:cli]]",
+    );
+    vault.stage("B.md", "only a project [[project:tandem]]");
+    vault.stage("C.md", "broken [[label:nope]] and a plain [[A]]");
+    vault.stage("D.md", "```\n[[label:cli]]\n```");
+    let bikeshed = vault.bikeshed();
+
+    assert_eq!(
+        typed(&bikeshed, ConceptKind::Label, "cli"),
+        vec![
+            Backlink {
+                path: "A.md".to_string(),
+                line: "the door: [[Label:CLI|the cli]]".to_string(),
+            },
+            Backlink {
+                path: "daily/2026-11-20.md".to_string(),
+                line: "About: [[project:Tandem]] [[label:cli]]".to_string(),
+            },
+        ]
+    );
+    assert_eq!(
+        typed(&bikeshed, ConceptKind::Label, "CLI").len(),
+        2,
+        "the asked name matches ignoring case"
+    );
+    assert_eq!(
+        typed(&bikeshed, ConceptKind::Project, "Tandem")
+            .into_iter()
+            .map(|row| row.path)
+            .collect::<Vec<_>>(),
+        vec!["B.md".to_string(), "daily/2026-11-20.md".to_string()]
+    );
+    assert!(typed(&bikeshed, ConceptKind::Label, "nope").is_empty());
+}
