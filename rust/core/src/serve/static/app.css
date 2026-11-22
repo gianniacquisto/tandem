@@ -4992,3 +4992,90 @@ a.menu__option {
     display: none;
   }
 }
+
+/* A typed [[project:X]] or [[label:x]] link: a chip with its kind word in the
+ * dim ink. The broken chip keeps its dotted line, so the tint is not the only
+ * cue. */
+.wikilink--typed {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--wikilink-chip);
+  color: var(--ink);
+  text-decoration: none;
+  vertical-align: bottom;
+}
+
+.wikilink--typed:hover {
+  background: var(--sand);
+  text-decoration: none;
+}
+
+.wikilink--typed.wikilink--broken {
+  background: var(--wikilink-chip-broken);
+  color: var(--ink-dim);
+  text-decoration: underline dotted;
+}
+
+.wikilink__kind {
+  flex: none;
+  color: var(--ink-dim);
+  font-size: 0.8em;
+}
+
+.wikilink__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The same chip in the live editor: the source characters stay. */
+.lp__wiki--typed {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--wikilink-chip);
+  color: var(--ink);
+}
+
+.lp__wiki--typed.wikilink--broken {
+  background: var(--wikilink-chip-broken);
+}
+
+/* The tree's tag on a folder the board names. */
+.tree__tag {
+  flex: none;
+  margin-left: auto;
+  padding: 0 6px;
+  border: var(--hairline) solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-dim);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+/* The warning is the ember outline and the words; the text stays on the ink so
+ * it holds contrast in every palette. */
+.tree__tag--warn {
+  border-color: var(--ember);
+  color: var(--ink);
+}
+
+/* A label page: its name and one summary line in the main column. */
+.page-title--static {
+  overflow-wrap: anywhere;
+}
+
+.concept__summary {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 13.5px;
+}
+
+/* A Relations row with nothing to open. */
+div.relations__row {
+  cursor: default;
+}

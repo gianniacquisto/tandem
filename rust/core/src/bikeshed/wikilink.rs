@@ -125,12 +125,38 @@ impl BoardNames {
 
 /// The typed form of a link target: `project:` or `label:` (case-insensitive
 /// prefix) and the name after it. Any other `a:b` is a plain note target.
-fn typed_target(target: &str) -> Option<(bool, &str)> {
+pub(crate) fn typed_target(target: &str) -> Option<(bool, &str)> {
     let (prefix, name) = target.split_once(':')?;
     match prefix.trim().to_lowercase().as_str() {
         "project" => Some((true, name.trim())),
         "label" => Some((false, name.trim())),
         _ => None,
+    }
+}
+
+/// The two kinds of board name a typed link can point at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConceptKind {
+    Project,
+    Label,
+}
+
+impl ConceptKind {
+    /// The kind a query value names (`project` or `label`, any case).
+    pub fn parse(word: &str) -> Option<Self> {
+        match word.trim().to_lowercase().as_str() {
+            "project" => Some(Self::Project),
+            "label" => Some(Self::Label),
+            _ => None,
+        }
+    }
+
+    /// The word a typed link and a chip use for the kind.
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Project => "project",
+            Self::Label => "label",
+        }
     }
 }
 

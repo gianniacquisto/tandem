@@ -4870,6 +4870,7 @@ async fn every_route_and_refusal_carries_the_security_headers() {
         "/notes/view",
         "/notes/edit",
         "/notes/open",
+        "/notes/concept",
         "/tickets/none",
         "/static/missing.css",
         "/no/such/route",
@@ -5559,6 +5560,7 @@ const ROUTE_TABLE: &[(&str, &str, &str)] = &[
     ("GET", "/notes/view", "/notes/view"),
     ("GET", "/notes/edit", "/notes/edit"),
     ("GET", "/notes/open", "/notes/open"),
+    ("GET", "/notes/concept", "/notes/concept"),
     ("POST", "/notes/preview", "/notes/preview"),
     ("POST", "/notes/save", "/notes/save"),
     ("POST", "/notes/create", "/notes/create"),
@@ -8906,7 +8908,10 @@ async fn the_read_view_draws_plain_wikilinks_as_links_and_broken_ones_as_spans()
         "{body}"
     );
     assert!(body.contains("note named Dup\">Dup</span>"), "{body}");
-    assert!(body.contains("[[project:Tandem]]"), "{body}");
+    assert!(
+        body.contains("wikilink wikilink--typed wikilink--broken\" title=\"No project named Tandem on the board\""),
+        "{body}"
+    );
     assert!(
         body.contains("<code class=\"markdown__inline-code\">[[B]]</code>"),
         "{body}"
@@ -8975,7 +8980,9 @@ async fn the_edit_view_lists_the_targets_that_resolve_broken() {
 
     let (_, _, body) = send(&app, page_get("/notes/edit?path=A.md")).await;
     assert!(
-        body.contains("data-broken-links=\"[&#34;dup&#34;,&#34;missing&#34;]\""),
+        body.contains(
+            "data-broken-links=\"[&#34;dup&#34;,&#34;missing&#34;,&#34;project:tandem&#34;]\""
+        ),
         "{body}"
     );
 }
@@ -9105,5 +9112,315 @@ fn the_notes_graph_route_needs_what_the_notes_face_needs() {
     assert_eq!(
         guard::route_need("/notes/graph.json"),
         guard::route_need("/notes")
+    );
+}
+
+// MARK: - Typed links: chips, project and label pages, tree tags, Today's note
+
+/// The vault the typed-link tests share: the Alpha project with its `alpha`
+/// label folder holding two notes, a project subfolder no label names, a
+/// loose note, and notes that link in.
+fn typed_vault(notes: &crate::bikeshed::Bikeshed) {
+    for path in [
+        "projects/Alpha/shared/CLI.md",
+        "projects/Alpha/shared/Dist.md",
+        "projects/Alpha/App/Thing.md",
+        "projects/Alpha/Decisions.md",
+        "Index.md",
+        "Daily.md",
+    ] {
+        notes.create(path).expect("the note is created");
+    }
+    notes
+        .write(
+            "Daily.md",
+            "About: [[project:Alpha]] [[label:ALPHA|the lane]] [[label:nope]]",
+            None,
+        )
+        .expect("the note is written");
+    notes
+        .write("Index.md", "the door: [[label:shared]]", None)
+        .expect("the note is written");
+}
+
+#[tokio::test]
+async fn the_read_view_draws_a_typed_link_as_a_chip_and_a_broken_one_as_broken() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-typed-chips");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    let notes = vault(&store);
+    typed_vault(&notes);
+    let app = router(context(store));
+
+    let (_, _, body) = send(&app, page_get("/notes?path=Daily.md&mode=read")).await;
+    assert!(
+        body.contains(
+            "wikilink wikilink--typed\" href=\"/notes/concept?kind=project&amp;name=Alpha"
+        ),
+        "a project link is a chip to its page: {body}"
+    );
+    assert!(
+        body.contains("<span class=\"wikilink__kind\">project</span><span class=\"wikilink__name\">Alpha</span>"),
+        "the chip carries the kind word and the name: {body}"
+    );
+    assert!(
+        body.contains("<span class=\"wikilink__name\">the lane</span>")
+            && body.contains("name=alpha"),
+        "an alias is shown and the board's spelling is linked: {body}"
+    );
+    assert!(
+        body.contains("wikilink wikilink--typed wikilink--broken"),
+        "a name the board lacks is the broken chip: {body}"
+    );
+    assert!(
+        !body.contains("href=\"/notes/concept?kind=label&amp;name=nope"),
+        "the broken chip links nowhere: {body}"
+    );
+}
+
+#[tokio::test]
+async fn the_label_page_draws_its_summary_and_the_three_sections() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-label-page");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    let notes = vault(&store);
+    typed_vault(&notes);
+    let app = router(context(store));
+
+    let (status, _, body) = send(&app, page_get("/notes/concept?kind=label&name=SHARED")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        body.contains(
+            "Label in project Alpha. 2 notes filed here, 1 note links to it, 1 open ticket."
+        ),
+        "the summary line: {body}"
+    );
+    assert!(
+        body.contains("<h1 class=\"page-title page-title--static\">shared</h1>"),
+        "{body}"
+    );
+    let section = |kind: &str| {
+        let at = body
+            .find(&format!("data-section=\"{kind}\""))
+            .unwrap_or_else(|| panic!("section {kind}: {body}"));
+        let start = body[..at].rfind("<details").expect("a details");
+        let end = at + body[at..].find("</details>").expect("a close");
+        body[start..end].to_string()
+    };
+    let filed = section("filed");
+    assert!(
+        filed.contains(" open") && filed.contains("CLI") && filed.contains("Dist"),
+        "{filed}"
+    );
+    let linked = section("linked");
+    assert!(
+        linked.contains(" open") && linked.contains("the door: [[label:shared]]"),
+        "{linked}"
+    );
+    assert!(linked.contains("Index"), "{linked}");
+    let tickets = section("tickets");
+    assert!(
+        !tickets.contains("open>") && tickets.contains("Shared alpha"),
+        "{tickets}"
+    );
+    assert!(tickets.contains("href=\"/tickets/"), "{tickets}");
+}
+
+#[tokio::test]
+async fn the_project_page_opens_its_entry_note_and_creates_it_when_missing() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-project-page");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    let notes = vault(&store);
+    typed_vault(&notes);
+    let app = router(context(store));
+
+    assert!(
+        notes.read("projects/Alpha/Alpha.md").is_err(),
+        "no entry note yet"
+    );
+    let (status, _, body) = send(&app, page_get("/notes/concept?kind=project&name=alpha")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(
+        notes.read("projects/Alpha/Alpha.md").is_ok(),
+        "the first visit creates the entry note"
+    );
+    assert!(
+        body.contains("data-live"),
+        "the entry note is an editable note: {body}"
+    );
+    assert!(
+        body.contains("name=\"concept\" value=\"project\""),
+        "a save keeps the page: {body}"
+    );
+    for marker in [
+        "data-section=\"filed\"",
+        "data-section=\"linked\"",
+        "data-section=\"tickets\"",
+    ] {
+        assert!(body.contains(marker), "{marker}: {body}");
+    }
+    assert!(!body.contains("data-section=\"backlinks\""), "{body}");
+    assert!(
+        body.contains("label, 2 notes") && body.contains("folder, no label, 1 note"),
+        "the label folders then the rest: {body}"
+    );
+    assert!(body.contains("Decisions"), "the loose notes: {body}");
+    assert!(
+        body.contains("About: [[project:Alpha]]"),
+        "typed links merge into Linked from: {body}"
+    );
+
+    let before = notes
+        .read("projects/Alpha/Alpha.md")
+        .expect("read")
+        .value
+        .text;
+    let _ = send(&app, page_get("/notes/concept?kind=project&name=Alpha")).await;
+    assert_eq!(
+        notes
+            .read("projects/Alpha/Alpha.md")
+            .expect("read")
+            .value
+            .text,
+        before,
+        "a second visit changes nothing"
+    );
+}
+
+#[tokio::test]
+async fn an_unknown_concept_draws_the_error_banner_and_never_a_path() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-concept-unknown");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    let app = router(context(store));
+
+    for uri in [
+        "/notes/concept?kind=label&name=nope",
+        "/notes/concept?kind=project&name=..%2F..%2Fetc",
+        "/notes/concept?kind=thing&name=alpha",
+    ] {
+        let (status, _, body) = send(&app, page_get(uri)).await;
+        assert_eq!(status, StatusCode::OK, "{uri}: {body}");
+        assert!(
+            body.contains("class=\"banner\" role=\"alert\""),
+            "{uri}: {body}"
+        );
+        assert!(body.contains("on the board."), "{uri}: {body}");
+        assert!(
+            body.contains("href=\"/notes?project=\""),
+            "a way back: {body}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn the_tree_tags_the_folders_the_board_names() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-tree-tags");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    let notes = vault(&store);
+    typed_vault(&notes);
+    let app = router(context(store));
+
+    let (_, _, body) = send(&app, page_get("/notes")).await;
+    assert!(
+        body.contains("<span class=\"tree__tag\">project</span>"),
+        "{body}"
+    );
+    assert!(
+        body.contains("<span class=\"tree__tag\">label</span>"),
+        "{body}"
+    );
+    assert!(
+        body.contains("<span class=\"tree__tag tree__tag--warn\">no label</span>"),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn a_note_lists_the_projects_and_labels_it_links_to() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-links-to");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    let notes = vault(&store);
+    typed_vault(&notes);
+    let app = router(context(store));
+
+    let (_, _, body) = send(&app, page_get("/notes?path=Daily.md")).await;
+    let at = body
+        .find("data-section=\"links-to\"")
+        .expect("the Links to section");
+    let section = &body[body[..at].rfind("<details").expect("a details")
+        ..at + body[at..].find("</details>").expect("a close")];
+    assert!(section.contains(" open"), "Links to starts open: {section}");
+    assert!(section.contains("label in Alpha"), "{section}");
+    assert!(
+        section.contains("/notes/concept?kind=project&#38;name=Alpha"),
+        "{section}"
+    );
+    assert!(
+        body.contains("data-broken-links=\"[&#34;label:nope&#34;]\""),
+        "a broken typed link reaches the editor: {body}"
+    );
+}
+
+#[tokio::test]
+async fn todays_note_starts_with_the_about_line_only_when_a_project_is_focused() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-daily-about");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    let notes = vault(&store);
+    let app = router(context(store));
+
+    let _ = send(
+        &app,
+        form_request("/notes/daily", "date=2026-11-14&project=alpha"),
+    )
+    .await;
+    assert_eq!(
+        notes.read("daily/2026-11-14.md").expect("read").value.text,
+        "About: [[project:Alpha]]\n",
+        "the board's spelling of the focused project"
+    );
+    notes
+        .write("daily/2026-11-14.md", "mine", None)
+        .expect("written");
+    let _ = send(
+        &app,
+        form_request("/notes/daily", "date=2026-11-14&project=Beta"),
+    )
+    .await;
+    assert_eq!(
+        notes.read("daily/2026-11-14.md").expect("read").value.text,
+        "mine",
+        "an existing page is untouched"
+    );
+    let _ = send(
+        &app,
+        form_request("/notes/daily", "date=2026-11-15&project="),
+    )
+    .await;
+    assert_eq!(
+        notes.read("daily/2026-11-15.md").expect("read").value.text,
+        "",
+        "no focus, an empty page"
+    );
+    let _ = send(
+        &app,
+        form_request("/notes/daily", "date=2026-11-16&project=Unknown"),
+    )
+    .await;
+    assert_eq!(
+        notes.read("daily/2026-11-16.md").expect("read").value.text,
+        "",
+        "an unknown project is no focus"
     );
 }

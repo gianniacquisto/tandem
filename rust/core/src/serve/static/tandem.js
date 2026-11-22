@@ -490,13 +490,14 @@
         out += '<em>' + marker(token.charAt(0)) + esc(token.slice(1, -1)) + marker(token.charAt(0)) + '</em>';
       } else if (match[6]) {
         var inner = token.slice(2, -2);
-        var typed = /^\s*(project|label):/i.test(inner);
+        var typed = /^\s*(project|label)\s*:/i.test(inner);
         var embed = match.index > 0 && source.charAt(match.index - 1) === '!';
-        var follow = !typed && !embed;
+        var follow = !embed;
         var cut = inner.search(/[#|]/);
-        var name = (cut < 0 ? inner : inner.slice(0, cut)).toLowerCase();
+        var name = linkKey(cut < 0 ? inner : inner.slice(0, cut));
         var broken = follow && brokenLinks().indexOf(name) >= 0;
         out += '<span class="lp__wiki' + (follow ? ' lp__wiki--follow' : '') +
+          (typed ? ' lp__wiki--typed' : '') +
           (broken ? ' wikilink--broken' : '') + '"' +
           (follow ? ' data-link="' + esc(inner).replace(/"/g, '&quot;') + '"' : '') +
           (broken ? ' title="No single note named ' + esc(cut < 0 ? inner : inner.slice(0, cut)).replace(/"/g, '&quot;') + '"' : '') +
@@ -509,6 +510,12 @@
       last = match.index + token.length;
     }
     return out + esc(source.slice(last));
+  }
+
+  // The key a link target is looked up by: lowercased, a typed one as
+  // `kind:name` with the spaces around the colon dropped.
+  function linkKey(target) {
+    return target.replace(/^\s*(project|label)\s*:\s*/i, '$1:').trim().toLowerCase();
   }
 
   // The targets the server found broken when the page loaded, lowercased.
@@ -533,6 +540,24 @@
       var input = form.querySelector('input[name="' + name + '"]');
       return input ? input.value : '';
     };
+    // A project or label link opens its page; the board's names decide there.
+    var typed = /^\s*(project|label)\s*:\s*(.*)$/i.exec(target);
+    if (typed) {
+      var page = new URLSearchParams({
+        kind: typed[1].toLowerCase(),
+        name: typed[2].trim(),
+        project: value('project'),
+        show_all: value('show_all')
+      });
+      flushNote().then(function (landed) {
+        if (!landed) return;
+        window.htmx.ajax('GET', '/notes/concept?' + page.toString(), {
+          target: '#notes-root',
+          swap: 'outerHTML'
+        });
+      });
+      return;
+    }
     var query = new URLSearchParams({
       target: target,
       from: value('path'),
@@ -555,7 +580,6 @@
     while ((match = re.exec(text))) {
       if (offset >= match.index && offset <= match.index + match[0].length) {
         if (match.index > 0 && text.charAt(match.index - 1) === '!') return null;
-        if (/^\s*(project|label):/i.test(match[1])) return null;
         return match[1];
       }
     }
