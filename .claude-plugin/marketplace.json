@@ -13,7 +13,7 @@
         "source": "git-subdir",
         "url": "gianniacquisto/tandem",
         "path": "examples",
-        "ref": "v2.8.0"
+        "ref": "v2.9.0"
       },
       "description": "Connects Claude to your local Tandem board: tickets, labels, projects and notes over MCP, plus the example skills and agents.",
       "category": "productivity",
