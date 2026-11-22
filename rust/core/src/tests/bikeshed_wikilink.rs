@@ -361,3 +361,66 @@ fn a_typed_link_in_a_code_span_is_not_a_link() {
         .links_with("a `[[label:cli]]` span", &names());
     assert!(found.is_empty());
 }
+
+// MARK: - Link targets (the `[[` picker)
+
+#[test]
+fn link_targets_give_a_unique_basename_the_bare_target() {
+    let vault = Vault::new("targets-bare");
+    vault.stage("Alpha.md", "x");
+    vault.stage("notes/Beta.md", "x");
+    let targets = vault.bikeshed().link_targets();
+    let find = |path: &str| {
+        targets
+            .iter()
+            .find(|(note, _)| note == path)
+            .map(|(_, target)| target.as_str())
+    };
+    assert_eq!(find("Alpha.md"), Some("Alpha"));
+    assert_eq!(find("notes/Beta.md"), Some("Beta"));
+}
+
+#[test]
+fn link_targets_give_clashing_basenames_their_path_in_any_case() {
+    let vault = Vault::new("targets-clash");
+    vault.stage("a/Port.md", "x");
+    vault.stage("b/port.md", "x");
+    vault.stage("Solo.md", "x");
+    let targets = vault.bikeshed().link_targets();
+    let find = |path: &str| {
+        targets
+            .iter()
+            .find(|(note, _)| note == path)
+            .map(|(_, target)| target.as_str())
+    };
+    assert_eq!(find("a/Port.md"), Some("a/Port"));
+    assert_eq!(find("b/port.md"), Some("b/port"));
+    assert_eq!(find("Solo.md"), Some("Solo"));
+}
+
+#[test]
+fn every_link_target_resolves_back_to_its_own_note() {
+    let vault = Vault::new("targets-roundtrip");
+    for path in [
+        "Top.md",
+        "a/Port.md",
+        "b/Port.md",
+        "b/deep/Port.md",
+        "c/Unique.md",
+        "c/d/Nested.md",
+        "y/Nested Two.md",
+        "x/nested two.md",
+    ] {
+        vault.stage(path, "x");
+    }
+    let bikeshed = vault.bikeshed();
+    let targets = bikeshed.link_targets();
+    assert_eq!(targets.len(), 8);
+    for (path, target) in targets {
+        assert_eq!(
+            bikeshed.resolve(&target),
+            LinkResolution::Resolved(path.clone()),
+            "{target} resolves back to {path}"
+        );
+    }
+}

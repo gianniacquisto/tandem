@@ -125,12 +125,38 @@ impl BoardNames {
 
 /// The typed form of a link target: `project:` or `label:` (case-insensitive
 /// prefix) and the name after it. Any other `a:b` is a plain note target.
-fn typed_target(target: &str) -> Option<(bool, &str)> {
+pub(crate) fn typed_target(target: &str) -> Option<(bool, &str)> {
     let (prefix, name) = target.split_once(':')?;
     match prefix.trim().to_lowercase().as_str() {
         "project" => Some((true, name.trim())),
         "label" => Some((false, name.trim())),
         _ => None,
+    }
+}
+
+/// The two kinds of board name a typed link can point at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConceptKind {
+    Project,
+    Label,
+}
+
+impl ConceptKind {
+    /// The kind a query value names (`project` or `label`, any case).
+    pub fn parse(word: &str) -> Option<Self> {
+        match word.trim().to_lowercase().as_str() {
+            "project" => Some(Self::Project),
+            "label" => Some(Self::Label),
+            _ => None,
+        }
+    }
+
+    /// The word a typed link and a chip use for the kind.
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Project => "project",
+            Self::Label => "label",
+        }
     }
 }
 
@@ -202,6 +228,39 @@ impl NoteIndex {
             _ => LinkResolution::Broken,
         }
     }
+}
+
+/// The shortest target that resolves back to each note: the bare basename
+/// without `.md` when no other note shares it (case-insensitive, the rule
+/// [`NoteIndex::resolve`] applies), else the root-relative path without `.md`.
+/// Pairs of `(note path, target)` in the order of `notes`. A root-level note
+/// that shares its basename has no resolving target (a target without `/` is
+/// bare, and bare is ambiguous there); it gets its path, which is as close as
+/// the grammar allows.
+pub(crate) fn shortest_targets(notes: &[String]) -> Vec<(String, String)> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for note in notes {
+        *counts.entry(base_key(note)).or_default() += 1;
+    }
+    notes
+        .iter()
+        .map(|note| {
+            let path = note.strip_suffix(".md").unwrap_or(note);
+            let target = if counts.get(&base_key(note)) == Some(&1) {
+                path.rsplit('/').next().unwrap_or(path)
+            } else {
+                path
+            };
+            (note.clone(), target.to_string())
+        })
+        .collect()
+}
+
+/// The lowercased basename without `.md`: the key the bare rule matches on.
+fn base_key(note: &str) -> String {
+    let lower = note.to_lowercase();
+    let base = lower.rsplit('/').next().unwrap_or(&lower);
+    base.strip_suffix(".md").unwrap_or(base).to_string()
 }
 
 /// Every wikilink occurrence in `text`, resolved against `notes` and `names`.

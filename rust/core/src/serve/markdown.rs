@@ -9,7 +9,9 @@
 //! text, and the templates never see raw user HTML: the only markup in this
 //! output is the renderer's own.
 
-use crate::bikeshed::wikilink::{LinkResolution, Wikilink, wikilink_tokens};
+use crate::bikeshed::wikilink::{
+    ConceptKind, LinkResolution, Wikilink, typed_target, wikilink_tokens,
+};
 use crate::domain::markdown::{InlineStyle, MarkdownBlock, MarkdownInline};
 
 /// The whole document: the `.markdown` container and every block under it.
@@ -33,6 +35,8 @@ pub fn document_with_links(blocks: &[MarkdownBlock], links: &Wikilinks) -> Strin
 pub struct Wikilinks<'a> {
     pub resolve: &'a dyn Fn(&str) -> LinkResolution,
     pub href: &'a dyn Fn(&str) -> String,
+    /// Where a project or label page opens, from its kind and canonical name.
+    pub concept: &'a dyn Fn(ConceptKind, &str) -> String,
 }
 
 /// The blocks alone, for the `markdown.html` partial's body.
@@ -207,21 +211,28 @@ fn run_into(run: &MarkdownInline, out: &mut String, links: Option<&Wikilinks>) {
     }
 }
 
-/// A text run with its plain wikilinks drawn. A typed `[[project:..]]` or
-/// `[[label:..]]` stays literal text until its own chips land, and an embed is
-/// left to the scanner, which skips it.
+/// A text run with its wikilinks drawn: a note link as a link, a typed
+/// `[[project:..]]` or `[[label:..]]` as a chip (a link to its page, or the
+/// broken tint when the board has no such name). An embed is left to the
+/// scanner, which skips it.
 fn text_with_links(text: &str, links: &Wikilinks, out: &mut String) {
     let mut last = 0;
     for (start, end, content) in wikilink_tokens(text) {
         let Some(link) = Wikilink::parse(content) else {
             continue;
         };
-        let lowered = link.target.trim().to_lowercase();
-        if lowered.starts_with("project:") || lowered.starts_with("label:") {
-            continue;
-        }
         escape_into(&text[last..start], out);
         last = end;
+        if let Some((is_project, name)) = typed_target(&link.target) {
+            let kind = if is_project {
+                ConceptKind::Project
+            } else {
+                ConceptKind::Label
+            };
+            let resolution = (links.resolve)(&link.target);
+            chip_into(kind, name, &link, &resolution, links, out);
+            continue;
+        }
         match (links.resolve)(&link.target) {
             LinkResolution::Resolved(path) => {
                 let href = (links.href)(&path);
@@ -250,6 +261,55 @@ fn text_with_links(text: &str, links: &Wikilinks, out: &mut String) {
         }
     }
     escape_into(&text[last..], out);
+}
+
+/// A typed link as a chip: the kind word in the dim ink, then the alias or the
+/// board's own spelling of the name. A name the board does not have is the
+/// broken chip, which keeps what was written and links nowhere.
+fn chip_into(
+    kind: ConceptKind,
+    written: &str,
+    link: &Wikilink,
+    resolution: &LinkResolution,
+    links: &Wikilinks,
+    out: &mut String,
+) {
+    let canonical = match resolution {
+        LinkResolution::Project(name) | LinkResolution::Label(name) => Some(name.as_str()),
+        _ => None,
+    };
+    let shown = link
+        .alias
+        .as_deref()
+        .unwrap_or(canonical.unwrap_or(written));
+    let body = |out: &mut String| {
+        out.push_str("<span class=\"wikilink__kind\">");
+        out.push_str(kind.word());
+        out.push_str("</span><span class=\"wikilink__name\">");
+        escape_into(shown, out);
+        out.push_str("</span>");
+    };
+    match canonical {
+        Some(name) => {
+            let href = (links.concept)(kind, name);
+            out.push_str("<a class=\"wikilink wikilink--typed\" href=\"");
+            escape_into(&href, out);
+            out.push_str("\" hx-get=\"");
+            escape_into(&href, out);
+            out.push_str("\" hx-target=\"#notes-root\" hx-swap=\"outerHTML\">");
+            body(out);
+            out.push_str("</a>");
+        }
+        None => {
+            out.push_str("<span class=\"wikilink wikilink--typed wikilink--broken\" title=\"No ");
+            out.push_str(kind.word());
+            out.push_str(" named ");
+            escape_into(written, out);
+            out.push_str(" on the board\">");
+            body(out);
+            out.push_str("</span>");
+        }
+    }
 }
 
 /// The five characters that would change the markup, escaped.

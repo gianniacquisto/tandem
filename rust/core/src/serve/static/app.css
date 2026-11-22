@@ -3984,6 +3984,73 @@ a.menu__option {
   color: var(--ink-dim);
 }
 
+/* The link menu is the same listbox, wider, with grouped rows. Its list
+   scrolls inside the frame so the "more notes" footer stays in view. */
+.slash--link {
+  width: 320px;
+  gap: 0;
+  overflow: hidden;
+}
+
+.slash--link .slash__list {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+
+.slash--link .slash__label,
+.slash--link .slash__hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.slash--link .slash__label {
+  flex: 1 1 auto;
+}
+
+.slash--link .slash__hint {
+  flex: 0 1 40%;
+  text-align: right;
+}
+
+.slash__group {
+  padding: 6px 8px 2px;
+  color: var(--ink-dim);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.slash__group:first-child {
+  padding-top: 2px;
+}
+
+.slash__match {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+/* Ink on paper with an ember rule: small ember text misses contrast. */
+.slash__error {
+  padding: 6px 8px;
+  border-left: 3px solid var(--ember);
+  color: var(--ink);
+}
+
+.slash__foot {
+  flex: none;
+  margin-top: 4px;
+  padding: 6px 8px 0;
+  border-top: var(--hairline) solid var(--line);
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+
 /* The title is the name: edit it to rename the note. */
 .page-title-form {
   margin: 0;
@@ -4991,4 +5058,494 @@ a.menu__option {
   .relations__close {
     display: none;
   }
+}
+
+/* A typed [[project:X]] or [[label:x]] link: a chip with its kind word in the
+ * dim ink. The broken chip keeps its dotted line, so the tint is not the only
+ * cue. */
+.wikilink--typed {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--wikilink-chip);
+  color: var(--ink);
+  text-decoration: none;
+  vertical-align: bottom;
+}
+
+.wikilink--typed:hover {
+  background: var(--sand);
+  text-decoration: none;
+}
+
+.wikilink--typed.wikilink--broken {
+  background: var(--wikilink-chip-broken);
+  color: var(--ink-dim);
+  text-decoration: underline dotted;
+}
+
+.wikilink__kind {
+  flex: none;
+  color: var(--ink-dim);
+  font-size: 0.8em;
+}
+
+.wikilink__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The same chip in the live editor: the source characters stay. */
+.lp__wiki--typed {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--wikilink-chip);
+  color: var(--ink);
+}
+
+.lp__wiki--typed.wikilink--broken {
+  background: var(--wikilink-chip-broken);
+}
+
+/* The tree's tag on a folder the board names. */
+.tree__tag {
+  flex: none;
+  margin-left: auto;
+  padding: 0 6px;
+  border: var(--hairline) solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-dim);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+/* The warning is the ember outline and the words; the text stays on the ink so
+ * it holds contrast in every palette. */
+.tree__tag--warn {
+  border-color: var(--ember);
+  color: var(--ink);
+}
+
+/* A label page: its name and one summary line in the main column. */
+.page-title--static {
+  overflow-wrap: anywhere;
+}
+
+.concept__summary {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 13.5px;
+}
+
+/* A Relations row with nothing to open. */
+div.relations__row {
+  cursor: default;
+}
+
+/* MARK: - The notes graph (TAN-529): tokens only, shape plus colour per kind */
+
+.seg {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+}
+
+.seg__item {
+  padding: 0 10px;
+  color: var(--ink-dim);
+  font-size: 12px;
+  line-height: var(--space-control);
+  text-decoration: none;
+}
+
+.seg__item[aria-current="page"] {
+  background: var(--sand);
+  color: var(--ink);
+}
+
+.seg__item:hover {
+  color: var(--ink);
+}
+
+.seg__item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.seg + .relations-toggle {
+  margin-left: 8px;
+}
+
+.bikeshed__document:has(.graph) .bikeshed__breadcrumb-inner {
+  max-width: none;
+  padding: 0 var(--space-gutter);
+}
+
+.graph {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.graph > .banner {
+  margin: 8px var(--space-gutter) 0;
+}
+
+.gwrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 420px;
+  margin-top: 8px;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.gsvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.gsvg--panning {
+  cursor: grabbing;
+}
+
+.gstatus {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 13.5px;
+  pointer-events: none;
+}
+
+.gempty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--ink-dim);
+  font-size: 13.5px;
+  text-align: center;
+}
+
+.gempty[hidden],
+.gstatus[hidden],
+.gtip[hidden] {
+  display: none;
+}
+
+.gempty__title {
+  color: var(--ink);
+}
+
+.gctl {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  box-sizing: border-box;
+  width: 220px;
+  padding: 10px 12px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--parchment);
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.gctl__summary {
+  display: none;
+  cursor: pointer;
+  color: var(--ink-dim);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.gctl__summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.gctl__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gctl__search {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 4px 8px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+
+.gctl__search:focus-visible,
+.gctl__check input:focus-visible,
+.gctl__row button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.gctl__check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gctl__head {
+  color: var(--ink-dim);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.gctl__row {
+  display: flex;
+  gap: 6px;
+}
+
+.gctl__row button {
+  flex: 1;
+  padding: 2px 6px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.gctl__row button:hover,
+.gctl__row button[aria-pressed="true"] {
+  background: var(--sand);
+}
+
+@media (max-width: 1100px) {
+  .gctl {
+    width: auto;
+    max-width: 220px;
+  }
+
+  .gctl__summary {
+    display: block;
+  }
+
+  .gctl[open] .gctl__summary {
+    margin-bottom: 8px;
+  }
+}
+
+.glegend {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  max-width: calc(100% - 24px);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 6px 10px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--parchment);
+  color: var(--ink-dim);
+  font-size: 11.5px;
+  list-style: none;
+}
+
+.glegend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.glegend__mark {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.glegend__mark--project {
+  background: var(--accent);
+}
+
+.glegend__mark--label {
+  background: var(--moss);
+  border-radius: 0;
+  transform: rotate(45deg) scale(0.8);
+}
+
+.glegend__mark--folder {
+  border: 1.5px solid var(--ink-dim);
+  background: var(--paper);
+}
+
+.glegend__mark--unmatched {
+  border: 1.5px dashed var(--ember);
+  background: var(--paper);
+}
+
+.glegend__mark--note {
+  background: var(--ink-dim);
+}
+
+.glegend__mark--daily {
+  background: var(--tone-sun);
+}
+
+.glegend__mark--orphan {
+  border: 1.5px solid var(--ember);
+  background: var(--paper);
+}
+
+.glegend__line {
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  border-top: 1px solid var(--ink-dim);
+}
+
+.glegend__line--links {
+  border-top-color: var(--accent);
+}
+
+.gtip {
+  position: absolute;
+  z-index: 3;
+  max-width: 280px;
+  padding: 4px 8px;
+  overflow: hidden;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.gtip small {
+  color: var(--ink-dim);
+}
+
+.gnode {
+  cursor: pointer;
+  outline: none;
+}
+
+.gnode--project .gshape {
+  fill: var(--accent);
+}
+
+.gnode--label .gshape {
+  fill: var(--moss);
+}
+
+.gnode--folder .gshape {
+  fill: var(--paper);
+  stroke: var(--ink-dim);
+  stroke-width: 1.5;
+}
+
+.gnode--unmatched .gshape {
+  stroke: var(--ember);
+  stroke-dasharray: 2 2;
+}
+
+.gnode--note .gshape {
+  fill: var(--ink-dim);
+}
+
+.gnode--daily .gshape {
+  fill: var(--tone-sun);
+}
+
+.gnode--orphan .gshape {
+  fill: var(--paper);
+  stroke: var(--ember);
+  stroke-width: 1.5;
+}
+
+.gedge--contains {
+  stroke: var(--ink-dim);
+  stroke-width: 1;
+  stroke-opacity: 0.35;
+}
+
+.gedge--links {
+  stroke: var(--accent);
+  stroke-width: 1;
+  stroke-opacity: 0.55;
+}
+
+.glabel {
+  fill: var(--ink);
+  font-size: 11px;
+  paint-order: stroke;
+  pointer-events: none;
+  stroke: var(--paper);
+  stroke-linejoin: round;
+  stroke-width: 3px;
+}
+
+.glabel--minor {
+  fill: var(--ink-dim);
+  font-size: 10px;
+}
+
+.gnode:not(.gnode--named) .glabel--minor {
+  display: none;
+}
+
+.gdim {
+  opacity: 0.15;
+}
+
+.glit .gshape {
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
+.gring {
+  display: none;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.gnode:focus-visible .gring {
+  display: block;
+}
+
+.graph [hidden] {
+  display: none !important;
 }
