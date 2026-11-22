@@ -18,6 +18,7 @@
 //! The derived readers (search, backlinks, health, stats) recompute from the
 //! file set; there is no stored index.
 
+pub mod graph;
 pub mod health;
 pub(crate) mod locked;
 pub mod stats;
@@ -40,6 +41,7 @@ use self::wikilink::{
     LinkOccurrence, LinkResolution, NoteIndex, link_occurrences, rewrite_links, rewrite_typed_links,
 };
 
+pub use self::graph::{GraphScope, NoteGraph, NoteGraphEdge, NoteGraphNode};
 pub use self::health::{
     BikeshedHealth, BikeshedHealthCounts, BrokenLink, MissingFolder, UnmatchedFolder, label_folder,
     project_folder,

@@ -9,6 +9,7 @@
 use crate::bikeshed::health::is_component;
 use crate::bikeshed::{Bikeshed, BikeshedNode, BoardNames, BoardProject, NodeKind};
 use crate::domain::Board;
+use crate::domain::error::DomainResult;
 use crate::store::Store;
 
 use super::open_bikeshed;
@@ -39,18 +40,22 @@ impl Leftover {
 /// The board's names as the vault reads them. An unreadable board is the empty
 /// set: the board answer has its own error path, and the vault follows nothing.
 pub(crate) fn names(board: &Board) -> BoardNames {
-    match board.projects_snapshot() {
-        Ok((projects, _)) => BoardNames {
-            projects: projects
-                .into_iter()
-                .map(|entry| BoardProject {
-                    name: entry.name,
-                    labels: entry.labels,
-                })
-                .collect(),
-        },
-        Err(_) => BoardNames::default(),
-    }
+    try_names(board).unwrap_or_default()
+}
+
+/// The board's names, or the board's own failure: the readers that must not
+/// answer an empty vault for an unreadable board (`note_health`, the graph).
+pub(crate) fn try_names(board: &Board) -> DomainResult<BoardNames> {
+    let (projects, _) = board.projects_snapshot()?;
+    Ok(BoardNames {
+        projects: projects
+            .into_iter()
+            .map(|entry| BoardProject {
+                name: entry.name,
+                labels: entry.labels,
+            })
+            .collect(),
+    })
 }
 
 /// The project a label sits in, as the board spells both.
