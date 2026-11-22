@@ -5569,6 +5569,7 @@ const ROUTE_TABLE: &[(&str, &str, &str)] = &[
     ("GET", "/notes", "/notes"),
     ("GET", "/notes/graph", "/notes/graph"),
     ("GET", "/notes/graph.json", "/notes/graph.json"),
+    ("GET", "/notes/targets", "/notes/targets"),
     ("GET", "/notes/view", "/notes/view"),
     ("GET", "/notes/edit", "/notes/edit"),
     ("GET", "/notes/open", "/notes/open"),
@@ -9093,6 +9094,57 @@ async fn get_notes_graph_json_answers_the_typed_graph_and_narrows_by_project() {
         "it links in"
     );
     assert!(!narrowed_ids.contains(&"projects/beta/Outside.md".to_string()));
+}
+
+#[tokio::test]
+async fn get_notes_targets_answers_projects_labels_and_each_notes_shortest_target() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-targets");
+    let store = sandbox.store();
+    setup_board(&store);
+    let notes = vault(&store);
+    for path in [
+        "Plain.md",
+        "a/Port.md",
+        "b/Port.md",
+        "projects/alpha/Inside.md",
+    ] {
+        notes.create(path).expect("the note is created");
+    }
+    let app = router(context(store));
+
+    let (status, headers, body) = get(&app, "/notes/targets").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+    let answer: serde_json::Value = serde_json::from_str(&body).expect("the answer is JSON");
+    let projects: Vec<&str> = answer["projects"]
+        .as_array()
+        .expect("projects")
+        .iter()
+        .map(|p| p["name"].as_str().expect("a name"))
+        .collect();
+    assert_eq!(projects, ["Alpha", "Beta", "Elsewhere"]);
+    let labels = answer["labels"].as_array().expect("labels");
+    let alpha = labels
+        .iter()
+        .find(|l| l["name"] == "alpha")
+        .expect("the label");
+    assert_eq!(alpha["project"], "Alpha");
+    let target = |path: &str| {
+        answer["notes"]
+            .as_array()
+            .expect("notes")
+            .iter()
+            .find(|n| n["path"] == path)
+            .unwrap_or_else(|| panic!("{path} is listed: {body}"))["target"]
+            .as_str()
+            .expect("a target")
+            .to_string()
+    };
+    assert_eq!(target("Plain.md"), "Plain");
+    assert_eq!(target("projects/alpha/Inside.md"), "Inside");
+    assert_eq!(target("a/Port.md"), "a/Port");
+    assert_eq!(target("b/Port.md"), "b/Port");
 }
 
 #[tokio::test]

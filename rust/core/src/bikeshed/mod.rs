@@ -38,7 +38,8 @@ use crate::store::StoreError;
 use self::locked::LockedDirectory;
 
 use self::wikilink::{
-    LinkOccurrence, LinkResolution, NoteIndex, link_occurrences, rewrite_links, rewrite_typed_links,
+    LinkOccurrence, LinkResolution, NoteIndex, link_occurrences, rewrite_links,
+    rewrite_typed_links, shortest_targets,
 };
 
 pub use self::graph::{GraphScope, NoteGraph, NoteGraphEdge, NoteGraphNode};
@@ -1165,6 +1166,12 @@ impl Bikeshed {
     /// `resolve(target)` with the board's names, so a typed link resolves.
     pub fn resolve_with(&self, target: &str, names: &BoardNames) -> LinkResolution {
         NoteIndex::new(&self.note_paths()).resolve(target, names)
+    }
+
+    /// `link_targets()`: each note's path with the shortest `[[` target that
+    /// resolves back to it (the picker's one source for what to write).
+    pub fn link_targets(&self) -> Vec<(String, String)> {
+        shortest_targets(&self.note_paths())
     }
 
     /// `links(text)`: every wikilink occurrence in a note's text.

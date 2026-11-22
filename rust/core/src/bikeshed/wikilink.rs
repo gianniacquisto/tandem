@@ -230,6 +230,39 @@ impl NoteIndex {
     }
 }
 
+/// The shortest target that resolves back to each note: the bare basename
+/// without `.md` when no other note shares it (case-insensitive, the rule
+/// [`NoteIndex::resolve`] applies), else the root-relative path without `.md`.
+/// Pairs of `(note path, target)` in the order of `notes`. A root-level note
+/// that shares its basename has no resolving target (a target without `/` is
+/// bare, and bare is ambiguous there); it gets its path, which is as close as
+/// the grammar allows.
+pub(crate) fn shortest_targets(notes: &[String]) -> Vec<(String, String)> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+    for note in notes {
+        *counts.entry(base_key(note)).or_default() += 1;
+    }
+    notes
+        .iter()
+        .map(|note| {
+            let path = note.strip_suffix(".md").unwrap_or(note);
+            let target = if counts.get(&base_key(note)) == Some(&1) {
+                path.rsplit('/').next().unwrap_or(path)
+            } else {
+                path
+            };
+            (note.clone(), target.to_string())
+        })
+        .collect()
+}
+
+/// The lowercased basename without `.md`: the key the bare rule matches on.
+fn base_key(note: &str) -> String {
+    let lower = note.to_lowercase();
+    let base = lower.rsplit('/').next().unwrap_or(&lower);
+    base.strip_suffix(".md").unwrap_or(base).to_string()
+}
+
 /// Every wikilink occurrence in `text`, resolved against `notes` and `names`.
 pub(crate) fn link_occurrences(
     text: &str,
