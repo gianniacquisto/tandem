@@ -89,6 +89,7 @@ The status comes from each record's own header and from the "Prior records" list
 | 0053 | [One prefix per project](0053-one-prefix-per-project.md) | In force | The project owns the ref key and the counter (schema v16); a ticket stores its project and never changes it; there is no default area; a label is optional inside one project; retired refs resolve through `ticket_aliases`. Amends 0039 and 0047. |
 | 0054 | [Notes link to projects and labels](0054-notes-link-to-projects-and-labels.md) | In force | Typed wikilinks `[[project:X]]` and `[[label:x]]` resolve against the board; an orphan has no link in or out and is not filed under a project folder; `note_health` reports `unmatchedFolders`; the graph's node and edge types. Amends 0005. |
 | 0055 | [The notes store is called notes](0055-the-notes-store-is-called-notes.md) | In force | Supersedes 0015 on the word: the store is notes, one file is a note; the on-disk paths and Rust names are TAN-862. |
+| 0057 | [The core is AGPL](0057-the-core-is-agpl.md) | In force | The core is AGPL-3.0-only, `examples/` stays MIT, past releases stay MIT, with the CLA of TAN-859. |
 
 ## Adding a record
 

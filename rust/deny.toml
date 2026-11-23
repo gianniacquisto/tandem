@@ -1,7 +1,8 @@
 # `cargo deny check`, the supply-chain gate in `.github/workflows/rust.yml`
 # (CUT-33): a published advisory against anything in `Cargo.lock` fails the
-# `deny` job, which also runs weekly with no push. Licences are checked against
-# the MIT distribution; the list is what the tree already uses.
+# `deny` job, which also runs weekly with no push. Third-party licences are
+# checked against a permissive list; the two workspace crates are AGPL-3.0-only
+# and named in `exceptions`, so no AGPL dependency slips in unseen.
 [graph]
 all-features = true
 
@@ -35,6 +36,10 @@ allow = [
     "MITNFA",
 ]
 confidence-threshold = 0.8
+exceptions = [
+    { allow = ["AGPL-3.0-only"], crate = "tandem" },
+    { allow = ["AGPL-3.0-only"], crate = "tandem-core" },
+]
 
 [bans]
 multiple-versions = "warn"
