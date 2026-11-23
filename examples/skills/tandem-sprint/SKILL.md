@@ -5,7 +5,7 @@ description: "Run a sprint: draw a batch of ready tickets, build each through th
 
 # Tandem sprint
 
-A sprint is one invocation that takes a batch of `ready` tickets to an exit state: **scope → plan → build → gate → close**. It is a procedure, not a stored entity: the board's statuses, assignees and comment logs are its record (ADR 0045). Shaping is the standalone refine pass (`skills/tandem-refine/`), learning is the standalone `retro`; a sprint neither runs nor prompts them.
+A sprint is one invocation that takes a batch of `ready` tickets to an exit state: **scope → plan → build → gate → close**. It is a procedure, not a stored entity: the board's statuses, assignees and comment logs are its record. Shaping is the standalone refine pass (`skills/tandem-refine/`), learning is the standalone `retro`; a sprint neither runs nor prompts them.
 
 The sprint's runner is the `sprint` role. It dispatches the `builder` (`agents/builder.md`) and the `reviewer` (`agents/reviewer.md`) and writes no code itself.
 
@@ -17,12 +17,17 @@ Read the board in one round: `ticket_list` with `project` for the project's open
 
 ## 2. Plan the batch
 
-**Recover first.** An `in-progress` ticket whose pass has ended is a **dead claim**: its log has no live handoff and no green PR. Set it back to `ready` with the owner cleared and a comment naming the evidence, then treat it as any other ready ticket. An open PR from the dead pass is reused by the next build, not reopened.
+**Recover first.** A **dead claim** is an `in-progress` ticket whose pass has ended: its log shows no live handoff and no green PR. For each one:
+
+1. Comment with the evidence that the pass has ended.
+2. Set it to `ready` with the owner cleared.
+
+From then on it is a ready ticket like any other. If the dead pass left an open PR, the next build reuses that PR (`agents/builder.md`, step 2) rather than opening another.
 
 **Draw `ready` only**, at most five, in stored order:
 
-- skip any row whose `blocked` is true, whatever its status (the edge is the block, ADR 0035), with one line naming the blocker;
-- report `backlog` rows as `TAN-217 <title>: <gist>, needs a refine pass`, never drawn: only refine moves a ticket to `ready` (ticket naming follows the Naming tickets rule in `AGENTS.md`);
+- skip any row whose `blocked` is true, whatever its status (the edge is the block), with one line naming the blocker;
+- report `backlog` rows as `<ref> <title>: <gist>, needs a refine pass`, never drawn: only refine moves a ticket to `ready` (ticket naming follows the Naming tickets rule in `AGENTS.md`);
 - leave `on-hold` alone: it is parked on purpose;
 - a ticket with an open question, a pending human decision, or more than one pass of work is not ready: report it for refine.
 
@@ -40,7 +45,12 @@ Every dispatch names its model and effort; a subagent never inherits the session
 | `M` | one area, new behaviour, new tests | `sonnet`, low | `sonnet`, medium |
 | `L` | crosses layers, touches the schema or a published contract, or many files | `sonnet`, medium | `sonnet`, medium |
 
-**Effort is paid per turn.** A builder takes many turns and its tests are its check, so it runs low and earns medium only on an `L` ticket. A reviewer takes few turns and judgement is its whole job, so it runs medium past `S`, and never on `haiku`: the gate is where a cheap read costs most. Nothing runs at high effort: when a pass needs more, it gets a stronger model, not more effort.
+**Effort is paid per turn.**
+
+- A **builder** takes many turns, and its tests are its check, so it runs low and earns medium only on an `L` ticket.
+- A **reviewer** takes few turns, and judgement is its whole job, so it runs medium on every size past `S`.
+- The reviewer runs on `sonnet` or stronger, because the gate is where a cheap read costs most.
+- Effort tops out at medium. A pass that needs more gets a stronger model instead.
 
 **Escalate the model, never start high.** The first fix pass runs on `sonnet`, medium. The second, the last before the human, runs on `opus`, medium: the hard bug the cheaper passes could not close is where it earns its cost. No build starts on `opus`. A reviewer that answers `blocked` with `needs a stronger read` is re-dispatched once on `opus`, medium; a second such answer escalates to the human.
 
@@ -60,10 +70,15 @@ Dispatch the `reviewer`, on the model the routing picks, with the ticket id and 
 
 - **`merged`**: the reviewer completed the ticket. Every other open batch PR is now behind `main` and its next gate will say so.
 - **`escalated`**: accept it only after `ticket_show` reads status `in-review` and assignee `human`. Anything else is a failed gate: re-dispatch the reviewer once, then hand it over yourself. An escalated ticket leaves the active batch; the sprint does not wait for the human.
-- **`blocked`, behind its base**: bring it up to date yourself (`gh pr update-branch <n>`, a merge), wait for green on the new head (`gh pr checks <n> --watch`), and gate again. A conflict the update cannot merge is a fix pass.
-- **`blocked` on a red check, or `changes-requested`**: a **fix pass**, a fresh `builder` dispatch on the routing's fix-pass model, with four things and nothing else: the ticket id, the PR number, the head sha the gate read, and the finding quoted. Then gate again; a re-gate may resume its own reviewer session.
+- **`blocked`, behind its base**: the sprint updates the branch itself, and this is not a fix pass.
+  1. `gh pr update-branch <n>`, which merges `main` in.
+  2. Wait for green on the new head: `gh pr checks <n> --watch`.
+  3. Gate again.
 
-**The fix loop has a ceiling: two fix passes per ticket.** A third failing verdict escalates: a comment quoting the three findings, then `ticket_set` with `status` in-review and `assignee` human. A branch update or a capacity-cancelled CI rerun (`agents/builder.md`, step 7) is not a fix pass and does not count.
+  A conflict the update cannot merge goes to a fix pass instead.
+- **`blocked` on a red check, or `changes-requested`**: run a **fix pass**, a fresh `builder` dispatch on the routing's fix-pass model. Hand it four things and nothing else: the ticket id, the PR number, the head sha the gate read, and the finding quoted. Then gate again. A re-gate may resume its own reviewer session.
+
+**The fix loop has a ceiling: two fix passes per ticket.** A third failing verdict escalates in two writes: a comment quoting the three findings, then `ticket_set` with `status` in-review and `assignee` human. A branch update or a capacity-cancelled CI rerun (`agents/builder.md`, **Wait for green**) does not count toward the ceiling.
 
 ## 5. Close
 
@@ -84,7 +99,7 @@ Settle the project as well: a dead claim outside the batch goes back to `ready` 
 SPRINT: <project>: <n> landed, <n> escalated, <n> slipped, <n> parked
 ```
 
-Then one line per batch ticket (`TAN-123 <title>: landed, PR #456`), one line per skipped ticket with its reason, and what waits on the human. Every ticket named in the report follows the Naming tickets rule in `AGENTS.md`: ref, title and gist. A sprint that ends in the middle (the session dies, the human stops it) leaves dead claims, and the next sprint's §2 recovers them.
+Then one line per batch ticket (`<ref> <title>: landed, PR #<n>`), one line per skipped ticket with its reason, and what waits on the human. Every ticket named in the report follows the Naming tickets rule in `AGENTS.md`: ref, title and gist. A sprint that ends in the middle (the session dies, the human stops it) leaves dead claims, and the next sprint's §2 recovers them.
 
 ## Drain mode
 
@@ -100,4 +115,4 @@ A drain that runs out of usage dies mid-ticket like any interrupted sprint: the 
 
 ## Release
 
-**A sprint cuts no release.** A release cuts only on the human's explicit words naming the version, and the sprint never prompts for one. When asked, follow `docs/releasing.md`: tag the landed `main` head, push the tag, watch the Release workflow publish, and generate the notes with `Scripts/release-notes.sh vX.Y.Z`. Once the tag is on origin, run `Scripts/pin-plugin.sh X.Y.Z` and land the one-line change to `.claude-plugin/marketplace.json` on `main` through a PR, so the Claude Code plugin moves to the release.
+**A sprint cuts no release.** A release cuts only on the human's explicit words naming the version, and the sprint never prompts for one. When asked, follow the release procedure the repo's `AGENTS.md` names, every step of it, from the landed `main` head.

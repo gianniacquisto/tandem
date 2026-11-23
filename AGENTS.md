@@ -28,10 +28,34 @@ The actor that finishes a ticket's work sets the next status and, where there is
 
 `DESIGN.md` at the repo root is the reference for the default, neutral style, taken from [awesome-design-md](https://github.com/VoltAgent/awesome-design-md) (MIT). Read it before drawing a new screen or component. The board ships two palettes, `neutral` (the default) and `tandem`, each in light and dark, and `rust/core/src/serve/static/tokens.css` stays the source of truth for every colour, space and radius: the style follows `DESIGN.md` for look and feel, and where the two disagree on a value the tokens win. Its marketing-site parts (hero bands, pricing tiers) do not apply to the board.
 
+- **The UI**: Askama templates under `rust/core/templates/`, CSS and JS under `rust/core/src/serve/static/`. A ticket that touches either is a UI ticket.
+- **Tokens**: `--space-gutter`, `--space-row`, `--space-control`, `--space-label`, `--radius-card`, `--hairline`, and the colours. The four palettes are selected by `data-style` and `data-theme` on `<html>`, so a new token lands in all four sets with an AA check in each.
+- **A refine mock** links `tokens.css` and `app.css`, and is checked in all four palettes.
+- **Markup contract**: `tandem.js` holds the key handlers, and it and the htmx swaps name the template ids and classes.
+- **Errors** reach the human through `rust/core/src/domain/error.rs` and the wire's `ErrorView`.
+- **No undo**: completing a ticket cannot be undone (ADR 0045), so it counts as a destructive act for the `ux` lens.
+
+## Build, verify and release in this repo
+
+The prompts under `examples/` are generic: where one says the repo's AGENTS.md names a command, a path or a doc, the answer for Tandem is here.
+
+- **Scoped tests**: in `rust/`, `cargo test -p <crate> <filter>`, or `cargo test -p tandem --test <suite>`. The full gates are in `CONTRIBUTING.md` (The gates), and CI runs them on every head sha.
+- **Pre-push check**: `bash Scripts/check-prose-dash.sh`, because CI fails on an added em dash (see Prose).
+- **Dev build**: `cargo build -p tandem` in your worktree. Serve that binary (`rust/target/debug/tandem`, never the installed `tandem`) in the background, on `TANDEM_HOME="$(mktemp -d)"` and a free `--port` that is never 7700, because the human's own serve holds it.
+- **Token mode**: sign-in, people, token or operator work serves with `--host 0.0.0.0` and a generated `TANDEM_TOKEN` (`openssl rand -hex 32`). Open it at `http://localhost:<port>`, because the session cookie is `Secure`. Loopback is the default otherwise.
+- **Doors**: a browser flow ends with a smoke pass: open the board and make one write. An MCP tool is called through `/mcp` on the dev serve, and a CLI verb runs against the dev home.
+- **Public surface**: the MCP tools with their parameters and answer fields; CLI verbs, flags, output fields and exit codes; environment variables; and the HTTP routes `/health`, `/mcp`, `/events` and `/export`. A PR that renames, removes or changes the meaning of one gets the label `breaking` (`gh pr create --label breaking`), because the release notes list it first (`docs/versioning.md`).
+- **CI artifact for a head**: `gh run list --branch <branch> --workflow release.yml --json databaseId,headSha,conclusion`, matched on `headSha`, then `gh run download <run-id> -n tandem-<os>`. Run it under a scratch `TANDEM_HOME`. The local build is `cargo build --release -p tandem` in `rust/`.
+- **Release**: follow `docs/releasing.md`. Tag the landed `main` head, push the tag, watch the Release workflow publish, and generate the notes with `Scripts/release-notes.sh vX.Y.Z`. Once the tag is on origin, run `Scripts/pin-plugin.sh X.Y.Z` and land the one-line `.claude-plugin/marketplace.json` change on `main` through a PR, so the Claude Code plugin moves to the release.
+- **Layers**: `rust/core` holds the domain and knows nothing of a UI; `rust/cli` is a face over it; `rust/core/src/serve` is the served HTML face (ADR 0009, ADR 0046).
+- **Store**: `rust/core/src/store/` holds the SQL, and `rust/core/src/store/mod.rs` is its one writer. A change to `rust/core/src/store/schema.rs` lands with its numbered migration step in its own transaction (ADR 0031). The rolling backup `tandem.db.bak` is the only sanctioned copy of the database (ADR 0018).
+- **Input guards**: shell commands are built in `rust/cli/src/main.rs`. A path built from input stays inside the guards in `rust/core/src/bikeshed/` and `rust/core/src/store/locked.rs`.
+- **Docs**: `README.md`, `docs/*.md`, `GLOSSARY.md`, `DESIGN.md`, the `examples/` prompts and skills, and the ADRs in `docs/adr/`.
+
 ## Git
 
 Prefer merges over rebases, and avoid force pushes and other destructive git actions unless absolutely necessary — when a force push is unavoidable, `--force-with-lease`, never bare `--force`. This applies to sub-agents too.
 
 ## Agents
 
-The prompts for the passes live in `examples/agents/` (`scout`, `refiner`, `builder`, `reviewer`, one markdown file each, named as nouns) and the procedures they run in `examples/skills/`. A prompt that names a contract states the current one; see [ADR 0045](docs/adr/0045-the-board-and-notes-cut.md). They are examples for this repository's own workflow: the cut retired the bundled agent face and `setup install`, and nothing installs them into a Tandem home.
+The prompts for the passes live in `examples/agents/` (`scout`, `refiner`, `builder`, `reviewer`, one markdown file each, named as nouns) and the procedures they run in `examples/skills/`. A prompt that names a contract states the current one; see [ADR 0045](docs/adr/0045-the-board-and-notes-cut.md). They are generic, so any repo can adopt them, and this repo's own commands and paths live under Design and under Build, verify and release in this repo. The cut retired the bundled agent face and `setup install`, and nothing installs them into a Tandem home.

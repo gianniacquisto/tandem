@@ -47,6 +47,20 @@ backlog --refine--> ready --sprint: build--> in-review --gate--> done
 2. **Copy what you want.** Put `AGENTS.md` where your host reads global instructions and the skill folders where it reads skills, or symlink them to this checkout to track it. Agents use the MCP tools only; `tandem-cli` is for you and your scripts.
 3. **Check it.** `tandem-cli doctor` prints `{ok, checks}` with the checks `home`, `store` and `bikeshed`, and exits `0` when healthy.
 
+## What your repo's AGENTS.md names
+
+The tier 2 prompts are generic: they read each repo's own commands and paths from that repo's `AGENTS.md`. Give yours a short section naming what applies:
+
+- the scoped test command, and the checks to run before a push;
+- the dev-build recipe for a live check (build, scratch data home, free port), its smoke pass, and its doors (API, CLI);
+- the public surface, and how a breaking change to it is marked;
+- the CI artifact for a head and how to fetch it, plus the local release build;
+- the release procedure;
+- the UI files, design tokens, stylesheet, design reference and palettes;
+- the layers, the store's writer and schema, the path guards, and the docs.
+
+Tandem's own root `AGENTS.md` (Design, and Build, verify and release in this repo) is a worked example.
+
 ## Where things live
 
 - **Store**: `~/.tandem/tandem.db` (SQLite) holds tickets, dependencies, comments, labels and projects. Notes live in `~/.tandem/bikeshed/`.
