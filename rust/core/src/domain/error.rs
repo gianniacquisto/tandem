@@ -310,9 +310,9 @@ impl DomainError {
                 "The notes are locked by another process. Please retry.".to_string()
             }
             Self::BikeshedIo(detail) => format!("Notes error: {detail}. Try again."),
-            Self::UnknownNote(path) => format!(
-                "No note at \"{path}\". List the notes to see what is there."
-            ),
+            Self::UnknownNote(path) => {
+                format!("No note at \"{path}\". List the notes to see what is there.")
+            }
             Self::StaleNote(path) => format!(
                 "The note \"{path}\" changed since you read it, so nothing was written. \
                  Read it again with note_read, merge your change into the new text and write it back with the new hash."
