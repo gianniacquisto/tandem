@@ -7,6 +7,10 @@
 - Branched off `main`, targets `main`: <!-- yes -->
 - Tandem ticket: <!-- e.g. TAN-42, or n/a with the reason -->
 
+## Contributor agreement
+
+- [ ] I accept the Tandem Contributor License Agreement ([CLA.md](../CLA.md)), for this PR and my later ones. Maintainer and agent PRs: n/a.
+
 ## Gates run
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full list. Check
