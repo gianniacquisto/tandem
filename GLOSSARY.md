@@ -121,7 +121,7 @@ A single markdown file in the notes. The filename is the note's identity; renami
 _Avoid_: document, entry, page
 
 **Move**:
-Changing where a note or a folder sits in the notes — the name stays, the path changes. A move made in the app rewrites the wikilinks that resolve to every note that moved with it, so the references travel with the files. Distinct from a rename, which changes the name itself.
+Changing where a note or a folder sits in the notes: the name stays, the path changes. A move made in the app rewrites the wikilinks that resolve to every note that moved with it, so the references travel with the files. Distinct from a rename, which changes the name itself.
 _Avoid_: mv, relocate, drag (the gesture, not the operation)
 
 **Wikilink**:
