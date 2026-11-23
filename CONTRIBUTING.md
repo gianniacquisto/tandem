@@ -142,10 +142,17 @@ Releases are maintainer-cut from a lightweight tag on `main`'s head, per
 [docs/releasing.md](docs/releasing.md). Contributors do not cut releases; land
 your change on `main` and the maintainer takes it from there.
 
+## Contributor agreement
+
+Contributions are made under the [Contributor License Agreement](CLA.md), the
+Apache Individual CLA adapted to this project. Ticking the CLA checkbox in your
+pull request description accepts it for that pull request and your later ones,
+and it is required for a merge: a pull request from an outside author without
+the box ticked is not merged. The maintainer and the agents working under the
+maintainer's account do not need to tick it, and any other co-maintainer does.
+
 ## License
 
 Tandem is MIT licensed (copyright 2026 Gianni Acquisto); see
 [LICENSE](LICENSE). The third-party notices are in
-[NOTICE.txt](NOTICE.txt). There is no contributor license agreement and no
-Developer Certificate of Origin: your pull request under the MIT license is
-enough.
+[NOTICE.txt](NOTICE.txt).

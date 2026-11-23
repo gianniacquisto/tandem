@@ -52,6 +52,10 @@ The prompts under `examples/` are generic: where one says the repo's AGENTS.md n
 - **Input guards**: shell commands are built in `rust/cli/src/main.rs`. A path built from input stays inside the guards in `rust/core/src/bikeshed/` and `rust/core/src/store/locked.rs`.
 - **Docs**: `README.md`, `docs/*.md`, `GLOSSARY.md`, `DESIGN.md`, the `examples/` prompts and skills, and the ADRs in `docs/adr/`.
 
+## Contributor agreement
+
+The PR template's CLA checkbox ([CLA.md](CLA.md)) is required of every author except the copyright holder (`gianniacquisto`) and agents acting under that account. Any other co-maintainer ticks it.
+
 ## Git
 
 Prefer merges over rebases, and avoid force pushes and other destructive git actions unless absolutely necessary — when a force push is unavoidable, `--force-with-lease`, never bare `--force`. This applies to sub-agents too.
