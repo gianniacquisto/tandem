@@ -792,6 +792,23 @@ impl PageView {
     fn version(&self) -> &'static str {
         crate::release_version()
     }
+
+    /// The source the footer links: the tag of the release that drew the page,
+    /// or the repository root on a dev build (TAN-860).
+    fn source(&self) -> String {
+        source_url(env!("CARGO_PKG_REPOSITORY"), option_env!("TANDEM_VERSION"))
+    }
+}
+
+/// Where the footer's Source link points (AGPL-3.0 section 13): the release
+/// tag under `repository` when the binary carries a release stamp, else the
+/// repository root. A trailing slash on `repository` does not double.
+pub(crate) fn source_url(repository: &str, stamp: Option<&str>) -> String {
+    let repository = repository.trim_end_matches('/');
+    match stamp {
+        Some(version) => format!("{repository}/tree/v{version}"),
+        None => repository.to_string(),
+    }
 }
 fn is_partial(headers: &HeaderMap) -> bool {
     headers.get("hx-request").is_some()

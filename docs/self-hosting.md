@@ -129,6 +129,8 @@ Adjust `ExecStart` to where `tandem` is installed. Do not bind `127.0.0.1` here 
 
 Backups, moving a home and upgrading: [store.md](store.md).
 
+The board and the notes carry a footer with the running version and a link to the source the binary was built from: the release tag on a release build, the repository root on a dev build. A host that modifies Tandem points `repository` in `rust/Cargo.toml` at its own public source, so the link stays true to what it runs (AGPL-3.0 section 13).
+
 ## Recovery
 
 - **A person lost their sign-in key.** An admin reissues it on `/people`.
