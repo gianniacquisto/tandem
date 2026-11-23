@@ -24,12 +24,12 @@ use std::process::ExitCode;
 use clap::error::ErrorKind;
 use clap::{Args, Parser, Subcommand};
 use tandem_core::archive;
-use tandem_core::bikeshed::{Bikeshed, BoardNames, BoardProject};
 use tandem_core::diagnostics;
 use tandem_core::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, SetFields, Status, TicketQuery,
 };
 use tandem_core::env::Environment;
+use tandem_core::notes::{BoardNames, BoardProject, Notes};
 use tandem_core::store::{self, Actor, Home, Store};
 use tandem_core::wire::{
     ArchivedView, CommentList, CommentResult, CommentView, LabelDeletionView, LabelList,
@@ -878,7 +878,7 @@ fn project(home: &Home, command: Option<&ProjectCommand>) -> Result<(), Failure>
 
 fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
     let command = command.ok_or_else(Failure::usage)?;
-    let vault = bikeshed(home);
+    let vault = notes(home)?;
 
     match command {
         NoteCommand::Rename(args) => {
@@ -899,6 +899,10 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
             let stats = vault
                 .stats(args.project.as_deref())
                 .map_err(Failure::domain)?;
+            eprintln!(
+                "note stats: the `bikeshed` field is deprecated and goes in the next release; \
+                 read `notes`."
+            );
             print(&stats.value)
         }
         NoteCommand::Links => {
@@ -987,8 +991,11 @@ fn home_failure(path: &Path, error: io::Error) -> Failure {
     ))
 }
 
-fn bikeshed(home: &Home) -> Bikeshed {
-    Bikeshed::new(home.directory().join("bikeshed"))
+/// The notes a home keeps, after the one-time move of an older `bikeshed/`
+/// folder (ADR 0055): the CLI's note verbs open through here.
+fn notes(home: &Home) -> Result<Notes, Failure> {
+    tandem_core::notes::migrate::migrate_home(home).map_err(Failure::domain)?;
+    Ok(Notes::new(home.notes_directory()))
 }
 
 /// Everything on stdin, as UTF-8. The stdin bodies are the verbs' multi-line
@@ -1318,6 +1325,9 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
                 Failure::message(format!("tandem serve: the public origin {reason}"))
             })?;
         }
+        // An older home moves its notes folder once, before the first request;
+        // a clash refuses to start rather than serve an empty notes.
+        tandem_core::notes::migrate::migrate_home(home).map_err(Failure::domain)?;
         let context = tandem_core::serve::SessionContext {
             store: Store::new(home.clone()),
             actor: Actor::current(),
@@ -1407,13 +1417,20 @@ fn open_browser(url: &str) {
 fn doctor(home: &Home) -> Result<(), Failure> {
     let report = diagnostics::run(home);
     print(&report)?;
+    if report.checks.iter().any(|check| check.name == "bikeshed") {
+        eprintln!(
+            "doctor: the `bikeshed` check is deprecated and goes in the next release; read \
+             `notes`."
+        );
+    }
     if report.ok {
         return Ok(());
     }
     let failures: Vec<String> = report
         .checks
         .iter()
-        .filter(|check| !check.ok)
+        // The deprecated alias repeats the `notes` row; say each failure once.
+        .filter(|check| !check.ok && check.name != "bikeshed")
         .map(|check| format!("doctor: {} \u{2014} {}", check.name, check.detail))
         .collect();
     Err(Failure {
@@ -1430,6 +1447,8 @@ fn doctor(home: &Home) -> Result<(), Failure> {
 /// log subscriber.
 fn export(home: &Home, args: &ExportArgs) -> Result<(), Failure> {
     let out = args.out.as_deref().ok_or_else(Failure::usage)?;
+    // An older home's notes move first, so the archive carries them.
+    tandem_core::notes::migrate::migrate_home(home).map_err(Failure::domain)?;
     let principal = archive::Principal {
         access: archive::Access::Local,
         actor: Actor::current(),

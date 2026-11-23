@@ -253,7 +253,7 @@ tandem-cli note links
 | Verb | Notes |
 | --- | --- |
 | `note rename` | Renames or moves a note, rewriting every wikilink that points at it. Paths are relative to the notes root. Local only. |
-| `note stats` | The notes-health readout, for every project or for one with `--project`. Local only. |
+| `note stats` | The notes-health readout, for every project or for one with `--project`. Answers `{"notes", "projects", "totals"}`; the old `bikeshed` field holds the same value as `notes` for one more release, with a warning on stderr. Local only. |
 | `note links` | Checks the links between notes. Answers `{"broken", "orphans", "counts"}`. |
 
 ## doctor
@@ -264,7 +264,9 @@ Checks that the install and the home are healthy. It only reads.
 tandem-cli doctor
 ```
 
-Answers `{"ok", "checks": [{"name", "ok", "detail"}]}`, one check each for the home, the store, its integrity, the references between rows, disk space, the binary and schema versions, and the notes. It exits `1` when any check fails, and the failing check's `detail` says what to do.
+Answers `{"ok", "checks": [{"name", "ok", "detail"}]}`, one check each for the home, the store, its integrity, the references between rows, disk space, the binary and schema versions, and the notes (`notes`). It exits `1` when any check fails, and the failing check's `detail` says what to do.
+
+A home an older release left, with its notes still in `bikeshed/`, is reported in the `notes` row: green with a note that the next run moves the folder, or red when both folders hold notes (merge them into `notes/` and remove `bikeshed/`). `doctor` never moves anything itself. For one release the report also carries a `bikeshed` row, the deprecated name of `notes`, and `doctor` prints one warning on stderr: see [versions and compatibility](versioning.md#deprecated-now).
 
 ## export and import
 
@@ -275,9 +277,9 @@ tandem-cli export --out <path|->
 tandem-cli import <path|-> [--max-bytes <n>]
 ```
 
-`export` writes the home (the store and `bikeshed/`) into one `.tar.gz`, readable only by you (mode `0600`). It refuses a path that exists rather than overwrite it; `--out -` writes to stdout. It needs no running server and is safe to run beside one. It prints the path and the size, and one record line (who, when, `door=cli`) on stderr.
+`export` writes the home (the store and `notes/`) into one `.tar.gz`, readable only by you (mode `0600`). It refuses a path that exists rather than overwrite it; `--out -` writes to stdout. It needs no running server and is safe to run beside one. It prints the path and the size, and one record line (who, when, `door=cli`) on stderr.
 
-`import` restores an archive into an **empty** home: a home that already holds a store, a backup or notes is refused, with no merge and no force. `-` reads stdin, and `--max-bytes` caps the unpacked size. Nothing is written until every check passes. Stop `tandem serve` on that home first, and pass `--home <empty dir>` to restore somewhere new.
+`import` restores an archive into an **empty** home: a home that already holds a store, a backup or notes (under `notes/` or the older `bikeshed/`) is refused, with no merge and no force. `-` reads stdin, and `--max-bytes` caps the unpacked size. Nothing is written until every check passes. Stop `tandem serve` on that home first, and pass `--home <empty dir>` to restore somewhere new.
 
 The archive is not encrypted and carries no sign-in session and no token. The board offers the same archive as a download (Export workspace in the menu, or `GET /export`). See [moving and restoring a home](store.md#moving-and-restoring-a-home).
 

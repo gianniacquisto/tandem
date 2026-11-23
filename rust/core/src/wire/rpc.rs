@@ -22,9 +22,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::bikeshed::health::BikeshedHealth;
 use crate::domain::query::Filter;
 use crate::domain::ticket::Status;
+use crate::notes::health::NotesHealth;
 use crate::wire::views::{
     BacklinkView, CommentView, NoteContentView, NoteMoveView, NoteNodeView, NotePathView,
     NoteWriteView, SearchHitView, TicketDetail, TicketSummary,
@@ -848,7 +848,7 @@ pub struct NoteMoveReply {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteHealthReply {
-    pub health: BikeshedHealth,
+    pub health: NotesHealth,
 }
 
 /// `note.backlinks`: the notes linking to the path, and line of the first link.

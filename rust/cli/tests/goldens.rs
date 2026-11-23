@@ -12,7 +12,7 @@
 //!
 //! - **A fresh copy of the fixture home per case, without its committed
 //!   store.** The goldens were captured on an empty board beside the fixture
-//!   bikeshed, so the sandbox leaves `tandem.db` behind; `fixture_db.rs` owns
+//!   notes, so the sandbox leaves `tandem.db` behind; `fixture_db.rs` owns
 //!   that file where it sits. Nothing carries between cases, and no run sees
 //!   `~/.tandem`: the child gets an `env_clear`ed environment whose `HOME` and
 //!   `TANDEM_HOME` are directories this test made.
@@ -435,7 +435,7 @@ impl Sandbox {
         copy_dir(&repo_root().join("Fixtures/port/Home"), &home);
         // The committed store is the fixture home's own, and `fixture_db.rs`
         // reads it where it sits. Every golden was captured on an empty board
-        // beside the fixture bikeshed, so the copy starts without the store.
+        // beside the fixture notes, so the copy starts without the store.
         let _ = fs::remove_file(home.join("tandem.db"));
         Self { root, home, user }
     }
@@ -838,8 +838,8 @@ fn a_backup_age_is_its_name() {
 fn the_sandbox_is_its_name() {
     let prefixes = vec![("/tmp/case/Home".to_owned(), "<tandem-home>".to_owned())];
     assert_eq!(
-        normalize_prefixes("/tmp/case/Home/bikeshed is a file", &prefixes),
-        "<tandem-home>/bikeshed is a file"
+        normalize_prefixes("/tmp/case/Home/notes is a file", &prefixes),
+        "<tandem-home>/notes is a file"
     );
 }
 

@@ -6,29 +6,32 @@
 //! So the report's shape, wording and pass/fail rule are covered with injected
 //! facts, and the CLI only wires the real world to it.
 //!
-//! Seven rows, in the pinned order: `home`, `store`, `integrity`, `references`,
-//! `space`, `versions`, `bikeshed`. `home` is always green; an absent store is
+//! Eight rows, in the pinned order: `home`, `store`, `integrity`, `references`,
+//! `space`, `versions`, `notes`, then `bikeshed`, the deprecated alias of
+//! `notes` that answers for one release (ADR 0055). `home` is always green; an absent store is
 //! a valid empty setup; a store this build cannot read, a failed integrity or
-//! references check or a bikeshed path that is a file makes the CLI exit 1.
+//! references check or a notes path that is a file makes the CLI exit 1.
 //! Every failing row says what to do next, and prints paths, counts and ids
 //! only, never ticket text.
 
 use std::path::PathBuf;
 
-use crate::bikeshed::{Bikeshed, BikeshedNode, NodeKind};
+use crate::notes::migrate::{Pending, pending};
+use crate::notes::{NodeKind, Notes, NotesNode};
 use crate::store::{
     BackupHealth, CURRENT_VERSION, Health, Home, HomeSource, Store, StoreInspection,
 };
 use crate::wire::{DoctorCheck, DoctorReport, slashed_path};
 
 /// The check order, pinned: the CLI documents and tests it.
-pub const CHECK_NAMES: [&str; 7] = [
+pub const CHECK_NAMES: [&str; 8] = [
     "home",
     "store",
     "integrity",
     "references",
     "space",
     "versions",
+    "notes",
     "bikeshed",
 ];
 
@@ -52,15 +55,21 @@ pub struct Facts {
     pub store_inspection: Option<StoreInspection>,
     /// The binary's release version.
     pub binary_version: String,
-    pub bikeshed_path: PathBuf,
-    pub bikeshed_note_count: usize,
-    /// The bikeshed path exists but is a regular file, not a folder.
-    pub bikeshed_is_file: bool,
+    pub notes_path: PathBuf,
+    pub notes_note_count: usize,
+    /// The notes path exists but is a regular file, not a folder.
+    pub notes_is_file: bool,
+    /// What an older `bikeshed/` folder means for this home (read only: `doctor`
+    /// never runs the move).
+    pub notes_migration: Pending,
+    /// The older folder's path, for the advice.
+    pub legacy_notes_path: PathBuf,
 }
 
 /// Assemble the report from observed `facts`. Pure.
 pub fn report(facts: &Facts) -> DoctorReport {
-    let checks = vec![
+    let notes = notes_check(facts);
+    let mut checks = vec![
         DoctorCheck {
             name: "home".to_string(),
             ok: true,
@@ -75,8 +84,14 @@ pub fn report(facts: &Facts) -> DoctorReport {
         references_check(facts),
         space_check(facts),
         versions_check(facts),
-        bikeshed_check(facts),
+        notes.clone(),
     ];
+    // The deprecated alias: the same verdict under the old name, for one release.
+    checks.push(DoctorCheck {
+        name: "bikeshed".to_string(),
+        ok: notes.ok,
+        detail: format!("deprecated: renamed to notes. {}", notes.detail),
+    });
 
     let ok = checks.iter().all(|check| check.ok);
     DoctorReport { ok, checks }
@@ -290,20 +305,41 @@ fn versions_check(facts: &Facts) -> DoctorCheck {
     }
 }
 
-fn bikeshed_check(facts: &Facts) -> DoctorCheck {
-    let path = slashed_path(&facts.bikeshed_path);
-    if facts.bikeshed_is_file {
-        DoctorCheck {
-            name: "bikeshed".to_string(),
-            ok: false,
-            detail: format!("{path} \u{2014} a file, not a folder; pick a folder"),
-        }
+fn notes_check(facts: &Facts) -> DoctorCheck {
+    let path = slashed_path(&facts.notes_path);
+    let legacy = slashed_path(&facts.legacy_notes_path);
+    let (ok, detail) = if facts.notes_migration == Pending::Clash {
+        (
+            false,
+            format!(
+                "{path} \u{2014} the older folder {legacy} is in the way and both cannot be \
+                 kept; merge the notes into {path} and remove {legacy}, or remove the one you \
+                 do not want"
+            ),
+        )
+    } else if facts.notes_is_file {
+        (
+            false,
+            format!("{path} \u{2014} a file, not a folder; pick a folder"),
+        )
+    } else if facts.notes_migration == Pending::Move {
+        (
+            true,
+            format!(
+                "{legacy} \u{2014} {} note(s); the next tandem run moves it to {path}",
+                facts.notes_note_count
+            ),
+        )
     } else {
-        DoctorCheck {
-            name: "bikeshed".to_string(),
-            ok: true,
-            detail: format!("{path} \u{2014} {} note(s)", facts.bikeshed_note_count),
-        }
+        (
+            true,
+            format!("{path} \u{2014} {} note(s)", facts.notes_note_count),
+        )
+    };
+    DoctorCheck {
+        name: "notes".to_string(),
+        ok,
+        detail,
     }
 }
 
@@ -341,13 +377,18 @@ pub fn run(home: &Home) -> DoctorReport {
 /// Gather the machine's facts. The only impure entry point besides [`run`].
 pub fn gather(home: &Home) -> Facts {
     let store = Store::new(home.clone());
-    let bikeshed = Bikeshed::new(home.directory().join("bikeshed"));
-    let notes = bikeshed
+    let migration = pending(home);
+    let counted = if migration == Pending::Move {
+        home.legacy_notes_directory()
+    } else {
+        home.notes_directory()
+    };
+    let notes = Notes::new(counted)
         .list()
         .map(|operation| operation.value)
         .unwrap_or_default();
-    let bikeshed_path = home.directory().join("bikeshed");
-    let bikeshed_is_file = bikeshed_path.exists() && !bikeshed_path.is_dir();
+    let notes_path = home.notes_directory();
+    let notes_is_file = notes_path.exists() && !notes_path.is_dir();
 
     Facts {
         home_path: home.directory().to_path_buf(),
@@ -359,13 +400,15 @@ pub fn gather(home: &Home) -> Facts {
         store_revision: store.revision().unwrap_or(0),
         store_inspection: store.inspect(),
         binary_version: crate::release_version().to_string(),
-        bikeshed_path,
-        bikeshed_note_count: note_count(&notes),
-        bikeshed_is_file,
+        notes_path,
+        notes_note_count: note_count(&notes),
+        notes_is_file,
+        notes_migration: migration,
+        legacy_notes_path: home.legacy_notes_directory(),
     }
 }
 
-fn note_count(nodes: &[BikeshedNode]) -> usize {
+fn note_count(nodes: &[NotesNode]) -> usize {
     nodes
         .iter()
         .map(|node| usize::from(node.kind == NodeKind::Note) + note_count(&node.children))

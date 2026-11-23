@@ -1,10 +1,10 @@
-//! Ported from `BikeshedWikilinkTests`: the grammar (bare, qualified, alias,
+//! Ported from `NotesWikilinkTests`: the grammar (bare, qualified, alias,
 //! fragment, the first-`#`-then-first-`|` split, the same-note form), the
 //! case-insensitive exactly-one resolution, and the scanner's exemptions.
 
-use crate::bikeshed::wikilink::{BoardNames, BoardProject, LinkResolution, Wikilink};
+use crate::notes::wikilink::{BoardNames, BoardProject, LinkResolution, Wikilink};
 
-use super::bikeshed_support::Vault;
+use super::notes_support::Vault;
 
 // MARK: - Grammar
 
@@ -89,18 +89,18 @@ fn parse_empty_edge_cases() {
 fn resolve_bare_matches_the_basename_case_insensitively() {
     let vault = Vault::new("wikilink-bare");
     vault.stage("Note.md", "x");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
     assert_eq!(
-        bikeshed.resolve("note"),
+        notes.resolve("note"),
         LinkResolution::Resolved("Note.md".to_string())
     );
     assert_eq!(
-        bikeshed.resolve("NOTE"),
+        notes.resolve("NOTE"),
         LinkResolution::Resolved("Note.md".to_string())
     );
     assert_eq!(
-        bikeshed.resolve("note.md"),
+        notes.resolve("note.md"),
         LinkResolution::Resolved("Note.md".to_string())
     );
 }
@@ -109,10 +109,10 @@ fn resolve_bare_matches_the_basename_case_insensitively() {
 fn resolve_zero_matches_is_broken() {
     let vault = Vault::new("wikilink-zero");
     vault.stage("a.md", "x");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
-    assert_eq!(bikeshed.resolve("missing"), LinkResolution::Broken);
-    assert_eq!(bikeshed.resolve("a/x"), LinkResolution::Broken);
+    assert_eq!(notes.resolve("missing"), LinkResolution::Broken);
+    assert_eq!(notes.resolve("a/x"), LinkResolution::Broken);
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn resolve_a_unique_bare_target_in_a_subfolder() {
     let vault = Vault::new("wikilink-subfolder");
     vault.stage("a/x.md", "x");
     assert_eq!(
-        vault.bikeshed().resolve("x"),
+        vault.notes().resolve("x"),
         LinkResolution::Resolved("a/x.md".to_string())
     );
 }
@@ -131,12 +131,12 @@ fn resolve_duplicate_basenames_are_broken_never_a_silent_match() {
     vault.stage("a/x.md", "1");
     vault.stage("b/x.md", "2");
     vault.stage("x.md", "3");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
-    assert_eq!(bikeshed.resolve("x"), LinkResolution::Broken);
-    assert_eq!(bikeshed.resolve("X"), LinkResolution::Broken);
+    assert_eq!(notes.resolve("x"), LinkResolution::Broken);
+    assert_eq!(notes.resolve("X"), LinkResolution::Broken);
     assert_eq!(
-        bikeshed.resolve("b/x"),
+        notes.resolve("b/x"),
         LinkResolution::Resolved("b/x.md".to_string())
     );
 }
@@ -145,25 +145,22 @@ fn resolve_duplicate_basenames_are_broken_never_a_silent_match() {
 fn resolve_qualified_targets_are_paths_case_insensitively() {
     let vault = Vault::new("wikilink-qualified");
     vault.stage("projects/plan.md", "p");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
     assert_eq!(
-        bikeshed.resolve("projects/plan"),
+        notes.resolve("projects/plan"),
         LinkResolution::Resolved("projects/plan.md".to_string())
     );
     assert_eq!(
-        bikeshed.resolve("Projects/PLAN"),
+        notes.resolve("Projects/PLAN"),
         LinkResolution::Resolved("projects/plan.md".to_string())
     );
     assert_eq!(
-        bikeshed.resolve("projects/plan.md"),
+        notes.resolve("projects/plan.md"),
         LinkResolution::Resolved("projects/plan.md".to_string())
     );
-    assert_eq!(bikeshed.resolve("other/plan"), LinkResolution::Broken);
-    assert_eq!(
-        bikeshed.resolve("projects/deep/plan"),
-        LinkResolution::Broken
-    );
+    assert_eq!(notes.resolve("other/plan"), LinkResolution::Broken);
+    assert_eq!(notes.resolve("projects/deep/plan"), LinkResolution::Broken);
 }
 
 #[test]
@@ -171,11 +168,11 @@ fn resolve_attachments_are_never_linkable() {
     let vault = Vault::new("wikilink-attachments");
     vault.stage("photo.png", "img");
     vault.stage("a/photo.png", "img2");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
-    assert_eq!(bikeshed.resolve("photo"), LinkResolution::Broken);
-    assert_eq!(bikeshed.resolve("photo.png"), LinkResolution::Broken);
-    assert_eq!(bikeshed.resolve("a/photo"), LinkResolution::Broken);
+    assert_eq!(notes.resolve("photo"), LinkResolution::Broken);
+    assert_eq!(notes.resolve("photo.png"), LinkResolution::Broken);
+    assert_eq!(notes.resolve("a/photo"), LinkResolution::Broken);
 }
 
 // MARK: - Scanning
@@ -184,10 +181,10 @@ fn resolve_attachments_are_never_linkable() {
 fn scan_a_wikilink_outside_code_carries_range_form_and_resolution() {
     let vault = Vault::new("wikilink-scan");
     vault.stage("Note.md", "x");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
     let text = "see [[Note]] here";
-    let found = bikeshed.links(text);
+    let found = notes.links(text);
     assert_eq!(found.len(), 1);
     let occurrence = &found[0];
     assert_eq!(&text[occurrence.start..occurrence.end], "[[Note]]");
@@ -202,7 +199,7 @@ fn scan_a_wikilink_outside_code_carries_range_form_and_resolution() {
 #[test]
 fn scan_broken_links_are_reported() {
     let vault = Vault::new("wikilink-broken");
-    let found = vault.bikeshed().links("[[Missing]]");
+    let found = vault.notes().links("[[Missing]]");
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].resolution, LinkResolution::Broken);
 }
@@ -211,22 +208,22 @@ fn scan_broken_links_are_reported() {
 fn scan_fenced_code_blocks_are_literal_text() {
     let vault = Vault::new("wikilink-fenced");
     vault.stage("Note.md", "x");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
     let backticks = "before\n```\n[[Note]]\n```\nafter [[Note]]";
     let tildes = "~~~swift\n[[Note]]\n~~~";
-    assert_eq!(bikeshed.links(backticks).len(), 1, "only the real link");
-    assert!(bikeshed.links(tildes).is_empty());
+    assert_eq!(notes.links(backticks).len(), 1, "only the real link");
+    assert!(notes.links(tildes).is_empty());
 }
 
 #[test]
 fn scan_inline_code_is_literal_text() {
     let vault = Vault::new("wikilink-inline");
     vault.stage("Note.md", "x");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
     let text = "use `[[Note]]` not [[Note]]";
-    let found = bikeshed.links(text);
+    let found = notes.links(text);
     assert_eq!(found.len(), 1);
     assert_eq!(&text[found[0].start..found[0].end], "[[Note]]");
 }
@@ -235,28 +232,28 @@ fn scan_inline_code_is_literal_text() {
 fn scan_embeds_are_literal_text() {
     let vault = Vault::new("wikilink-embeds");
     vault.stage("Note.md", "x");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
-    assert!(bikeshed.links("![[Note]]").is_empty());
-    assert_eq!(bikeshed.links("x ![[Note]] and [[Note]]").len(), 1);
+    assert!(notes.links("![[Note]]").is_empty());
+    assert_eq!(notes.links("x ![[Note]] and [[Note]]").len(), 1);
 }
 
 #[test]
 fn scan_an_unclosed_open_is_literal_text() {
     let vault = Vault::new("wikilink-unclosed");
     vault.stage("Note.md", "x");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
-    assert_eq!(bikeshed.links("a [[Note\nb [[Note]]").len(), 1);
-    assert!(bikeshed.links("x [[Note").is_empty());
-    assert!(bikeshed.links("[[A\nB]]").is_empty());
+    assert_eq!(notes.links("a [[Note\nb [[Note]]").len(), 1);
+    assert!(notes.links("x [[Note").is_empty());
+    assert!(notes.links("[[A\nB]]").is_empty());
 }
 
 #[test]
 fn scan_the_first_close_wins() {
     let vault = Vault::new("wikilink-first-close");
     vault.stage("a.md", "x");
-    let found = vault.bikeshed().links("[[a]]b]] [[a]]");
+    let found = vault.notes().links("[[a]]b]] [[a]]");
     assert_eq!(found.len(), 2);
     assert_eq!(found[0].link.target, "a");
 }
@@ -265,7 +262,7 @@ fn scan_the_first_close_wins() {
 fn scan_links_in_blockquotes_and_list_items_are_links() {
     let vault = Vault::new("wikilink-blocks");
     vault.stage("Note.md", "x");
-    let found = vault.bikeshed().links("> quote [[Note]]\n- item [[Note]]");
+    let found = vault.notes().links("> quote [[Note]]\n- item [[Note]]");
     assert_eq!(found.len(), 2);
     assert_eq!(found[0].line, "> quote [[Note]]");
     assert_eq!(found[1].line, "- item [[Note]]");
@@ -275,10 +272,7 @@ fn scan_links_in_blockquotes_and_list_items_are_links() {
 fn scan_indented_code_blocks_are_literal_text() {
     let vault = Vault::new("wikilink-indented");
     vault.stage("Note.md", "x");
-    assert_eq!(
-        vault.bikeshed().links("    [[Note]]\nreal [[Note]]").len(),
-        1
-    );
+    assert_eq!(vault.notes().links("    [[Note]]\nreal [[Note]]").len(), 1);
 }
 
 // MARK: - Typed links (ADR 0054)
@@ -295,13 +289,13 @@ fn names() -> BoardNames {
 #[test]
 fn a_typed_project_link_resolves_ignoring_case() {
     let vault = Vault::new("typed-project");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
     assert_eq!(
-        bikeshed.resolve_with("project:tandem", &names()),
+        notes.resolve_with("project:tandem", &names()),
         LinkResolution::Project("Tandem".to_string())
     );
     assert_eq!(
-        bikeshed.resolve_with("PROJECT:TANDEM", &names()),
+        notes.resolve_with("PROJECT:TANDEM", &names()),
         LinkResolution::Project("Tandem".to_string())
     );
 }
@@ -309,8 +303,8 @@ fn a_typed_project_link_resolves_ignoring_case() {
 #[test]
 fn a_typed_label_link_resolves_with_an_alias_or_a_fragment() {
     let vault = Vault::new("typed-label");
-    let bikeshed = vault.bikeshed();
-    let found = bikeshed.links_with("[[label:cli|the CLI]] and [[Label:CLI#x]]", &names());
+    let notes = vault.notes();
+    let found = notes.links_with("[[label:cli|the CLI]] and [[Label:CLI#x]]", &names());
     assert_eq!(found.len(), 2);
     assert_eq!(
         found[0].resolution,
@@ -325,12 +319,12 @@ fn a_typed_label_link_resolves_with_an_alias_or_a_fragment() {
 #[test]
 fn an_unknown_typed_name_is_broken() {
     let vault = Vault::new("typed-broken");
-    let bikeshed = vault.bikeshed();
-    let found = bikeshed.links_with("[[label:nope]]", &names());
+    let notes = vault.notes();
+    let found = notes.links_with("[[label:nope]]", &names());
     assert_eq!(found[0].resolution, LinkResolution::Broken);
     assert_eq!(found[0].link.target, "label:nope");
     assert_eq!(
-        bikeshed.resolve_with("project:cli", &names()),
+        notes.resolve_with("project:cli", &names()),
         LinkResolution::Broken,
         "a label is not a project"
     );
@@ -343,12 +337,12 @@ fn another_prefix_is_still_a_note_target() {
     // colon cannot be staged in a file name on every platform.)
     let vault = Vault::new("typed-other");
     vault.stage("bar.md", "x");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
     assert_eq!(
-        bikeshed.resolve_with("foo:bar", &names()),
+        notes.resolve_with("foo:bar", &names()),
         LinkResolution::Broken
     );
-    let found = bikeshed.links_with("[[foo:bar]]", &names());
+    let found = notes.links_with("[[foo:bar]]", &names());
     assert_eq!(found[0].link.target, "foo:bar");
     assert_eq!(found[0].resolution, LinkResolution::Broken);
 }
@@ -356,9 +350,7 @@ fn another_prefix_is_still_a_note_target() {
 #[test]
 fn a_typed_link_in_a_code_span_is_not_a_link() {
     let vault = Vault::new("typed-code");
-    let found = vault
-        .bikeshed()
-        .links_with("a `[[label:cli]]` span", &names());
+    let found = vault.notes().links_with("a `[[label:cli]]` span", &names());
     assert!(found.is_empty());
 }
 
@@ -369,7 +361,7 @@ fn link_targets_give_a_unique_basename_the_bare_target() {
     let vault = Vault::new("targets-bare");
     vault.stage("Alpha.md", "x");
     vault.stage("notes/Beta.md", "x");
-    let targets = vault.bikeshed().link_targets();
+    let targets = vault.notes().link_targets();
     let find = |path: &str| {
         targets
             .iter()
@@ -386,7 +378,7 @@ fn link_targets_give_clashing_basenames_their_path_in_any_case() {
     vault.stage("a/Port.md", "x");
     vault.stage("b/port.md", "x");
     vault.stage("Solo.md", "x");
-    let targets = vault.bikeshed().link_targets();
+    let targets = vault.notes().link_targets();
     let find = |path: &str| {
         targets
             .iter()
@@ -413,12 +405,12 @@ fn every_link_target_resolves_back_to_its_own_note() {
     ] {
         vault.stage(path, "x");
     }
-    let bikeshed = vault.bikeshed();
-    let targets = bikeshed.link_targets();
+    let notes = vault.notes();
+    let targets = notes.link_targets();
     assert_eq!(targets.len(), 8);
     for (path, target) in targets {
         assert_eq!(
-            bikeshed.resolve(&target),
+            notes.resolve(&target),
             LinkResolution::Resolved(path.clone()),
             "{target} resolves back to {path}"
         );

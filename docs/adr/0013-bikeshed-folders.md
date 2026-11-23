@@ -1,6 +1,8 @@
 # Bikeshed folders: in-app creation, plain directories
 
 > **Status:** In force. See [the index](README.md).
+>
+> **Paths:** the folder this record calls `bikeshed/` (and `bikeshed.lock`) is `notes/` (and `notes.lock`) since [ADR 0055](0055-the-notes-store-is-called-notes.md); a home from before is moved once on open.
 
 [ADR 0004](0004-vault-protocol.md) settled the vault as a plain folder of `.md` notes with **nested folders allowed**: the tree shows folders first, the watcher recurses, and wikilink resolution runs against the full recursive note set. Everything downstream already understands folders — but the app had no way to *create* one. The human could only structure the vault from Finder, or by letting the create-a-broken-link path make a parent folder as a side effect.
 

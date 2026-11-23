@@ -1,11 +1,11 @@
-//! Ported from `BikeshedMoveTests`: the same machinery as `rename`, in one
+//! Ported from `NotesMoveTests`: the same machinery as `rename`, in one
 //! locked transaction. A folder moved into its own subtree and a name already
 //! taken in the destination are refused with nothing written; moving an item
 //! into the folder it is already in is a no-op.
 
 use crate::domain::error::DomainError;
 
-use super::bikeshed_support::Vault;
+use super::notes_support::Vault;
 
 #[test]
 fn move_takes_a_note_into_a_folder_and_rewrites_the_links_to_it() {
@@ -13,9 +13,9 @@ fn move_takes_a_note_into_a_folder_and_rewrites_the_links_to_it() {
     vault.stage("a/x.md", "the note");
     vault.stage("b/keep.md", "k");
     vault.stage("links.md", "see [[x]]");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
-    let result = bikeshed.move_into("a/x.md", "b").unwrap().value;
+    let result = notes.move_into("a/x.md", "b").unwrap().value;
     assert_eq!(result.path, "b/x.md");
     assert_eq!(result.old_path, "a/x.md");
     assert!(!result.is_folder);
@@ -39,20 +39,20 @@ fn move_rewrites_every_wikilink_form() {
     vault.stage("b/keep.md", "k");
     let original = "1 [[x]]\n2 [[x|An Alias]]\n3 [[x#Heading]]\n4 [[x#Heading|Alias]]\n5 [[a/x]]\n";
     vault.stage("links.md", original);
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
-    bikeshed.move_into("a/x.md", "b").unwrap();
+    notes.move_into("a/x.md", "b").unwrap();
 
     let expected = "1 [[x]]\n2 [[x|An Alias]]\n3 [[x#Heading]]\n4 [[x#Heading|Alias]]\n5 [[x]]\n";
     assert_eq!(vault.read("links.md"), expected);
 }
 
 #[test]
-fn move_to_the_bikeshed_root() {
+fn move_to_the_notes_root() {
     let vault = Vault::new("move-root");
     vault.stage("a/x.md", "the note");
     vault.stage("links.md", "see [[x]]");
-    let result = vault.bikeshed().move_into("a/x.md", "").unwrap().value;
+    let result = vault.notes().move_into("a/x.md", "").unwrap().value;
     assert_eq!(result.path, "x.md");
     assert!(vault.exists("x.md"));
     assert!(!vault.exists("a/x.md"));
@@ -64,7 +64,7 @@ fn move_rewrites_the_moved_notes_own_self_links() {
     let vault = Vault::new("move-self");
     vault.stage("a/x.md", "note to [[x]] and [[x|self]]");
     vault.stage("b/keep.md", "k");
-    vault.bikeshed().move_into("a/x.md", "b").unwrap();
+    vault.notes().move_into("a/x.md", "b").unwrap();
     assert_eq!(vault.read("b/x.md"), "note to [[x]] and [[x|self]]");
 }
 
@@ -75,7 +75,7 @@ fn move_into_a_folder_that_leaves_the_basename_ambiguous_rewrites_qualified() {
     vault.stage("z/x.md", "the note");
     vault.stage("b/keep.md", "k");
     vault.stage("links.md", "see [[z/x]]");
-    vault.bikeshed().move_into("z/x.md", "b").unwrap();
+    vault.notes().move_into("z/x.md", "b").unwrap();
     assert_eq!(vault.read("links.md"), "see [[b/x]]");
     assert_eq!(vault.read("b/x.md"), "the note");
 }
@@ -87,7 +87,7 @@ fn move_leaves_markdown_links_embeds_and_code_byte_identical() {
     vault.stage("b/keep.md", "k");
     let original = "[text](a/x.md) and [[x]]\n![[x]]\n```\n[[x]]\n```\n";
     vault.stage("links.md", original);
-    vault.bikeshed().move_into("a/x.md", "b").unwrap();
+    vault.notes().move_into("a/x.md", "b").unwrap();
     assert_eq!(vault.read("links.md"), original);
 }
 
@@ -96,7 +96,7 @@ fn moving_a_note_into_the_folder_it_is_already_in_changes_nothing() {
     let vault = Vault::new("move-noop");
     vault.stage("a/x.md", "the note");
     vault.stage("links.md", "see [[x]]");
-    let result = vault.bikeshed().move_into("a/x.md", "a").unwrap().value;
+    let result = vault.notes().move_into("a/x.md", "a").unwrap().value;
     assert_eq!(result.path, "a/x.md");
     assert!(result.moved_notes.is_empty());
     assert_eq!(vault.read("a/x.md"), "the note");
@@ -110,9 +110,9 @@ fn move_takes_a_folder_and_its_notes_into_another_folder() {
     vault.stage("a/deep/y.md", "the deep note");
     vault.stage("b/keep.md", "k");
     vault.stage("links.md", "see [[x]] and [[y]]");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
-    let result = bikeshed.move_into("a", "b").unwrap().value;
+    let result = notes.move_into("a", "b").unwrap().value;
     assert_eq!(result.path, "b/a");
     assert!(result.is_folder);
     let mut moved: Vec<String> = result
@@ -137,7 +137,7 @@ fn a_folder_move_rewrites_qualified_links_to_the_notes_inside_it() {
     vault.stage("a/x.md", "the note");
     vault.stage("b/keep.md", "k");
     vault.stage("links.md", "see [[a/x]]");
-    vault.bikeshed().move_into("a", "b").unwrap();
+    vault.notes().move_into("a", "b").unwrap();
     assert_eq!(vault.read("links.md"), "see [[x]]");
 }
 
@@ -147,7 +147,7 @@ fn a_folder_move_rewrites_the_links_between_the_notes_it_carries() {
     vault.stage("a/x.md", "see [[y]]");
     vault.stage("a/y.md", "the other note");
     vault.stage("b/keep.md", "k");
-    vault.bikeshed().move_into("a", "b").unwrap();
+    vault.notes().move_into("a", "b").unwrap();
     assert_eq!(vault.read("b/a/x.md"), "see [[y]]");
 }
 
@@ -158,7 +158,7 @@ fn a_folder_move_into_a_folder_holding_the_same_basename_rewrites_qualified() {
     vault.stage("b/x.md", "the other note");
     vault.stage("b/keep.md", "k");
     vault.stage("links.md", "see [[a/x]]");
-    vault.bikeshed().move_into("a", "b").unwrap();
+    vault.notes().move_into("a", "b").unwrap();
     assert_eq!(vault.read("links.md"), "see [[b/a/x]]");
 }
 
@@ -168,7 +168,7 @@ fn a_folder_move_takes_its_attachments_with_it() {
     vault.stage("a/x.md", "the note");
     vault.stage("a/pic.png", "not really a png");
     vault.stage("b/keep.md", "k");
-    vault.bikeshed().move_into("a", "b").unwrap();
+    vault.notes().move_into("a", "b").unwrap();
     assert!(vault.exists("b/a/pic.png"));
     assert!(!vault.exists("a"));
 }
@@ -178,10 +178,10 @@ fn the_tree_reflects_a_folder_move() {
     let vault = Vault::new("move-folder-tree");
     vault.stage("a/x.md", "the note");
     vault.stage("b/keep.md", "k");
-    let bikeshed = vault.bikeshed();
-    bikeshed.move_into("a", "b").unwrap();
+    let notes = vault.notes();
+    notes.move_into("a", "b").unwrap();
 
-    let tree = bikeshed.list().unwrap().value;
+    let tree = notes.list().unwrap().value;
     assert_eq!(
         tree.iter()
             .map(|node| node.name.as_str())
@@ -204,10 +204,10 @@ fn moving_a_folder_into_its_own_descendant_is_refused_as_a_cycle() {
     vault.stage("a/x.md", "the note");
     vault.stage("a/deep/y.md", "the deep note");
     vault.stage("links.md", "see [[x]]");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
     assert_eq!(
-        bikeshed.move_into("a", "a/deep").unwrap_err(),
+        notes.move_into("a", "a/deep").unwrap_err(),
         DomainError::MoveCycle {
             path: "a".to_string(),
             into: "a/deep".to_string(),
@@ -222,7 +222,7 @@ fn moving_a_folder_into_itself_is_refused_as_a_cycle() {
     let vault = Vault::new("move-into-itself");
     vault.stage("a/x.md", "the note");
     assert_eq!(
-        vault.bikeshed().move_into("a", "a").unwrap_err(),
+        vault.notes().move_into("a", "a").unwrap_err(),
         DomainError::MoveCycle {
             path: "a".to_string(),
             into: "a".to_string(),
@@ -237,10 +237,10 @@ fn moving_a_note_onto_a_taken_name_is_refused_and_nothing_is_written() {
     vault.stage("a/x.md", "the note");
     vault.stage("b/x.md", "the other note");
     vault.stage("links.md", "see [[a/x]]");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
     assert_eq!(
-        bikeshed.move_into("a/x.md", "b").unwrap_err(),
+        notes.move_into("a/x.md", "b").unwrap_err(),
         DomainError::NoteAlreadyExists("b/x.md".to_string())
     );
     assert!(vault.exists("a/x.md"));
@@ -254,10 +254,10 @@ fn moving_a_folder_onto_a_taken_name_is_refused_and_nothing_is_written() {
     vault.stage("a/x.md", "the note");
     vault.stage("b/a/y.md", "the other note");
     vault.stage("links.md", "see [[x]]");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
     assert_eq!(
-        bikeshed.move_into("a", "b").unwrap_err(),
+        notes.move_into("a", "b").unwrap_err(),
         DomainError::NoteAlreadyExists("b/a".to_string())
     );
     assert!(vault.exists("a/x.md"));
@@ -270,7 +270,7 @@ fn moving_a_missing_note_is_unknown_note() {
     let vault = Vault::new("move-missing-source");
     vault.stage("b/keep.md", "k");
     assert_eq!(
-        vault.bikeshed().move_into("Nope.md", "b").unwrap_err(),
+        vault.notes().move_into("Nope.md", "b").unwrap_err(),
         DomainError::UnknownNote("Nope.md".to_string())
     );
 }
@@ -280,21 +280,18 @@ fn moving_into_a_folder_that_does_not_exist_is_unknown_note() {
     let vault = Vault::new("move-missing-destination");
     vault.stage("a/x.md", "the note");
     assert_eq!(
-        vault.bikeshed().move_into("a/x.md", "nope").unwrap_err(),
+        vault.notes().move_into("a/x.md", "nope").unwrap_err(),
         DomainError::UnknownNote("nope".to_string())
     );
     assert!(vault.exists("a/x.md"));
 }
 
 #[test]
-fn a_bikeshed_escape_in_the_destination_is_refused() {
+fn a_notes_escape_in_the_destination_is_refused() {
     let vault = Vault::new("move-escape");
     vault.stage("a/x.md", "the note");
     assert_eq!(
-        vault
-            .bikeshed()
-            .move_into("a/x.md", "../escape")
-            .unwrap_err(),
+        vault.notes().move_into("a/x.md", "../escape").unwrap_err(),
         DomainError::InvalidName("../escape".to_string())
     );
     assert!(vault.exists("a/x.md"));

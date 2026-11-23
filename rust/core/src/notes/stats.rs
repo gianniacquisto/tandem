@@ -15,12 +15,12 @@ use crate::domain::error::DomainResult;
 use crate::domain::operation::Operation;
 use crate::store::encode;
 
-use super::{Bikeshed, is_link, sort_key};
+use super::{Notes, is_link, sort_key};
 
 /// One project's notes health.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BikeshedProjectStats {
+pub struct NotesProjectStats {
     /// The project folder name.
     pub project: String,
     /// Curated notes: `.md` files under the project, hidden subtrees pruned.
@@ -31,37 +31,41 @@ pub struct BikeshedProjectStats {
 
 /// The notes-health readout for the whole vault.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct BikeshedStats {
+pub struct NotesStats {
     /// The vault root, absolute.
+    pub notes: String,
+    /// Deprecated: the old name of `notes`, the same value. It is removed in
+    /// the next release (`docs/versioning.md`).
     pub bikeshed: String,
     /// One row per project folder, alphabetical.
-    pub projects: Vec<BikeshedProjectStats>,
-    pub totals: BikeshedStatsTotals,
+    pub projects: Vec<NotesProjectStats>,
+    pub totals: NotesStatsTotals,
 }
 
 /// The vault-wide sums. A timestamp does not sum.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct BikeshedStatsTotals {
+pub struct NotesStatsTotals {
     pub curated_notes: usize,
 }
 
-impl Bikeshed {
+impl Notes {
     /// `stats(project)`: per-project notes health, narrowed to one folder name
     /// when given. A missing vault, a missing `projects/`, or a name matching no
     /// folder is empty, never an error.
-    pub fn stats(&self, project: Option<&str>) -> DomainResult<Operation<BikeshedStats>> {
-        let rows: Vec<BikeshedProjectStats> = self
+    pub fn stats(&self, project: Option<&str>) -> DomainResult<Operation<NotesStats>> {
+        let rows: Vec<NotesProjectStats> = self
             .project_folders()
             .into_iter()
             .filter(|(name, _)| project.is_none_or(|wanted| name == wanted))
             .map(|(name, url)| self.project_stats(&name, &url))
             .collect();
-        let totals = BikeshedStatsTotals {
+        let totals = NotesStatsTotals {
             curated_notes: rows.iter().map(|row| row.curated_notes).sum(),
         };
         Ok(Operation {
-            value: BikeshedStats {
+            value: NotesStats {
+                notes: crate::wire::slashed_path(&self.directory),
                 bikeshed: crate::wire::slashed_path(&self.directory),
                 projects: rows,
                 totals,
@@ -102,7 +106,7 @@ impl Bikeshed {
         projects
     }
 
-    fn project_stats(&self, name: &str, url: &Path) -> BikeshedProjectStats {
+    fn project_stats(&self, name: &str, url: &Path) -> NotesProjectStats {
         let curated: Vec<PathBuf> = files(url, true, true)
             .into_iter()
             .filter(|file| {
@@ -116,7 +120,7 @@ impl Bikeshed {
             .filter_map(|file| modified_seconds(file))
             .max();
 
-        BikeshedProjectStats {
+        NotesProjectStats {
             project: name.to_string(),
             curated_notes: curated.len(),
             last_consolidated: last.map(encode),

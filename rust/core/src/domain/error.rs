@@ -122,9 +122,13 @@ pub enum DomainError {
     /// agent.
     AgentNameUnset,
     /// The notes lock could not be acquired within its bounded retry window.
-    BikeshedLocked,
+    NotesLocked,
+    /// The home holds an older `bikeshed` folder that cannot become `notes`:
+    /// both folders hold notes, or the old one is a link or a file. Nothing on
+    /// disk was changed.
+    NotesFolderClash { legacy: String, current: String },
     /// The notes store itself failed: an unreadable note, a failed rename.
-    BikeshedIo(String),
+    NotesIo(String),
     /// `read` / `delete` / `rename` / `move` / `backlinks` was called with a path
     /// not present in the notes.
     UnknownNote(String),
@@ -306,10 +310,16 @@ impl DomainError {
             Self::AgentNameUnset => "Cannot resolve self: set TANDEM_AGENT to this agent's \
                  name, or pass a name instead of self."
                 .to_string(),
-            Self::BikeshedLocked => {
+            Self::NotesLocked => {
                 "The notes are locked by another process. Please retry.".to_string()
             }
-            Self::BikeshedIo(detail) => format!("Notes error: {detail}. Try again."),
+            Self::NotesFolderClash { legacy, current } => format!(
+                "Cannot move the notes: {legacy} is the folder an older Tandem kept them in, \
+                 and {current} is where they live now, and both are in the way. Nothing was \
+                 changed. Merge the notes into {current} and remove {legacy}, or remove the \
+                 one you do not want, then try again."
+            ),
+            Self::NotesIo(detail) => format!("Notes error: {detail}. Try again."),
             Self::UnknownNote(path) => {
                 format!("No note at \"{path}\". List the notes to see what is there.")
             }

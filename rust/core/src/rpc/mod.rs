@@ -7,12 +7,12 @@
 //! built or parsed here: the transport and the JSON-RPC envelope are the MCP
 //! door's.
 
-use crate::bikeshed::Bikeshed;
 use crate::diagnostics;
 use crate::domain::{
     AddTicket, Board, DescriptionBody, DomainError, Edit, Status, TicketQuery, resolve_assignee,
     resolve_comment_author, resolve_origin,
 };
+use crate::notes::Notes;
 use crate::store::{Actor, Store};
 pub(crate) mod vault;
 
@@ -313,14 +313,14 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
             report: diagnostics::run(store.home()),
         })),
         Method::NoteTree(_) => {
-            let bikeshed = Bikeshed::new(bikeshed_directory(store));
+            let notes = open_notes(store)?;
             Ok(Reply::NoteTree(NoteTreeReply {
-                nodes: bikeshed.tree().iter().map(NoteNodeView::new).collect(),
+                nodes: notes.tree().iter().map(NoteNodeView::new).collect(),
             }))
         }
         Method::NoteRead(params) => {
             let path = named(&params.path);
-            let content = open_bikeshed(store).read(path).map_err(domain)?.value;
+            let content = open_notes(store)?.read(path).map_err(domain)?.value;
             Ok(Reply::NoteRead(NoteReadReply {
                 note: NoteContentView::new(path, &content),
             }))
@@ -333,7 +333,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
             let Some(text) = params.text.as_deref() else {
                 return Err(WireError::domain("the write carries no text"));
             };
-            let record = open_bikeshed(store)
+            let record = open_notes(store)?
                 .write(path, text, params.expected_hash.as_deref())
                 .map_err(domain)?
                 .value;
@@ -342,7 +342,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
             }))
         }
         Method::NoteMove(params) => {
-            let outcome = open_bikeshed(store)
+            let outcome = open_notes(store)?
                 .move_into(named(&params.path), named(&params.into))
                 .map_err(domain)?
                 .value;
@@ -351,7 +351,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
             }))
         }
         Method::NoteCreate(params) => {
-            let created = open_bikeshed(store)
+            let created = open_notes(store)?
                 .create(named(&params.path))
                 .map_err(domain)?
                 .value;
@@ -361,7 +361,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
             }))
         }
         Method::NoteCreateFolder(params) => {
-            let created = open_bikeshed(store)
+            let created = open_notes(store)?
                 .create_folder(named(&params.path))
                 .map_err(domain)?
                 .value;
@@ -375,14 +375,14 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
             // the vault.
             let names = vault::try_names(&board).map_err(domain)?;
             Ok(Reply::NoteHealth(NoteHealthReply {
-                health: open_bikeshed(store).health(&names).map_err(domain)?.value,
+                health: open_notes(store)?.health(&names).map_err(domain)?.value,
             }))
         }
         Method::NoteSearch(params) => {
             let Some(query) = params.query.as_deref() else {
                 return Err(WireError::domain("the search carries no query"));
             };
-            let hits = open_bikeshed(store).search(query).map_err(domain)?.value;
+            let hits = open_notes(store)?.search(query).map_err(domain)?.value;
             let matched = hits.len();
             let cut = params.limit.unwrap_or(NOTE_SEARCH_LIMIT).max(0) as usize;
             let cut = Some(cut).filter(|cut| *cut < matched);
@@ -400,7 +400,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
             else {
                 return Err(WireError::domain("the edit carries no oldText or newText"));
             };
-            let record = open_bikeshed(store)
+            let record = open_notes(store)?
                 .edit(
                     named(&params.path),
                     old,
@@ -415,7 +415,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
         }
         Method::NoteBacklinks(params) => {
             let path = named(&params.path);
-            let rows = open_bikeshed(store).backlinks(path).map_err(domain)?.value;
+            let rows = open_notes(store)?.backlinks(path).map_err(domain)?.value;
             Ok(Reply::NoteBacklinks(NoteBacklinksReply {
                 path: path.to_string(),
                 backlinks: rows.iter().map(BacklinkView::new).collect(),
@@ -439,15 +439,18 @@ fn project_entries(projects: Vec<crate::domain::ProjectWithLabels>) -> Vec<Proje
 /// How many search rows an absent `limit` returns.
 const NOTE_SEARCH_LIMIT: i64 = 20;
 
-/// The bikeshed a home keeps: `<home>/bikeshed`, the one rule the CLI's note
-/// verbs and the app's reads share.
-fn bikeshed_directory(store: &Store) -> std::path::PathBuf {
-    store.home().directory().join("bikeshed")
+/// The notes a home keeps, after the one-time move of an older `bikeshed/`
+/// folder (ADR 0055). Every note method opens through here, so a refusal to
+/// migrate reaches the caller instead of a fresh empty notes.
+fn open_notes(store: &Store) -> Result<Notes, WireError> {
+    open_notes_text(store).map_err(WireError::domain)
 }
 
-/// The vault the note methods read and write.
-fn open_bikeshed(store: &Store) -> Bikeshed {
-    Bikeshed::new(bikeshed_directory(store))
+/// [`open_notes`] with the refusal as plain text, for the callers whose answer
+/// is a note line and not an error.
+fn open_notes_text(store: &Store) -> Result<Notes, String> {
+    crate::notes::migrate::migrate_home(store.home()).map_err(|error| error.message())?;
+    Ok(Notes::new(store.home().notes_directory()))
 }
 
 /// A handle the caller named; an absent one is the empty string the CLI passes,

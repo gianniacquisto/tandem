@@ -1,16 +1,16 @@
-//! Ported from `BikeshedNoteOpsTests`: create / read / write / list / delete,
+//! Ported from `NotesNoteOpsTests`: create / read / write / list / delete,
 //! the tree shape, hidden files and attachments, missing folder = empty tree,
 //! name validation, an existing target is an error not an overwrite, and write
 //! stores exactly the bytes given.
 
-use crate::bikeshed::{Bikeshed, BikeshedNode, NodeKind};
 use crate::domain::error::DomainError;
+use crate::notes::{NodeKind, Notes, NotesNode};
 
-use super::bikeshed_support::{Vault, sha256};
+use super::notes_support::{Vault, sha256};
 
-fn shape(nodes: &[BikeshedNode]) -> Vec<(String, bool)> {
+fn shape(nodes: &[NotesNode]) -> Vec<(String, bool)> {
     let mut out = Vec::new();
-    fn walk(nodes: &[BikeshedNode], out: &mut Vec<(String, bool)>) {
+    fn walk(nodes: &[NotesNode], out: &mut Vec<(String, bool)>) {
         for node in nodes {
             out.push((node.path.clone(), node.kind == NodeKind::Note));
             walk(&node.children, out);
@@ -20,14 +20,14 @@ fn shape(nodes: &[BikeshedNode]) -> Vec<(String, bool)> {
     out
 }
 
-fn tree(bikeshed: &Bikeshed) -> Vec<BikeshedNode> {
-    bikeshed.list().expect("the tree lists").value
+fn tree(notes: &Notes) -> Vec<NotesNode> {
+    notes.list().expect("the tree lists").value
 }
 
 #[test]
 fn list_on_a_missing_folder_is_an_empty_tree() {
     let vault = Vault::new("ops-list-missing");
-    let result = vault.bikeshed().list().expect("a missing vault lists");
+    let result = vault.notes().list().expect("a missing vault lists");
     assert!(result.value.is_empty());
     assert_eq!(result.note, None);
     assert!(!vault.dir().exists());
@@ -36,7 +36,7 @@ fn list_on_a_missing_folder_is_an_empty_tree() {
 #[test]
 fn list_folders_first_alphabetically_within_each_level() {
     let vault = Vault::new("ops-list-shape");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
     for path in [
         "b.md",
         "A.md",
@@ -45,7 +45,7 @@ fn list_folders_first_alphabetically_within_each_level() {
         "z/beta.md",
         "apple/x.md",
     ] {
-        bikeshed.create(path).expect("the note is created");
+        notes.create(path).expect("the note is created");
     }
 
     let expected: Vec<(String, bool)> = [
@@ -61,7 +61,7 @@ fn list_folders_first_alphabetically_within_each_level() {
     .into_iter()
     .map(|(path, note)| (path.to_string(), note))
     .collect();
-    assert_eq!(shape(&tree(&bikeshed)), expected);
+    assert_eq!(shape(&tree(&notes)), expected);
 }
 
 #[test]
@@ -74,7 +74,7 @@ fn list_excludes_hidden_files_hidden_folders_and_attachments() {
     vault.stage(".hiddendir/inside.md", "in a hidden folder");
     vault.stage("sub/figure.svg", "attachment in a folder");
 
-    let found = shape(&tree(&vault.bikeshed()));
+    let found = shape(&tree(&vault.notes()));
     assert_eq!(
         found,
         vec![("sub".to_string(), false), ("ok.md".to_string(), true)]
@@ -86,7 +86,7 @@ fn list_treats_md_case_insensitively() {
     let vault = Vault::new("ops-list-uppercase");
     vault.stage("NOTE.MD", "uppercase");
     assert_eq!(
-        shape(&tree(&vault.bikeshed())),
+        shape(&tree(&vault.notes())),
         vec![("NOTE.MD".to_string(), true)]
     );
 }
@@ -94,9 +94,9 @@ fn list_treats_md_case_insensitively() {
 #[test]
 fn create_makes_an_empty_note_creating_parent_folders() {
     let vault = Vault::new("ops-create");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
-    let result = bikeshed
+    let result = notes
         .create("Projects/My Note.md")
         .expect("the note is created");
     assert_eq!(result.value, "Projects/My Note.md");
@@ -109,8 +109,8 @@ fn create_makes_an_empty_note_creating_parent_folders() {
 #[test]
 fn create_allows_spaces_but_rejects_hash_pipe_and_malformed_paths() {
     let vault = Vault::new("ops-create-names");
-    let bikeshed = vault.bikeshed();
-    bikeshed.create("My Note.md").expect("spaces are allowed");
+    let notes = vault.notes();
+    notes.create("My Note.md").expect("spaces are allowed");
 
     for bad in [
         "bad#name.md",
@@ -119,7 +119,7 @@ fn create_allows_spaces_but_rejects_hash_pipe_and_malformed_paths() {
         "folder/bad|name.md",
     ] {
         assert_eq!(
-            bikeshed.create(bad).unwrap_err(),
+            notes.create(bad).unwrap_err(),
             DomainError::InvalidName(bad.to_string())
         );
     }
@@ -135,59 +135,51 @@ fn create_allows_spaces_but_rejects_hash_pipe_and_malformed_paths() {
         "",
     ] {
         assert_eq!(
-            bikeshed.create(bad).unwrap_err(),
+            notes.create(bad).unwrap_err(),
             DomainError::InvalidName(bad.to_string()),
             "refused: {bad}"
         );
     }
 
-    assert_eq!(
-        shape(&tree(&bikeshed)),
-        vec![("My Note.md".to_string(), true)]
-    );
+    assert_eq!(shape(&tree(&notes)), vec![("My Note.md".to_string(), true)]);
 }
 
 #[test]
 fn create_requires_a_markdown_extension() {
     let vault = Vault::new("ops-create-extension");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
     assert_eq!(
-        bikeshed.create("notmarkdown").unwrap_err(),
+        notes.create("notmarkdown").unwrap_err(),
         DomainError::InvalidName("notmarkdown".to_string())
     );
     assert_eq!(
-        bikeshed.create("image.png").unwrap_err(),
+        notes.create("image.png").unwrap_err(),
         DomainError::InvalidName("image.png".to_string())
     );
-    bikeshed
-        .create("UPPER.MD")
-        .expect("uppercase .MD is a note");
-    assert_eq!(
-        shape(&tree(&bikeshed)),
-        vec![("UPPER.MD".to_string(), true)]
-    );
+    notes.create("UPPER.MD").expect("uppercase .MD is a note");
+    assert_eq!(shape(&tree(&notes)), vec![("UPPER.MD".to_string(), true)]);
 }
 
 #[test]
 fn create_on_an_existing_target_is_an_error() {
     let vault = Vault::new("ops-create-existing");
-    let bikeshed = vault.bikeshed();
-    bikeshed.write("a.md", "original", None).unwrap();
+    let notes = vault.notes();
+    notes.write("a.md", "original", None).unwrap();
 
     assert_eq!(
-        bikeshed.create("a.md").unwrap_err(),
+        notes.create("a.md").unwrap_err(),
         DomainError::NoteAlreadyExists("a.md".to_string())
     );
-    assert_eq!(bikeshed.read("a.md").unwrap().value.text, "original");
+    assert_eq!(notes.read("a.md").unwrap().value.text, "original");
 
-    bikeshed.create("f/n.md").unwrap();
+    notes.create("f/n.md").unwrap();
     assert_eq!(
-        bikeshed.create("f/n.md").unwrap_err(),
+        notes.create("f/n.md").unwrap_err(),
         DomainError::NoteAlreadyExists("f/n.md".to_string())
     );
-    bikeshed.create("f.md").unwrap();
+    notes.create("f.md").unwrap();
     assert_eq!(
-        bikeshed.create("f.md/n.md").unwrap_err(),
+        notes.create("f.md/n.md").unwrap_err(),
         DomainError::NoteAlreadyExists("f.md".to_string())
     );
 }
@@ -195,9 +187,9 @@ fn create_on_an_existing_target_is_an_error() {
 #[test]
 fn create_folder_makes_a_nested_folder() {
     let vault = Vault::new("ops-create-folder");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
-    let result = bikeshed
+    let result = notes
         .create_folder("projects/tandem")
         .expect("the folder is created");
     assert_eq!(result.value, "projects/tandem");
@@ -210,7 +202,7 @@ fn create_folder_makes_a_nested_folder() {
         0
     );
     assert_eq!(
-        shape(&tree(&bikeshed)),
+        shape(&tree(&notes)),
         vec![
             ("projects".to_string(), false),
             ("projects/tandem".to_string(), false)
@@ -221,15 +213,15 @@ fn create_folder_makes_a_nested_folder() {
 #[test]
 fn create_folder_on_an_existing_target_is_an_error() {
     let vault = Vault::new("ops-create-folder-existing");
-    let bikeshed = vault.bikeshed();
-    bikeshed.create_folder("projects").unwrap();
+    let notes = vault.notes();
+    notes.create_folder("projects").unwrap();
     assert_eq!(
-        bikeshed.create_folder("projects").unwrap_err(),
+        notes.create_folder("projects").unwrap_err(),
         DomainError::NoteAlreadyExists("projects".to_string())
     );
-    bikeshed.create("a.md").unwrap();
+    notes.create("a.md").unwrap();
     assert_eq!(
-        bikeshed.create_folder("a.md").unwrap_err(),
+        notes.create_folder("a.md").unwrap_err(),
         DomainError::NoteAlreadyExists("a.md".to_string())
     );
 }
@@ -237,8 +229,8 @@ fn create_folder_on_an_existing_target_is_an_error() {
 #[test]
 fn create_folder_name_validation() {
     let vault = Vault::new("ops-create-folder-names");
-    let bikeshed = vault.bikeshed();
-    bikeshed
+    let notes = vault.notes();
+    notes
         .create_folder("My Project")
         .expect("spaces are allowed");
 
@@ -258,13 +250,13 @@ fn create_folder_name_validation() {
         "./dot",
     ] {
         assert_eq!(
-            bikeshed.create_folder(bad).unwrap_err(),
+            notes.create_folder(bad).unwrap_err(),
             DomainError::InvalidName(bad.to_string()),
             "refused: {bad}"
         );
     }
     assert_eq!(
-        shape(&tree(&bikeshed)),
+        shape(&tree(&notes)),
         vec![("My Project".to_string(), false)]
     );
 }
@@ -272,25 +264,25 @@ fn create_folder_name_validation() {
 #[test]
 fn create_folder_refuses_an_ancestor_that_is_a_file() {
     let vault = Vault::new("ops-create-folder-ancestor");
-    let bikeshed = vault.bikeshed();
-    bikeshed.create("file.md").unwrap();
+    let notes = vault.notes();
+    notes.create("file.md").unwrap();
     assert_eq!(
-        bikeshed.create_folder("file.md/inner/deep").unwrap_err(),
+        notes.create_folder("file.md/inner/deep").unwrap_err(),
         DomainError::NoteAlreadyExists("file.md".to_string())
     );
-    assert_eq!(bikeshed.read("file.md").unwrap().value.text, "");
-    assert_eq!(shape(&tree(&bikeshed)), vec![("file.md".to_string(), true)]);
+    assert_eq!(notes.read("file.md").unwrap().value.text, "");
+    assert_eq!(shape(&tree(&notes)), vec![("file.md".to_string(), true)]);
 }
 
 #[test]
 fn read_returns_text_hash_and_mtime() {
     let vault = Vault::new("ops-read");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
     let text = "# Heading\n\nbody text";
-    bikeshed.write("a.md", text, None).unwrap();
+    notes.write("a.md", text, None).unwrap();
     let before = std::time::SystemTime::now();
 
-    let note = bikeshed.read("a.md").unwrap().value;
+    let note = notes.read("a.md").unwrap().value;
     assert_eq!(note.text, text);
     assert_eq!(note.hash, sha256(text));
     assert!(note.modified_at + std::time::Duration::from_secs(5) >= before);
@@ -301,7 +293,7 @@ fn read_returns_text_hash_and_mtime() {
 fn read_on_a_missing_note_is_unknown_note() {
     let vault = Vault::new("ops-read-missing");
     assert_eq!(
-        vault.bikeshed().read("missing.md").unwrap_err(),
+        vault.notes().read("missing.md").unwrap_err(),
         DomainError::UnknownNote("missing.md".to_string())
     );
 }
@@ -309,47 +301,47 @@ fn read_on_a_missing_note_is_unknown_note() {
 #[test]
 fn write_stores_exactly_the_bytes_given() {
     let vault = Vault::new("ops-write-bytes");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
     let text = "---\ntags: [x, y]\nlink: [[Somewhere]]\n---\n\n# Title\n\
                 See [[Somewhere#Section|here]] and `[[inline code is not a link]]`.\n";
-    let record = bikeshed.write("fm.md", text, None).unwrap().value;
+    let record = notes.write("fm.md", text, None).unwrap().value;
     assert_eq!(record.path, "fm.md");
     assert_eq!(record.hash, sha256(text));
     assert_eq!(vault.read("fm.md"), text);
-    assert_eq!(bikeshed.read("fm.md").unwrap().value.text, text);
+    assert_eq!(notes.read("fm.md").unwrap().value.text, text);
 }
 
 #[test]
 fn write_overwrites_an_existing_note_and_records_the_new_hash() {
     let vault = Vault::new("ops-write-overwrite");
-    let bikeshed = vault.bikeshed();
-    let first = bikeshed.write("a.md", "one", None).unwrap().value;
-    let second = bikeshed.write("a.md", "two", None).unwrap().value;
+    let notes = vault.notes();
+    let first = notes.write("a.md", "one", None).unwrap().value;
+    let second = notes.write("a.md", "two", None).unwrap().value;
     assert_ne!(first.hash, second.hash);
     assert_eq!(second.hash, sha256("two"));
-    assert_eq!(bikeshed.read("a.md").unwrap().value.text, "two");
+    assert_eq!(notes.read("a.md").unwrap().value.text, "two");
 }
 
 #[test]
 fn delete_removes_a_note_and_a_folder_recursively() {
     let vault = Vault::new("ops-delete");
-    let bikeshed = vault.bikeshed();
-    bikeshed.create("a.md").unwrap();
-    bikeshed.create("f/inner.md").unwrap();
-    bikeshed.create("keep.md").unwrap();
+    let notes = vault.notes();
+    notes.create("a.md").unwrap();
+    notes.create("f/inner.md").unwrap();
+    notes.create("keep.md").unwrap();
 
-    bikeshed.delete("a.md").unwrap();
+    notes.delete("a.md").unwrap();
     assert!(!vault.exists("a.md"));
-    bikeshed.delete("f").unwrap();
+    notes.delete("f").unwrap();
     assert!(!vault.exists("f"));
-    assert_eq!(shape(&tree(&bikeshed)), vec![("keep.md".to_string(), true)]);
+    assert_eq!(shape(&tree(&notes)), vec![("keep.md".to_string(), true)]);
 }
 
 #[test]
 fn delete_on_a_missing_path_is_unknown_note() {
     let vault = Vault::new("ops-delete-missing");
     assert_eq!(
-        vault.bikeshed().delete("nope.md").unwrap_err(),
+        vault.notes().delete("nope.md").unwrap_err(),
         DomainError::UnknownNote("nope.md".to_string())
     );
 }
@@ -363,9 +355,9 @@ fn pre_existing_name_violators_are_tolerated() {
     // the pipe half is staged only where the host can hold it.
     #[cfg(not(windows))]
     vault.stage("bad|pipe.md", "another one");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
-    let mut paths: Vec<String> = shape(&tree(&bikeshed))
+    let mut paths: Vec<String> = shape(&tree(&notes))
         .into_iter()
         .map(|(path, _)| path)
         .collect();
@@ -379,13 +371,13 @@ fn pre_existing_name_violators_are_tolerated() {
     assert_eq!(paths, vec!["bad#name.md".to_string()]);
 
     assert_eq!(
-        bikeshed.read("bad#name.md").unwrap().value.text,
+        notes.read("bad#name.md").unwrap().value.text,
         "an agent wrote this"
     );
-    bikeshed.write("bad#name.md", "edited", None).unwrap();
-    assert_eq!(bikeshed.read("bad#name.md").unwrap().value.text, "edited");
+    notes.write("bad#name.md", "edited", None).unwrap();
+    assert_eq!(notes.read("bad#name.md").unwrap().value.text, "edited");
     assert_eq!(
-        bikeshed.create("bad#name.md").unwrap_err(),
+        notes.create("bad#name.md").unwrap_err(),
         DomainError::InvalidName("bad#name.md".to_string())
     );
 }

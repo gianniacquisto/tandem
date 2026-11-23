@@ -1,5 +1,5 @@
 //! A stdin body is text. The verbs' multi-line arguments arrive on a pipe, and
-//! a pipe that is not UTF-8 is its own failure, not the bikeshed's I/O error:
+//! a pipe that is not UTF-8 is its own failure, not the notes' I/O error:
 //! the body never named a vault path (PRT-24).
 
 use std::fs;
@@ -39,7 +39,7 @@ fn a_non_utf8_stdin_body_answers_its_own_error_and_exit_one() {
     assert_eq!(
         String::from_utf8_lossy(&output.stderr),
         "stdin is not valid UTF-8. Try again.\n",
-        "the body's own failure, not a bikeshed error"
+        "the body's own failure, not a notes error"
     );
     assert!(
         output.stdout.is_empty(),

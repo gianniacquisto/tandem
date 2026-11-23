@@ -7,20 +7,21 @@
 //!   separators; pre-existing violators on disk are still shown and edited.
 //! - **Frontmatter** — tolerated, opaque: the core never parses note text.
 //! - **Locking** — writes take an exclusive `flock` on the sidecar lockfile
-//!   (`<home>/bikeshed.lock`, outside the vault, ADR 0011), held across the whole
+//!   (`<home>/notes.lock`, outside the vault, ADR 0011), held across the whole
 //!   operation, multi-file ones included. Readers take no lock.
 //! - **Atomic writes** — same-directory temp + fsync + `rename(2)`; orphaned temps
 //!   older than 60 s are swept under the lock.
 //! - **Rename and move** — one locked transaction: rewrite the referencing notes
 //!   first (per-file atomic), then one `rename(2)`. No journal (ADR 0005).
 //!
-//! A missing bikeshed folder is an empty bikeshed, created lazily, never an error.
+//! A missing notes folder is an empty notes, created lazily, never an error.
 //! The derived readers (search, backlinks, health, stats) recompute from the
 //! file set; there is no stored index.
 
 pub mod graph;
 pub mod health;
 pub(crate) mod locked;
+pub mod migrate;
 pub mod stats;
 pub mod wikilink;
 
@@ -44,19 +45,19 @@ use self::wikilink::{
 
 pub use self::graph::{GraphScope, NoteGraph, NoteGraphEdge, NoteGraphNode};
 pub use self::health::{
-    BikeshedHealth, BikeshedHealthCounts, BrokenLink, MissingFolder, UnmatchedFolder, label_folder,
+    BrokenLink, MissingFolder, NotesHealth, NotesHealthCounts, UnmatchedFolder, label_folder,
     project_folder,
 };
-pub use self::stats::{BikeshedProjectStats, BikeshedStats, BikeshedStatsTotals};
+pub use self::stats::{NotesProjectStats, NotesStats, NotesStatsTotals};
 pub use self::wikilink::{
     BoardNames, BoardProject, ConceptKind, LinkResolution as Resolution, Wikilink,
 };
 
-/// The bikeshed path-hygiene rule (ADR 0008): the one place that decides whether
-/// a bikeshed-root-relative path is legal or an escape.
-pub struct BikeshedPath;
+/// The notes path-hygiene rule (ADR 0008): the one place that decides whether
+/// a notes-root-relative path is legal or an escape.
+pub struct NotesPath;
 
-impl BikeshedPath {
+impl NotesPath {
     /// The note's name: its file name without the `.md` extension.
     pub fn name(path: &str) -> String {
         let name = path.rsplit('/').next().unwrap_or(path);
@@ -145,13 +146,13 @@ pub(crate) fn is_link(metadata: &fs::Metadata) -> bool {
     false
 }
 
-/// A node in the bikeshed tree: a folder or a `.md` note.
+/// A node in the notes tree: a folder or a `.md` note.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BikeshedNode {
+pub struct NotesNode {
     pub name: String,
     pub path: String,
     pub kind: NodeKind,
-    pub children: Vec<BikeshedNode>,
+    pub children: Vec<NotesNode>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,7 +215,7 @@ pub struct SearchHit {
 /// error: nothing is lost, and nothing has to be clicked away.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Recovery {
-    /// The temp's bikeshed-root-relative path.
+    /// The temp's notes-root-relative path.
     pub file: String,
     pub bytes: u64,
     pub modified_at: SystemTime,
@@ -237,7 +238,7 @@ pub struct TrashEntry {
 
 /// The vault: the directory and the sidecar lockfile.
 #[derive(Debug, Clone)]
-pub struct Bikeshed {
+pub struct Notes {
     /// The vault root (created lazily).
     pub directory: PathBuf,
     /// The sidecar lockfile, outside the vault (created if missing).
@@ -245,15 +246,15 @@ pub struct Bikeshed {
     storage: LockedDirectory,
 }
 
-impl Bikeshed {
-    /// A vault rooted at `directory`, with the sibling `bikeshed.lock` as its
+impl Notes {
+    /// A vault rooted at `directory`, with the sibling `notes.lock` as its
     /// sidecar (the tests' and the app's explicit path).
     pub fn new(directory: impl Into<PathBuf>) -> Self {
         let directory = standardize(&directory.into());
         let lock_file = directory
             .parent()
-            .map(|parent| parent.join("bikeshed.lock"))
-            .unwrap_or_else(|| PathBuf::from("bikeshed.lock"));
+            .map(|parent| parent.join("notes.lock"))
+            .unwrap_or_else(|| PathBuf::from("notes.lock"));
         Self::with_lock_file(directory, lock_file)
     }
 
@@ -271,7 +272,7 @@ impl Bikeshed {
     pub fn with_lock_file(directory: impl Into<PathBuf>, lock_file: impl Into<PathBuf>) -> Self {
         let directory = standardize(&directory.into());
         let lock_file = lock_file.into();
-        let storage = LockedDirectory::for_bikeshed(directory.clone(), lock_file.clone());
+        let storage = LockedDirectory::for_notes(directory.clone(), lock_file.clone());
         Self {
             directory,
             lock_file,
@@ -327,11 +328,11 @@ impl Bikeshed {
 
     /// The full tree: folders first, alphabetical within each level. Hidden
     /// entries are never drawn: there is no hidden layer to reveal.
-    pub fn tree(&self) -> Vec<BikeshedNode> {
+    pub fn tree(&self) -> Vec<NotesNode> {
         self.nodes(&self.directory, "")
     }
 
-    fn nodes(&self, directory: &Path, relative: &str) -> Vec<BikeshedNode> {
+    fn nodes(&self, directory: &Path, relative: &str) -> Vec<NotesNode> {
         let Ok(entries) = fs::read_dir(directory) else {
             return Vec::new();
         };
@@ -354,14 +355,14 @@ impl Bikeshed {
                 continue;
             }
             if metadata.is_dir() {
-                folders.push(BikeshedNode {
+                folders.push(NotesNode {
                     name: name.clone(),
                     path: path.clone(),
                     kind: NodeKind::Folder,
                     children: self.nodes(&entry.path(), &path),
                 });
             } else if is_note_name(&name) {
-                notes.push(BikeshedNode {
+                notes.push(NotesNode {
                     name,
                     path,
                     kind: NodeKind::Note,
@@ -397,12 +398,12 @@ impl Bikeshed {
 
     // MARK: - Path resolution
 
-    /// Resolve a bikeshed-root-relative path to a path inside the vault.
+    /// Resolve a notes-root-relative path to a path inside the vault.
     pub fn file_url(&self, path: &str) -> Option<PathBuf> {
-        BikeshedPath::url(&self.directory, path)
+        NotesPath::url(&self.directory, path)
     }
 
-    /// The bikeshed-root-relative path of a path inside the vault, in the vault's
+    /// The notes-root-relative path of a path inside the vault, in the vault's
     /// own spelling: `/`-separated on every platform, never the host's `\`.
     fn relative_path(&self, url: &Path) -> String {
         let root = standardize(&self.directory);
@@ -463,12 +464,12 @@ impl Bikeshed {
             return Err(DomainError::UnknownNote(path.to_string()));
         }
         let bytes = fs::read(&url)
-            .map_err(|_| DomainError::BikeshedIo(format!("could not read \"{path}\"")))?;
+            .map_err(|_| DomainError::NotesIo(format!("could not read \"{path}\"")))?;
         let text = String::from_utf8(bytes.clone())
-            .map_err(|_| DomainError::BikeshedIo(format!("note \"{path}\" is not valid UTF-8")))?;
+            .map_err(|_| DomainError::NotesIo(format!("note \"{path}\" is not valid UTF-8")))?;
         let modified_at = metadata
             .modified()
-            .map_err(|_| DomainError::BikeshedIo(format!("could not stat \"{path}\"")))?;
+            .map_err(|_| DomainError::NotesIo(format!("could not stat \"{path}\"")))?;
         Ok(NoteContent {
             text,
             hash: hash(&bytes),
@@ -479,7 +480,7 @@ impl Bikeshed {
     // MARK: - list
 
     /// `list()`: the tree. Lock-free.
-    pub fn list(&self) -> DomainResult<Operation<Vec<BikeshedNode>>> {
+    pub fn list(&self) -> DomainResult<Operation<Vec<NotesNode>>> {
         Ok(Operation {
             value: self.tree(),
             note: None,
@@ -536,7 +537,7 @@ impl Bikeshed {
                 return Err(DomainError::NoteAlreadyExists(taken));
             }
             fs::create_dir_all(&url).map_err(|error| {
-                DomainError::BikeshedIo(format!("could not create folder \"{path}\": {error}"))
+                DomainError::NotesIo(format!("could not create folder \"{path}\": {error}"))
             })?;
             Ok(Operation {
                 value: path.to_string(),
@@ -567,9 +568,7 @@ impl Bikeshed {
         };
         match fs::metadata(&url) {
             Ok(metadata) if metadata.is_dir() => {
-                return Err(DomainError::BikeshedIo(format!(
-                    "path \"{path}\" is a folder"
-                )));
+                return Err(DomainError::NotesIo(format!("path \"{path}\" is a folder")));
             }
             Ok(_) => {}
             Err(_) => self.validate_new_name(path)?,
@@ -590,7 +589,7 @@ impl Bikeshed {
                         ABSENT_HASH.to_string()
                     }
                     Err(error) => {
-                        return Err(DomainError::BikeshedIo(format!(
+                        return Err(DomainError::NotesIo(format!(
                             "could not read \"{path}\": {error}"
                         )));
                     }
@@ -702,14 +701,14 @@ impl Bikeshed {
             self.apply_link_rewrite(&notes, &mapping)?;
             if let Some(parent) = new_url.parent() {
                 fs::create_dir_all(parent).map_err(|error| {
-                    DomainError::BikeshedIo(format!(
+                    DomainError::NotesIo(format!(
                         "could not create \"{}\": {error}",
                         parent.display()
                     ))
                 })?;
             }
             fs::rename(&old_url, &new_url).map_err(|error| {
-                DomainError::BikeshedIo(format!("could not rename \"{from}\": {error}"))
+                DomainError::NotesIo(format!("could not rename \"{from}\": {error}"))
             })?;
             Ok(Operation {
                 value: to.to_string(),
@@ -774,14 +773,14 @@ impl Bikeshed {
             self.apply_link_rewrite(&notes, &mapping)?;
             if let Some(parent) = new_url.parent() {
                 fs::create_dir_all(parent).map_err(|error| {
-                    DomainError::BikeshedIo(format!(
+                    DomainError::NotesIo(format!(
                         "could not create \"{}\": {error}",
                         parent.display()
                     ))
                 })?;
             }
             fs::rename(&old_url, &new_url).map_err(|error| {
-                DomainError::BikeshedIo(format!("could not move \"{from}\": {error}"))
+                DomainError::NotesIo(format!("could not move \"{from}\": {error}"))
             })?;
             Ok(Operation {
                 value: MoveOutcome {
@@ -922,14 +921,14 @@ impl Bikeshed {
             self.apply_link_rewrite(&notes, &mapping)?;
             if let Some(parent) = new_url.parent() {
                 fs::create_dir_all(parent).map_err(|error| {
-                    DomainError::BikeshedIo(format!(
+                    DomainError::NotesIo(format!(
                         "could not create \"{}\": {error}",
                         parent.display()
                     ))
                 })?;
             }
             fs::rename(&source_url, &new_url).map_err(|error| {
-                DomainError::BikeshedIo(format!("could not move \"{source}\": {error}"))
+                DomainError::NotesIo(format!("could not move \"{source}\": {error}"))
             })?;
             Ok(Operation {
                 value: MoveOutcome {
@@ -966,8 +965,7 @@ impl Bikeshed {
             return Err(DomainError::InvalidName(path.to_string()));
         }
         let id = format!("{}/{path}", stamp(now));
-        let Some(trash_url) = BikeshedPath::url(&self.directory, &format!("{TRASH_DIR}/{id}"))
-        else {
+        let Some(trash_url) = NotesPath::url(&self.directory, &format!("{TRASH_DIR}/{id}")) else {
             return Err(DomainError::InvalidName(path.to_string()));
         };
         self.locked(|| {
@@ -979,14 +977,14 @@ impl Bikeshed {
             }
             if let Some(parent) = trash_url.parent() {
                 fs::create_dir_all(parent).map_err(|error| {
-                    DomainError::BikeshedIo(format!(
+                    DomainError::NotesIo(format!(
                         "could not create \"{}\": {error}",
                         parent.display()
                     ))
                 })?;
             }
             fs::rename(&url, &trash_url).map_err(|error| {
-                DomainError::BikeshedIo(format!("could not delete \"{path}\": {error}"))
+                DomainError::NotesIo(format!("could not delete \"{path}\": {error}"))
             })?;
             Ok(Operation {
                 value: TrashEntry {
@@ -1012,8 +1010,8 @@ impl Bikeshed {
             return Err(refused());
         }
         let source =
-            BikeshedPath::url(&self.directory, &format!("{TRASH_DIR}/{id}")).ok_or_else(refused)?;
-        let destination = BikeshedPath::url(&self.directory, original).ok_or_else(refused)?;
+            NotesPath::url(&self.directory, &format!("{TRASH_DIR}/{id}")).ok_or_else(refused)?;
+        let destination = NotesPath::url(&self.directory, original).ok_or_else(refused)?;
         self.locked(|| {
             fs::symlink_metadata(&source).map_err(|_| DomainError::UnknownNote(id.to_string()))?;
             if fs::symlink_metadata(&destination).is_ok() {
@@ -1024,14 +1022,14 @@ impl Bikeshed {
             }
             if let Some(parent) = destination.parent() {
                 fs::create_dir_all(parent).map_err(|error| {
-                    DomainError::BikeshedIo(format!(
+                    DomainError::NotesIo(format!(
                         "could not create \"{}\": {error}",
                         parent.display()
                     ))
                 })?;
             }
             fs::rename(&source, &destination).map_err(|error| {
-                DomainError::BikeshedIo(format!("could not restore \"{original}\": {error}"))
+                DomainError::NotesIo(format!("could not restore \"{original}\": {error}"))
             })?;
             Ok(Operation {
                 value: original.to_string(),
@@ -1214,8 +1212,8 @@ impl Bikeshed {
 
 fn translate_store(error: StoreError) -> DomainError {
     match error {
-        StoreError::Locked { .. } => DomainError::BikeshedLocked,
-        other => DomainError::BikeshedIo(other.to_string()),
+        StoreError::Locked { .. } => DomainError::NotesLocked,
+        other => DomainError::NotesIo(other.to_string()),
     }
 }
 
@@ -1327,7 +1325,7 @@ fn sort_key(name: &str) -> (String, String) {
     (name.to_lowercase(), name.to_string())
 }
 
-fn collect_notes(nodes: &[BikeshedNode], paths: &mut Vec<String>) {
+fn collect_notes(nodes: &[NotesNode], paths: &mut Vec<String>) {
     for node in nodes {
         if node.kind == NodeKind::Note {
             paths.push(node.path.clone());
@@ -1338,7 +1336,7 @@ fn collect_notes(nodes: &[BikeshedNode], paths: &mut Vec<String>) {
 
 /// Walk `directory` for the atomic write's orphaned temps, relative to the
 /// vault root. Unreadable entries are skipped: a read never fails on a tree it
-/// cannot fully see, exactly like [`Bikeshed::tree`].
+/// cannot fully see, exactly like [`Notes::tree`].
 fn collect_recoveries(directory: &Path, relative: &str, found: &mut Vec<Recovery>) {
     let Ok(entries) = fs::read_dir(directory) else {
         return;
@@ -1361,7 +1359,7 @@ fn collect_recoveries(directory: &Path, relative: &str, found: &mut Vec<Recovery
             collect_recoveries(&path, &child, found);
             continue;
         }
-        if name.starts_with(locked::BIKESHED_TEMP_PREFIX) && name.ends_with(".tmp") {
+        if name.starts_with(locked::NOTES_TEMP_PREFIX) && name.ends_with(".tmp") {
             found.push(Recovery {
                 file: child,
                 bytes: metadata.len(),

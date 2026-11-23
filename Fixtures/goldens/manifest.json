@@ -1909,7 +1909,7 @@
       "setup": [
         {
           "write": {
-            "at": "bikeshed/projects/fixture/.raw/golden-session/20261018T140211-decision-a-decision-the-golden-keeps.md",
+            "at": "notes/projects/fixture/.raw/golden-session/20261018T140211-decision-a-decision-the-golden-keeps.md",
             "text": "# A decision the golden keeps.\n"
           }
         }
@@ -1925,7 +1925,7 @@
       "setup": [
         {
           "write": {
-            "at": "bikeshed/projects/fixture/.raw/golden-session/20261018T140211-decision-a-decision-the-golden-keeps.md",
+            "at": "notes/projects/fixture/.raw/golden-session/20261018T140211-decision-a-decision-the-golden-keeps.md",
             "text": "# A decision the golden keeps.\n"
           }
         }
@@ -2053,14 +2053,14 @@
     },
     {
       "group": "doctor",
-      "case": "doctor-broken-bikeshed",
+      "case": "doctor-broken-notes",
       "setup": [
         {
-          "rm": "bikeshed"
+          "rm": "notes"
         },
         {
           "write": {
-            "at": "bikeshed",
+            "at": "notes",
             "text": "not a folder\n"
           }
         }

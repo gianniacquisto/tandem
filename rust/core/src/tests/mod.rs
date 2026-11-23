@@ -1,42 +1,42 @@
 //! The records domain's ported suites.
 //!
 //! The behaviours these assert, against the store the adapter writes. One Rust
-//! module per bikeshed suite:
-//!   `bikeshed_path`, `bikeshed_wikilink`, `bikeshed_backlink`, `bikeshed_health`,
-//!   `bikeshed_stats`, `bikeshed_search`, `bikeshed_move`, `bikeshed_rename`,
-//!   `bikeshed_note_ops`, `bikeshed_conflict`, `bikeshed_crash_recovery`,
-//!   `bikeshed_locking`, `bikeshed_scale`; `fixture_bikeshed` reads the
-//!   committed fixture vault. The memory workflow's suites (`bikeshed_capture`,
-//!   `bikeshed_front`, `bikeshed_hidden_layer`, `bikeshed_prune`, `daily_note`)
+//! module per notes suite:
+//!   `notes_path`, `notes_wikilink`, `notes_backlink`, `notes_health`,
+//!   `notes_stats`, `notes_search`, `notes_move`, `notes_rename`,
+//!   `notes_note_ops`, `notes_conflict`, `notes_crash_recovery`,
+//!   `notes_locking`, `notes_scale`; `fixture_notes` reads the
+//!   committed fixture vault. The memory workflow's suites (`notes_capture`,
+//!   `notes_front`, `notes_hidden_layer`, `notes_prune`, `daily_note`)
 //!   left with the layer they tested (CUT-7).
 //!
 //! Each module is one suite, so `cargo test <suite>` runs it alone.
 
-mod bikeshed_backlink;
-mod bikeshed_conflict;
-mod bikeshed_crash_recovery;
-mod bikeshed_edit;
-mod bikeshed_graph;
-mod bikeshed_health;
-mod bikeshed_locked;
-mod bikeshed_locking;
-mod bikeshed_move;
-mod bikeshed_note_ops;
-mod bikeshed_path;
-mod bikeshed_rename;
-mod bikeshed_scale;
-mod bikeshed_search;
-mod bikeshed_stats;
-mod bikeshed_support;
-mod bikeshed_trash;
-mod bikeshed_wikilink;
 mod examples_tools;
-mod fixture_bikeshed;
+mod fixture_notes;
+mod notes_backlink;
+mod notes_conflict;
+mod notes_crash_recovery;
+mod notes_edit;
+mod notes_graph;
+mod notes_health;
+mod notes_locked;
+mod notes_locking;
+mod notes_move;
+mod notes_note_ops;
+mod notes_path;
+mod notes_rename;
+mod notes_scale;
+mod notes_search;
+mod notes_stats;
+mod notes_support;
+mod notes_trash;
+mod notes_wikilink;
 
 #[cfg(test)]
 mod sha {
     //! The pinned set has to resolve on every runner, not only on the machine
-    //! that first fetched it. The bikeshed hashes note bytes with `sha2`; this
+    //! that first fetched it. The notes hashes note bytes with `sha2`; this
     //! test pins the crate's own answer beside them.
 
     use sha2::{Digest, Sha256};

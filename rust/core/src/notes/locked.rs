@@ -1,15 +1,15 @@
-//! The bikeshed's locked write mechanics: a `flock` sidecar with bounded
+//! The notes' locked write mechanics: a `flock` sidecar with bounded
 //! retry, same-directory temp files with `fsync` + rename, and the orphan
 //! sweep that clears a crash's leftovers under the lock.
 //!
 //! The lock is held to one rule set: the lock is never a suggestion, a write lands whole
 //! or not at all, and a temp older than a minute is a crash's, not a writer's.
 //! This module is the mechanism only. It owns no schema and no domain
-//! vocabulary; the vault translates its failures into the bikeshed's words.
+//! vocabulary; the vault translates its failures into the notes' words.
 //!
 //! The store takes no lock (ADR 0031): SQLite's `BEGIN IMMEDIATE` and the busy
 //! window are its contention bound. The sidecar and [`LockedDirectory::lock`]
-//! are the bikeshed's, which is the file tree that still needs one; the
+//! are the notes', which is the file tree that still needs one; the
 //! atomic file helper (temp naming, commit, directory sync) lives in
 //! [`crate::store`] and is shared by the store's rolling backup and by
 //! [`LockedDirectory::atomic_write`].
@@ -17,7 +17,7 @@
 //! One thing this mechanism needs beyond `flock`: `flock` has no
 //! queue, so threads of one process that want the same lock race `try_lock`
 //! and the loser can lose every flip for the whole window. [`Queue`] gives this
-//! process's bikeshed writers a turn order, so a waiter is served when the
+//! process's notes writers a turn order, so a waiter is served when the
 //! holder releases instead of racing it, and the window bounds the wait rather
 //! than the luck. A writer that cannot be served within the window, queued or
 //! blocked by a foreign holder, answers `Locked` exactly as it did before the
@@ -45,9 +45,9 @@ pub(crate) const ORPHAN_MAX_AGE: Duration = Duration::from_secs(60);
 
 const TEMP_SUFFIX: &str = ".tmp";
 
-/// The bikeshed's temp prefix: its notes are written beside the note, so the
+/// The notes' temp prefix: its notes are written beside the note, so the
 /// sweep recurses into the tree.
-pub(crate) const BIKESHED_TEMP_PREFIX: &str = ".note-";
+pub(crate) const NOTES_TEMP_PREFIX: &str = ".note-";
 
 /// The turn order of this process's writers, one queue per lock file.
 ///
@@ -63,7 +63,7 @@ pub(crate) const BIKESHED_TEMP_PREFIX: &str = ".note-";
 /// The wait is bounded like the lock's: a ticket that is not served within
 /// [`LOCK_TIMEOUT`] answers `Locked` and is skipped, so a body that takes the
 /// same lock file again (a nested acquisition) answers at the window instead of
-/// hanging. The bikeshed's write bodies never nest; this is the guard that
+/// hanging. The notes' write bodies never nest; this is the guard that
 /// makes that constraint fail loudly if one ever does.
 struct Queue {
     turn: Mutex<Turn>,
@@ -240,14 +240,14 @@ impl LockedDirectory {
         self
     }
 
-    /// The bikeshed's sidecar: `<home>/bikeshed.lock` (outside the vault) and the
+    /// The notes' sidecar: `<home>/notes.lock` (outside the vault) and the
     /// vault as its root, swept recursively (ADR 0004).
-    pub(crate) fn for_bikeshed(root: PathBuf, lock_file: PathBuf) -> Self {
-        Self::new(lock_file, BIKESHED_TEMP_PREFIX, root)
+    pub(crate) fn for_notes(root: PathBuf, lock_file: PathBuf) -> Self {
+        Self::new(lock_file, NOTES_TEMP_PREFIX, root)
     }
 
     /// Acquire the lock and sweep, handing back the guard that holds it. A
-    /// caller with its own error vocabulary (the bikeshed) translates the two
+    /// caller with its own error vocabulary (the notes) translates the two
     /// failures itself and keeps the body's errors its own.
     pub(crate) fn lock(&self) -> Result<LockGuard> {
         let held = self.acquire()?;
@@ -367,9 +367,9 @@ impl LockedDirectory {
     }
 
     /// Remove `<prefix>*<suffix>` files older than [`ORPHAN_MAX_AGE`], walking
-    /// the vault's tree: the bikeshed's temps sit beside each note.
+    /// the vault's tree: the notes' temps sit beside each note.
     ///
-    /// The bikeshed calls this under its sidecar lock.
+    /// The notes calls this under its sidecar lock.
     pub(crate) fn sweep_orphans(&self) {
         let cutoff = SystemTime::now()
             .checked_sub(ORPHAN_MAX_AGE)

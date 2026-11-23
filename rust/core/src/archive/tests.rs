@@ -88,7 +88,7 @@ fn seed(home: &Home, tickets: usize) {
             })
         })
         .expect("the second write lands");
-    let notes = home.directory().join("bikeshed");
+    let notes = home.directory().join("notes");
     fs::create_dir_all(notes.join("projects/p")).expect("the notes folder is creatable");
     fs::write(notes.join("Index.md"), "# Index\n[[projects/p/p]]\n").expect("a note writes");
     fs::write(notes.join("projects/p/p.md"), "# p\nbody\n").expect("a note writes");
@@ -305,12 +305,12 @@ fn an_exported_home_imports_with_the_same_tickets_comments_and_notes() {
     assert_eq!(count(&target, "tickets"), count(&source, "tickets"));
     assert_eq!(count(&target, "comments"), 3);
     assert_eq!(
-        fs::read_to_string(target.directory().join("bikeshed/projects/p/p.md")).unwrap(),
+        fs::read_to_string(target.directory().join("notes/projects/p/p.md")).unwrap(),
         "# p\nbody\n"
     );
     assert_eq!(
-        fs::read(target.directory().join("bikeshed/Index.md")).unwrap(),
-        fs::read(source.directory().join("bikeshed/Index.md")).unwrap()
+        fs::read(target.directory().join("notes/Index.md")).unwrap(),
+        fs::read(source.directory().join("notes/Index.md")).unwrap()
     );
     // The imported store is a working store: it takes a write.
     Store::new(target.clone())
@@ -331,7 +331,7 @@ fn the_archive_holds_the_store_the_notes_and_the_manifest_last_and_nothing_else(
     let source = sandbox.home("source");
     seed(&source, 1);
     // Decoys that must never travel.
-    fs::write(source.directory().join("bikeshed.lock"), "").unwrap();
+    fs::write(source.directory().join("notes.lock"), "").unwrap();
     fs::write(source.directory().join("tandem.lock"), "").unwrap();
     fs::write(source.directory().join(".tandem-old.tmp"), "x").unwrap();
     assert!(source.directory().join("tandem.db.bak").exists());
@@ -344,8 +344,8 @@ fn the_archive_holds_the_store_the_notes_and_the_manifest_last_and_nothing_else(
         names,
         [
             "tandem.db",
-            "bikeshed/Index.md",
-            "bikeshed/projects/p/p.md",
+            "notes/Index.md",
+            "notes/projects/p/p.md",
             "manifest.json"
         ]
     );
@@ -444,7 +444,7 @@ fn export_skips_symlinks_and_temp_files_under_the_notes_root() {
     let sandbox = Sandbox::new("skips");
     let source = sandbox.home("source");
     seed(&source, 1);
-    let notes = source.directory().join("bikeshed");
+    let notes = source.directory().join("notes");
     fs::write(notes.join(".note-abc.tmp"), "half").unwrap();
     fs::write(notes.join("projects/.tandem-xyz.tmp"), "half").unwrap();
     #[cfg(unix)]
@@ -462,8 +462,8 @@ fn export_skips_symlinks_and_temp_files_under_the_notes_root() {
         names,
         [
             "tandem.db",
-            "bikeshed/Index.md",
-            "bikeshed/projects/p/p.md",
+            "notes/Index.md",
+            "notes/projects/p/p.md",
             "manifest.json"
         ],
         "{names:?}"
@@ -481,24 +481,27 @@ fn import_refuses_a_home_with_a_store_notes_a_backup_or_a_journal() {
         source
     });
     type Case<'a> = (&'a str, &'a [(&'a str, &'a str)], bool);
-    let cases: [Case; 9] = [
+    let cases: [Case; 12] = [
         ("a store", &[("tandem.db", "x")], false),
         ("a backup", &[("tandem.db.bak", "x")], false),
         ("a wal", &[("tandem.db-wal", "x")], false),
         ("a journal", &[("tandem.db-journal", "x")], false),
-        ("a note", &[("bikeshed/a.md", "x")], false),
-        ("a nested note", &[("bikeshed/p/a.md", "x")], false),
-        ("a lock file alone", &[("bikeshed.lock", "")], true),
+        ("a note", &[("notes/a.md", "x")], false),
+        ("a nested note", &[("notes/p/a.md", "x")], false),
+        ("an older note", &[("bikeshed/a.md", "x")], false),
+        ("an older nested note", &[("bikeshed/p/a.md", "x")], false),
+        ("an older lock file alone", &[("bikeshed.lock", "")], true),
+        ("a lock file alone", &[("notes.lock", "")], true),
         ("a tandem lock alone", &[("tandem.lock", "")], true),
-        ("an empty notes folder", &[("bikeshed/.keep-dir", "")], true),
+        ("an empty notes folder", &[("notes/.keep-dir", "")], true),
     ];
     for (index, (name, files, allowed)) in cases.iter().enumerate() {
         let target = sandbox.home(&format!("target-{index}"));
         for (file, text) in *files {
             let path = target.directory().join(file);
             fs::create_dir_all(path.parent().unwrap()).unwrap();
-            if *file == "bikeshed/.keep-dir" {
-                fs::create_dir_all(target.directory().join("bikeshed")).unwrap();
+            if *file == "notes/.keep-dir" {
+                fs::create_dir_all(target.directory().join("notes")).unwrap();
             } else {
                 fs::write(path, text).unwrap();
             }
@@ -521,6 +524,60 @@ fn import_refuses_a_home_with_a_store_notes_a_backup_or_a_journal() {
             }
         }
     }
+}
+
+#[test]
+fn an_archive_with_bikeshed_entries_imports_into_notes() {
+    let sandbox = Sandbox::new("legacy-entry");
+    let db = real_store(&sandbox);
+    let archive = build(
+        &[
+            Raw::file(STORE_ENTRY, &db),
+            Raw::file("bikeshed/Index.md", b"# Index\n"),
+            Raw::file("bikeshed/projects/p/p.md", b"# p\n"),
+        ],
+        Manifested::Honest,
+    );
+    let target = sandbox.home("target");
+
+    let summary = import(&target, archive.as_slice(), None).expect("an older archive imports");
+
+    assert_eq!(summary.notes, 2);
+    assert_eq!(
+        fs::read_to_string(target.directory().join("notes/Index.md")).unwrap(),
+        "# Index\n"
+    );
+    assert!(
+        !target.directory().join("bikeshed").exists(),
+        "the notes land under the current name only"
+    );
+}
+
+#[test]
+fn an_archive_carrying_both_notes_entries_is_refused_and_writes_nothing() {
+    let sandbox = Sandbox::new("both-entries");
+    let db = real_store(&sandbox);
+    let archive = build(
+        &[
+            Raw::file(STORE_ENTRY, &db),
+            Raw::file("bikeshed/a.md", b"a"),
+            Raw::file("notes/b.md", b"b"),
+        ],
+        Manifested::Honest,
+    );
+    let target = sandbox.home("target");
+
+    match is_refused(import(&target, archive.as_slice(), None)) {
+        ArchiveError::Hostile { reason, .. } => {
+            assert!(
+                reason.contains("both notes/ and the older bikeshed/"),
+                "{reason}"
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(!target.directory().join("notes").exists());
+    assert!(!target.directory().join("tandem.db").exists());
 }
 
 #[test]
@@ -594,7 +651,7 @@ fn import_refuses_a_cut_archive_a_missing_manifest_and_a_digest_or_size_mismatch
 
     // A listed file the archive does not hold.
     let missing = Manifested::Text(format!(
-        r#"{{"format":1,"schema_version":13,"tandem_version":"t","created_at":"{LATER}","entries":[{{"path":"tandem.db","size":{},"sha256":"{}"}},{{"path":"bikeshed/gone.md","size":1,"sha256":"{}"}}]}}"#,
+        r#"{{"format":1,"schema_version":13,"tandem_version":"t","created_at":"{LATER}","entries":[{{"path":"tandem.db","size":{},"sha256":"{}"}},{{"path":"notes/gone.md","size":1,"sha256":"{}"}}]}}"#,
         db.len(),
         sha(&db),
         "0".repeat(64)
@@ -635,47 +692,43 @@ fn import_refuses_hostile_entries() {
         ),
         (
             "dot-dot",
-            vec![store_entry(), Raw::file("bikeshed/../escape.md", b"x")],
+            vec![store_entry(), Raw::file("notes/../escape.md", b"x")],
         ),
         ("leading dot-dot", vec![Raw::file("../escape", b"x")]),
         (
             "backslash",
-            vec![store_entry(), Raw::file("bikeshed\\evil.md", b"x")],
+            vec![store_entry(), Raw::file("notes\\evil.md", b"x")],
         ),
         (
             "empty component",
-            vec![store_entry(), Raw::file("bikeshed//a.md", b"x")],
+            vec![store_entry(), Raw::file("notes//a.md", b"x")],
         ),
         (
             "symlink",
             vec![
                 store_entry(),
-                Raw::of_kind(
-                    "bikeshed/l.md",
-                    tar::EntryType::Symlink,
-                    Some("/etc/passwd"),
-                ),
+                Raw::of_kind("notes/l.md", tar::EntryType::Symlink, Some("/etc/passwd")),
             ],
         ),
         (
             "hard link",
             vec![
                 store_entry(),
-                Raw::of_kind("bikeshed/h.md", tar::EntryType::Link, Some("tandem.db")),
+                Raw::of_kind("notes/h.md", tar::EntryType::Link, Some("tandem.db")),
             ],
         ),
         (
             "device",
             vec![
                 store_entry(),
-                Raw::of_kind("bikeshed/dev", tar::EntryType::Char, None),
+                Raw::of_kind("notes/dev", tar::EntryType::Char, None),
             ],
         ),
         (
             "fifo",
             vec![
                 store_entry(),
-                Raw::of_kind("bikeshed/fifo", tar::EntryType::Fifo, None),
+                Raw::of_kind("notes/fifo", tar::EntryType::Fifo, None),
             ],
         ),
         (
@@ -690,13 +743,13 @@ fn import_refuses_hostile_entries() {
             "duplicate",
             vec![
                 store_entry(),
-                Raw::file("bikeshed/a.md", b"one"),
-                Raw::file("bikeshed/a.md", b"two"),
+                Raw::file("notes/a.md", b"one"),
+                Raw::file("notes/a.md", b"two"),
             ],
         ),
         (
             "unlisted",
-            vec![store_entry(), Raw::file("bikeshed/unlisted.md", b"x")],
+            vec![store_entry(), Raw::file("notes/unlisted.md", b"x")],
         ),
     ];
     for (name, entries) in cases {
@@ -820,14 +873,11 @@ fn a_refused_import_leaves_the_home_as_it_was_and_no_temp_directory() {
 
     let target = sandbox.home("target");
     fs::create_dir_all(target.directory()).unwrap();
-    fs::write(target.directory().join("bikeshed.lock"), "").unwrap();
+    fs::write(target.directory().join("notes.lock"), "").unwrap();
     let before = listing(target.directory());
 
     let broken = build(
-        &[
-            Raw::file(STORE_ENTRY, &db),
-            Raw::file("bikeshed/a.md", b"x"),
-        ],
+        &[Raw::file(STORE_ENTRY, &db), Raw::file("notes/a.md", b"x")],
         Manifested::Absent,
     );
     for archive in [
@@ -904,8 +954,8 @@ fn unpacked_files_and_the_export_file_are_private_to_the_owner() {
     let target = sandbox.home("target");
     import(&target, archive.as_slice(), None).expect("the import lands");
     assert_eq!(mode(&target.directory().join("tandem.db")), 0o600);
-    assert_eq!(mode(&target.directory().join("bikeshed/Index.md")), 0o600);
-    assert_eq!(mode(&target.directory().join("bikeshed/projects")), 0o700);
+    assert_eq!(mode(&target.directory().join("notes/Index.md")), 0o600);
+    assert_eq!(mode(&target.directory().join("notes/projects")), 0o700);
 }
 
 // MARK: - 15 and 16: the permission and the record
@@ -960,7 +1010,7 @@ fn commit_refuses_a_store_that_appeared_after_the_emptiness_check_and_leaves_it(
     let error = commit(&home, &scratch).expect_err("a live store must refuse");
     assert!(matches!(error, ArchiveError::NotEmpty { .. }), "{error:?}");
     assert_eq!(fs::read_to_string(home.join("tandem.db")).unwrap(), "live");
-    assert!(!home.join("bikeshed").exists());
+    assert!(!home.join("notes").exists());
 }
 
 #[test]

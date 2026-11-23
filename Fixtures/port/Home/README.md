@@ -7,7 +7,7 @@ no run writes into it. The binary is pointed at it with
 `--home Fixtures/port/Home` (or `TANDEM_HOME=Fixtures/port/Home`) and never at
 the real `~/.tandem`.
 
-- `bikeshed/` is the vault: `Index.md`, `projects/<project>/<project>.md`, and
+- `notes/` is the vault: `Index.md`, `projects/<project>/<project>.md`, and
   one `daily/` note.
 - `tandem.db` is the store: the two board tickets and the one project and label the fixture
   carries, generated, never hand-edited:

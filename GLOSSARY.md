@@ -103,7 +103,7 @@ _Avoid_: snapshot, dump, backup set, restore point
 ### Notes
 
 **Notes**:
-Tandem's notes surface: a plain folder of notes and attachments, shared by the app and agents on the same machine and watched live by the app. One note is a **Note**. The folder on disk is still `bikeshed/` until the rename in TAN-862; the word in prose is "notes".
+Tandem's notes surface: a plain folder of notes and attachments, shared by the app and agents on the same machine and watched live by the app. One note is a **Note**. The folder on disk is `~/.tandem/notes/` (an older release called it `bikeshed/`); the word in prose is "notes".
 _Avoid_: bikeshed, vault, notebook
 
 **Orphan**:

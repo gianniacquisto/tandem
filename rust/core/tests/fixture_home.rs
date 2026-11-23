@@ -4,7 +4,7 @@
 //! The fixture is content, not scratch: no run writes into it, so this case copies
 //! the whole tree into a sandbox and points the board at the copy. The copy proves
 //! two things the temp-home suites do not: the board stands up beside a real
-//! bikeshed, and every verb the ticket lists works on one board, in order.
+//! notes, and every verb the ticket lists works on one board, in order.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -22,7 +22,7 @@ fn fixture_home() -> PathBuf {
         .unwrap_or_else(|| panic!("{} sits two levels below the repo root", manifest.display()));
     let path = root.join("Fixtures").join("port").join("Home");
     assert!(
-        path.join("bikeshed").is_dir(),
+        path.join("notes").is_dir(),
         "the fixture home is committed at Fixtures/port/Home ({})",
         path.display()
     );
@@ -49,7 +49,7 @@ fn sandbox_copy(name: &str) -> (PathBuf, Board) {
     let home = root.join("home");
     copy_tree(&fixture_home(), &home);
     // The committed store is the fixture home's own, and `fixture_db.rs` reads
-    // it where it sits. This case is a fresh board beside a real bikeshed, so
+    // it where it sits. This case is a fresh board beside a real notes, so
     // the copy starts without the store.
     let _ = fs::remove_file(home.join("tandem.db"));
     let home = Home::resolve(Some(&home), None, &root.join("user"));

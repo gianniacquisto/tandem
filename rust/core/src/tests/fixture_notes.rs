@@ -1,4 +1,4 @@
-//! The committed fixture vault, read by the core (`Fixtures/port/Home/bikeshed`).
+//! The committed fixture vault, read by the core (`Fixtures/port/Home/notes`).
 //!
 //! The fixture home is content, not scratch: it is authored and committed, and
 //! no run writes into it. Every suite above builds its own temp vault; this one
@@ -7,14 +7,14 @@
 
 use std::path::Path;
 
-use crate::bikeshed::Bikeshed;
-use crate::bikeshed::wikilink::{BoardNames, BoardProject, LinkResolution};
+use crate::notes::Notes;
+use crate::notes::wikilink::{BoardNames, BoardProject, LinkResolution};
 
-use super::bikeshed_support::Vault;
+use super::notes_support::Vault;
 
 fn fixture() -> Vault {
     let vault = Vault::new("fixture-home");
-    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Fixtures/port/Home/bikeshed");
+    let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Fixtures/port/Home/notes");
     vault.copy_from(&source);
     vault
 }
@@ -23,7 +23,7 @@ fn fixture() -> Vault {
 fn the_fixture_vaults_health_is_the_one_link_and_the_one_orphan() {
     let vault = fixture();
     let health = vault
-        .bikeshed()
+        .notes()
         .health(&BoardNames {
             projects: vec![BoardProject {
                 name: "fixture".to_string(),
@@ -45,12 +45,12 @@ fn the_fixture_vaults_health_is_the_one_link_and_the_one_orphan() {
 #[test]
 fn the_fixture_vaults_backlink_resolves_to_the_overview() {
     let vault = fixture();
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
     assert_eq!(
-        bikeshed.resolve("fixture"),
+        notes.resolve("fixture"),
         LinkResolution::Resolved("projects/fixture/fixture.md".to_string())
     );
-    let rows = bikeshed
+    let rows = notes
         .backlinks("projects/fixture/fixture.md")
         .expect("the backlinks read")
         .value;
@@ -61,8 +61,8 @@ fn the_fixture_vaults_backlink_resolves_to_the_overview() {
 #[test]
 fn the_fixture_vaults_search_and_stats_answer() {
     let vault = fixture();
-    let bikeshed = vault.bikeshed();
-    let hits = bikeshed.search("fixture").expect("the search runs").value;
+    let notes = vault.notes();
+    let hits = notes.search("fixture").expect("the search runs").value;
     assert_eq!(
         hits.iter().map(|hit| hit.path.as_str()).collect::<Vec<_>>(),
         vec![
@@ -72,8 +72,8 @@ fn the_fixture_vaults_search_and_stats_answer() {
         ]
     );
 
-    let stats = bikeshed.stats(None).expect("the stats read").value;
-    assert_eq!(stats.bikeshed, crate::wire::slashed_path(vault.dir()));
+    let stats = notes.stats(None).expect("the stats read").value;
+    assert_eq!(stats.notes, crate::wire::slashed_path(vault.dir()));
     assert_eq!(stats.projects.len(), 1);
     let row = &stats.projects[0];
     assert_eq!(row.project, "fixture");
@@ -84,16 +84,16 @@ fn the_fixture_vaults_search_and_stats_answer() {
 #[test]
 fn the_fixture_copy_is_not_the_committed_tree() {
     let vault = fixture();
-    let committed = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Fixtures/port/Home/bikeshed");
+    let committed = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Fixtures/port/Home/notes");
     assert_ne!(vault.dir(), committed.as_path());
-    assert!(Bikeshed::new(vault.dir()).read("Index.md").is_ok());
+    assert!(Notes::new(vault.dir()).read("Index.md").is_ok());
 }
 
 #[test]
 fn the_fixture_vaults_graph_counts() {
     let vault = fixture();
     let graph = vault
-        .bikeshed()
+        .notes()
         .graph(
             &BoardNames {
                 projects: vec![BoardProject {
@@ -101,7 +101,7 @@ fn the_fixture_vaults_graph_counts() {
                     labels: Vec::new(),
                 }],
             },
-            &crate::bikeshed::GraphScope::default(),
+            &crate::notes::GraphScope::default(),
         )
         .expect("the graph reads");
     let count = |kind: &str| graph.nodes.iter().filter(|n| n.kind.word() == kind).count();

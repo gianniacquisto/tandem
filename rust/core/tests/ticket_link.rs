@@ -1,5 +1,5 @@
 //! `set_link` and the additive `link` field, ported from `TicketLinkTests.swift`: a
-//! ticket may point at a bikeshed note by bikeshed-root-relative path, GUI-only
+//! ticket may point at a notes note by notes-root-relative path, GUI-only
 //! (ADR 0010).
 
 mod support;
@@ -16,10 +16,10 @@ fn modified(sandbox: &Sandbox) -> SystemTime {
 }
 
 #[test]
-fn set_link_stores_a_trimmed_bikeshed_relative_path_and_it_persists() {
+fn set_link_stores_a_trimmed_notes_relative_path_and_it_persists() {
     let sandbox = Sandbox::new("link-set");
     let board = sandbox.board();
-    let added = board.add("Ship the bikeshed", support::ticket()).unwrap();
+    let added = board.add("Ship the notes", support::ticket()).unwrap();
     let linked = board
         .set_link(&added.id.to_string(), Some("  projects/App.md  \n"))
         .unwrap();
@@ -32,7 +32,7 @@ fn set_link_stores_a_trimmed_bikeshed_relative_path_and_it_persists() {
         .find(|ticket| ticket.id == added.id)
         .unwrap();
     assert_eq!(persisted.link.as_deref(), Some("projects/App.md"));
-    assert_eq!(persisted.title, "Ship the bikeshed");
+    assert_eq!(persisted.title, "Ship the notes");
 }
 
 #[test]

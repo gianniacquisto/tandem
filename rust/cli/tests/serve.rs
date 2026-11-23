@@ -807,7 +807,7 @@ fn a_restored_store_is_re_attached_on_the_next_serve_start() {
     );
 }
 
-/// The server's second face: the ticket sheet and the bikeshed notes, driven
+/// The server's second face: the ticket sheet and the notes notes, driven
 /// over a real socket the way a browser drives them. The in-process router test
 /// proves the markup; this proves the routes answer a separate process with the
 /// home it was given.

@@ -3,7 +3,9 @@
     "doctor"
   ],
   "exit": 0,
-  "stderr": [],
+  "stderr": [
+    "doctor: the `bikeshed` check is deprecated and goes in the next release; read `notes`."
+  ],
   "stdin": "",
   "stdout": {
     "checks": [
@@ -38,7 +40,12 @@
         "ok": true
       },
       {
-        "detail": "<tandem-home>/bikeshed \u2014 3 note(s)",
+        "detail": "<tandem-home>/notes \u2014 3 note(s)",
+        "name": "notes",
+        "ok": true
+      },
+      {
+        "detail": "deprecated: renamed to notes. <tandem-home>/notes \u2014 3 note(s)",
         "name": "bikeshed",
         "ok": true
       }

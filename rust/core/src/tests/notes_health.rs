@@ -1,12 +1,12 @@
-//! Ported from `BikeshedHealthTests`: the wikilinks that resolve to nothing, the
+//! Ported from `NotesHealthTests`: the wikilinks that resolve to nothing, the
 //! notes nothing links to, the totals, the hidden saddlebag's exclusion, and the
 //! JSON shape `note links` prints.
 
-use crate::bikeshed::health::BikeshedHealthCounts;
-use crate::bikeshed::wikilink::{BoardNames, BoardProject};
-use crate::bikeshed::{BikeshedHealth, BrokenLink, UnmatchedFolder};
+use crate::notes::health::NotesHealthCounts;
+use crate::notes::wikilink::{BoardNames, BoardProject};
+use crate::notes::{BrokenLink, NotesHealth, UnmatchedFolder};
 
-use super::bikeshed_support::Vault;
+use super::notes_support::Vault;
 
 fn names() -> BoardNames {
     BoardNames {
@@ -23,9 +23,9 @@ fn names() -> BoardNames {
     }
 }
 
-fn health(vault: &Vault) -> BikeshedHealth {
+fn health(vault: &Vault) -> NotesHealth {
     vault
-        .bikeshed()
+        .notes()
         .health(&names())
         .expect("the health read runs")
         .value
@@ -223,10 +223,10 @@ fn the_hidden_saddlebag_is_out_of_the_graph() {
 }
 
 #[test]
-fn an_empty_bikeshed_reports_zero_counts() {
+fn an_empty_notes_reports_zero_counts() {
     let vault = Vault::new("health-empty");
     let found = vault
-        .bikeshed()
+        .notes()
         .health(&BoardNames::default())
         .expect("the health read runs")
         .value;
@@ -234,7 +234,7 @@ fn an_empty_bikeshed_reports_zero_counts() {
     assert!(found.orphans.is_empty());
     assert_eq!(
         found.counts,
-        BikeshedHealthCounts {
+        NotesHealthCounts {
             notes: 0,
             links: 0,
             broken: 0,
@@ -243,7 +243,7 @@ fn an_empty_bikeshed_reports_zero_counts() {
             missing_folders: 0
         }
     );
-    assert_eq!(BikeshedHealth::empty(), found);
+    assert_eq!(NotesHealth::empty(), found);
 }
 
 #[test]

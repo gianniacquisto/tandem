@@ -1,32 +1,32 @@
-//! Ported from `BikeshedPathTests`: the path-hygiene rule (ADR 0008), the one
-//! place that decides whether a bikeshed-root-relative path is legal or an
+//! Ported from `NotesPathTests`: the path-hygiene rule (ADR 0008), the one
+//! place that decides whether a notes-root-relative path is legal or an
 //! escape.
 
 use std::path::{Path, PathBuf};
 
-use crate::bikeshed::BikeshedPath;
+use crate::notes::NotesPath;
 
 fn root() -> PathBuf {
-    PathBuf::from("/tmp/tandem-bikeshed")
+    PathBuf::from("/tmp/tandem-notes")
 }
 
 #[test]
 fn legal_paths_resolve_under_the_root() {
     assert_eq!(
-        BikeshedPath::url(&root(), "Note.md"),
-        Some(PathBuf::from("/tmp/tandem-bikeshed/Note.md"))
+        NotesPath::url(&root(), "Note.md"),
+        Some(PathBuf::from("/tmp/tandem-notes/Note.md"))
     );
     assert_eq!(
-        BikeshedPath::url(&root(), "a/b/C.md"),
-        Some(PathBuf::from("/tmp/tandem-bikeshed/a/b/C.md"))
+        NotesPath::url(&root(), "a/b/C.md"),
+        Some(PathBuf::from("/tmp/tandem-notes/a/b/C.md"))
     );
     // Spaces are legal: the create/rename rule allows them.
     assert_eq!(
-        BikeshedPath::url(&root(), "My Note.md"),
-        Some(PathBuf::from("/tmp/tandem-bikeshed/My Note.md"))
+        NotesPath::url(&root(), "My Note.md"),
+        Some(PathBuf::from("/tmp/tandem-notes/My Note.md"))
     );
     // `#` and `|` are tolerated here (pre-existing on-disk violators).
-    assert!(BikeshedPath::url(&root(), "a#b.md").is_some());
+    assert!(NotesPath::url(&root(), "a#b.md").is_some());
 }
 
 #[test]
@@ -42,22 +42,22 @@ fn an_empty_path_empty_components_and_dot_escapes_are_refused() {
         "a/../../outside.md",
         "a/./b.md",
     ] {
-        assert_eq!(BikeshedPath::url(&root(), bad), None, "refused: {bad}");
+        assert_eq!(NotesPath::url(&root(), bad), None, "refused: {bad}");
     }
 }
 
 #[test]
 fn the_resolved_path_is_standardized_regardless_of_the_roots_shape() {
-    let messy = Path::new("/tmp/tandem-bikeshed/./");
+    let messy = Path::new("/tmp/tandem-notes/./");
     assert_eq!(
-        BikeshedPath::url(messy, "a/b.md"),
-        Some(PathBuf::from("/tmp/tandem-bikeshed/a/b.md"))
+        NotesPath::url(messy, "a/b.md"),
+        Some(PathBuf::from("/tmp/tandem-notes/a/b.md"))
     );
 }
 
 #[test]
 fn a_component_containing_a_slash_cannot_smuggle_a_path() {
-    assert_eq!(BikeshedPath::url(&root(), "a/../b.md"), None);
+    assert_eq!(NotesPath::url(&root(), "a/../b.md"), None);
 }
 
 #[test]
@@ -71,19 +71,19 @@ fn a_windows_shaped_traversal_component_is_refused() {
         "\\Users\\me\\evil.md",
         "sub\\file.md",
     ] {
-        assert_eq!(BikeshedPath::url(&root(), bad), None, "refused: {bad}");
+        assert_eq!(NotesPath::url(&root(), bad), None, "refused: {bad}");
     }
 }
 
 #[test]
 fn a_non_ascii_name_is_not_sliced_mid_character() {
-    assert_eq!(BikeshedPath::name("naive"), "naive");
-    assert_eq!(BikeshedPath::name("naïve"), "naïve");
-    assert_eq!(BikeshedPath::name("éé"), "éé");
-    assert_eq!(BikeshedPath::name("naïve.md"), "naïve");
-    assert_eq!(BikeshedPath::name("éé.MD"), "éé");
-    assert_eq!(BikeshedPath::name("a/b/naïve.md"), "naïve");
-    assert_eq!(BikeshedPath::name(".md"), "");
+    assert_eq!(NotesPath::name("naive"), "naive");
+    assert_eq!(NotesPath::name("naïve"), "naïve");
+    assert_eq!(NotesPath::name("éé"), "éé");
+    assert_eq!(NotesPath::name("naïve.md"), "naïve");
+    assert_eq!(NotesPath::name("éé.MD"), "éé");
+    assert_eq!(NotesPath::name("a/b/naïve.md"), "naïve");
+    assert_eq!(NotesPath::name(".md"), "");
 }
 
 // MARK: - Links (COR-14)
@@ -98,9 +98,9 @@ mod links {
     use std::fs;
     use std::os::unix::fs::symlink;
 
-    use crate::bikeshed::BikeshedPath;
+    use crate::notes::NotesPath;
 
-    use super::super::bikeshed_support::Vault;
+    use super::super::notes_support::Vault;
 
     /// A folder outside the vault holding a secret note, plus a directory link
     /// and a file link to it inside the vault.
@@ -134,19 +134,19 @@ mod links {
     #[test]
     fn a_path_through_a_link_is_no_url() {
         let (vault, _) = vault_with_links("link-url");
-        assert_eq!(BikeshedPath::url(vault.dir(), "link/secret.md"), None);
-        assert_eq!(BikeshedPath::url(vault.dir(), "note-link.md"), None);
-        assert!(BikeshedPath::url(vault.dir(), "real/ok.md").is_some());
+        assert_eq!(NotesPath::url(vault.dir(), "link/secret.md"), None);
+        assert_eq!(NotesPath::url(vault.dir(), "note-link.md"), None);
+        assert!(NotesPath::url(vault.dir(), "real/ok.md").is_some());
     }
 
     #[test]
     fn a_directory_link_refuses_read_write_create_and_folder_create() {
         let (vault, outside) = vault_with_links("link-dir-ops");
-        let bikeshed = vault.bikeshed();
-        assert!(bikeshed.read("link/secret.md").is_err());
-        assert!(bikeshed.write("link/secret.md", "PWNED", None).is_err());
-        assert!(bikeshed.create("link/new.md").is_err());
-        assert!(bikeshed.create_folder("link/sub").is_err());
+        let notes = vault.notes();
+        assert!(notes.read("link/secret.md").is_err());
+        assert!(notes.write("link/secret.md", "PWNED", None).is_err());
+        assert!(notes.create("link/new.md").is_err());
+        assert!(notes.create_folder("link/sub").is_err());
         assert_eq!(
             fs::read_to_string(outside.join("secret.md")).expect("the secret survives"),
             "SECRET needle"
@@ -157,12 +157,12 @@ mod links {
     #[test]
     fn a_file_link_refuses_read_write_delete_rename_and_move() {
         let (vault, outside) = vault_with_links("link-file-ops");
-        let bikeshed = vault.bikeshed();
-        assert!(bikeshed.read("note-link.md").is_err());
-        assert!(bikeshed.write("note-link.md", "PWNED", None).is_err());
-        assert!(bikeshed.delete("note-link.md").is_err());
-        assert!(bikeshed.rename("note-link.md", "moved.md").is_err());
-        assert!(bikeshed.move_into("note-link.md", "").is_err());
+        let notes = vault.notes();
+        assert!(notes.read("note-link.md").is_err());
+        assert!(notes.write("note-link.md", "PWNED", None).is_err());
+        assert!(notes.delete("note-link.md").is_err());
+        assert!(notes.rename("note-link.md", "moved.md").is_err());
+        assert!(notes.move_into("note-link.md", "").is_err());
         assert!(
             vault.dir().join("note-link.md").symlink_metadata().is_ok(),
             "the link itself is not removed"
@@ -177,7 +177,7 @@ mod links {
     fn a_move_into_a_directory_link_is_refused() {
         let (vault, outside) = vault_with_links("link-move-dest");
         vault.stage("keep.md", "keep");
-        assert!(vault.bikeshed().move_into("keep.md", "link").is_err());
+        assert!(vault.notes().move_into("keep.md", "link").is_err());
         assert!(vault.exists("keep.md"), "the note stays in the vault");
         assert!(!outside.join("keep.md").exists());
     }
@@ -186,8 +186,8 @@ mod links {
     fn the_tree_skips_links_and_search_health_and_backlinks_never_read_through() {
         let (vault, _) = vault_with_links("link-readers");
         vault.stage("real.md", "needle inside the vault");
-        let bikeshed = vault.bikeshed();
-        let paths: Vec<String> = bikeshed
+        let notes = vault.notes();
+        let paths: Vec<String> = notes
             .list()
             .expect("the tree lists")
             .value
@@ -195,15 +195,15 @@ mod links {
             .map(|node| node.path)
             .collect();
         assert_eq!(paths, vec!["real.md".to_string()]);
-        let hits = bikeshed.search("SECRET").expect("search runs").value;
+        let hits = notes.search("SECRET").expect("search runs").value;
         assert!(hits.is_empty(), "search does not read through a link");
-        let hits = bikeshed.search("needle").expect("search runs").value;
+        let hits = notes.search("needle").expect("search runs").value;
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].path, "real.md");
-        bikeshed
-            .health(&crate::bikeshed::BoardNames::default())
+        notes
+            .health(&crate::notes::BoardNames::default())
             .expect("health runs");
-        assert!(bikeshed.backlinks("link/secret.md").is_err());
+        assert!(notes.backlinks("link/secret.md").is_err());
     }
 
     #[test]
@@ -211,8 +211,8 @@ mod links {
         let vault = Vault::new("link-cycle");
         vault.stage("a.md", "one");
         symlink(vault.dir(), vault.dir().join("loop")).expect("the cycle is made");
-        let bikeshed = vault.bikeshed();
-        let paths: Vec<String> = bikeshed
+        let notes = vault.notes();
+        let paths: Vec<String> = notes
             .list()
             .expect("the tree lists")
             .value
@@ -220,10 +220,10 @@ mod links {
             .map(|node| node.path)
             .collect();
         assert_eq!(paths, vec!["a.md".to_string()]);
-        bikeshed
-            .health(&crate::bikeshed::BoardNames::default())
+        notes
+            .health(&crate::notes::BoardNames::default())
             .expect("health returns");
-        bikeshed.stats(None).expect("stats returns");
+        notes.stats(None).expect("stats returns");
     }
 
     #[test]
@@ -235,17 +235,17 @@ mod links {
         fs::write(outside.join("secret").join("secret.md"), "SECRET needle")
             .expect("the secret is written");
         symlink(&outside, vault.dir().join("projects")).expect("the projects link is made");
-        let bikeshed = vault.bikeshed();
-        let stats = bikeshed.stats(None).expect("stats runs").value;
+        let notes = vault.notes();
+        let stats = notes.stats(None).expect("stats runs").value;
         assert!(
             stats.projects.is_empty(),
             "stats do not read through a linked projects root"
         );
         assert_eq!(stats.totals.curated_notes, 0);
-        let named = bikeshed.stats(Some("secret")).expect("stats runs").value;
+        let named = notes.stats(Some("secret")).expect("stats runs").value;
         assert!(named.projects.is_empty());
-        let health = bikeshed
-            .health(&crate::bikeshed::BoardNames::default())
+        let health = notes
+            .health(&crate::notes::BoardNames::default())
             .expect("health runs")
             .value;
         assert_eq!(
@@ -261,15 +261,15 @@ mod links {
         fs::create_dir_all(vault.dir()).expect("the real vault exists");
         let alias = vault.parent().join("alias");
         symlink(vault.dir(), &alias).expect("the root link is made");
-        let bikeshed = crate::bikeshed::Bikeshed::new(&alias);
-        bikeshed
+        let notes = crate::notes::Notes::new(&alias);
+        notes
             .create("a.md")
             .expect("a note is created through the root link");
-        bikeshed
+        notes
             .write("a.md", "hello", None)
             .expect("the note is written");
         assert_eq!(
-            bikeshed.read("a.md").expect("the note reads").value.text,
+            notes.read("a.md").expect("the note reads").value.text,
             "hello"
         );
         assert_eq!(vault.read("a.md"), "hello");

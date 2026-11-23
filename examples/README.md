@@ -45,7 +45,7 @@ backlog --refine--> ready --sprint: build--> in-review --gate--> done
 
    `TANDEM_HOME` sets the serve process's home (default `~/.tandem`). The `X-Tandem-Agent` header names the actor a request's writes record (lowercase letters, digits, hyphen); without it the server's own actor (`TANDEM_AGENT`, else `human`) is recorded. `TANDEM_AGENT` names the actor of a CLI run; `self` expands to it.
 2. **Copy what you want.** Put `AGENTS.md` where your host reads global instructions and the skill folders where it reads skills, or symlink them to this checkout to track it. Agents use the MCP tools only; `tandem-cli` is for you and your scripts.
-3. **Check it.** `tandem-cli doctor` prints `{ok, checks}` with the checks `home`, `store` and `bikeshed`, and exits `0` when healthy.
+3. **Check it.** `tandem-cli doctor` prints `{ok, checks}` with the checks `home`, `store`, `notes` and the rest, and exits `0` when healthy.
 
 ## What your repo's AGENTS.md names
 
@@ -63,7 +63,7 @@ Tandem's own root `AGENTS.md` (Design, and Build, verify and release in this rep
 
 ## Where things live
 
-- **Store**: `~/.tandem/tandem.db` (SQLite) holds tickets, dependencies, comments, labels and projects. Notes live in `~/.tandem/bikeshed/`.
+- **Store**: `~/.tandem/tandem.db` (SQLite) holds tickets, dependencies, comments, labels and projects. Notes live in `~/.tandem/notes/`.
 - **Recovery**: every changed write keeps one previous copy in `tandem.db.bak`. To restore it, journal files first:
 
   ```sh

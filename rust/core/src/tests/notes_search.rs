@@ -1,17 +1,13 @@
-//! Ported from `BikeshedSearchTests`: case-insensitive substring over title and
+//! Ported from `NotesSearchTests`: case-insensitive substring over title and
 //! body, one row per note, a title hit wins, a body hit shows a snippet around
 //! the first match, sorted by path.
 
-use crate::bikeshed::SearchHit;
+use crate::notes::SearchHit;
 
-use super::bikeshed_support::Vault;
+use super::notes_support::Vault;
 
 fn hits(vault: &Vault, query: &str) -> Vec<SearchHit> {
-    vault
-        .bikeshed()
-        .search(query)
-        .expect("the search runs")
-        .value
+    vault.notes().search(query).expect("the search runs").value
 }
 
 #[test]

@@ -1,6 +1,6 @@
-//! Ported from `BikeshedLockingTests`: two writers on threads serialize under the
+//! Ported from `NotesLockingTests`: two writers on threads serialize under the
 //! sidecar `flock` with no lost or torn notes; a holder past the bounded retry
-//! window yields `BikeshedLocked`; a lock-free reader never observes a partial
+//! window yields `NotesLocked`; a lock-free reader never observes a partial
 //! note from an external writer; stale temps are swept and fresh ones are kept.
 
 use std::fs::{self, File};
@@ -9,10 +9,10 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::bikeshed::Bikeshed;
 use crate::domain::error::DomainError;
+use crate::notes::Notes;
 
-use super::bikeshed_support::Vault;
+use super::notes_support::Vault;
 
 /// A loaded runner can spend more than the production 2 s window on one note
 /// write (a Defender scan of the fsync, a slow VM), and the window bounds a
@@ -27,17 +27,17 @@ fn two_writers_on_threads_interleave_without_lost_or_torn_notes() {
     let vault = Vault::new("lock-contended");
     vault.stage("A.md", "");
     vault.stage("B.md", "");
-    let bikeshed = Arc::new(vault.bikeshed().with_lock_timeout(SLOW_RUNNER_WINDOW));
+    let notes = Arc::new(vault.notes().with_lock_timeout(SLOW_RUNNER_WINDOW));
     let errors = Arc::new(Mutex::new(Vec::new()));
 
     let mut handles = Vec::new();
     for tag in ["X", "Y"] {
-        let bikeshed = Arc::clone(&bikeshed);
+        let notes = Arc::clone(&notes);
         let errors = Arc::clone(&errors);
         handles.push(thread::spawn(move || {
             for i in 0..20 {
                 for path in ["A.md", "B.md"] {
-                    if let Err(error) = bikeshed.write(path, &format!("{tag}{i}"), None) {
+                    if let Err(error) = notes.write(path, &format!("{tag}{i}"), None) {
                         errors.lock().unwrap().push(error.message());
                     }
                 }
@@ -62,10 +62,10 @@ fn two_writers_on_threads_interleave_without_lost_or_torn_notes() {
 }
 
 #[test]
-fn a_write_on_a_locked_bikeshed_throws_locked_after_the_bounded_retry() {
+fn a_write_on_a_locked_notes_throws_locked_after_the_bounded_retry() {
     let vault = Vault::new("lock-locked");
     vault.stage("A.md", "seed");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
     let lock_path = vault.lock_path();
     let (ready, acquired) = mpsc::channel();
 
@@ -86,14 +86,14 @@ fn a_write_on_a_locked_bikeshed_throws_locked_after_the_bounded_retry() {
         .expect("the holder acquired the lock");
 
     assert_eq!(
-        bikeshed
+        notes
             .write("A.md", "should fail while locked", None)
             .unwrap_err(),
-        DomainError::BikeshedLocked
+        DomainError::NotesLocked
     );
     holder.join().expect("the holder releases");
 
-    bikeshed.write("A.md", "after release", None).unwrap();
+    notes.write("A.md", "after release", None).unwrap();
     assert_eq!(vault.read("A.md"), "after release");
 }
 
@@ -104,9 +104,7 @@ fn a_write_on_a_locked_bikeshed_throws_locked_after_the_bounded_retry() {
 fn a_configured_lock_window_still_bites_after_a_deliberate_hold() {
     let vault = Vault::new("lock-configured");
     vault.stage("A.md", "seed");
-    let bikeshed = vault
-        .bikeshed()
-        .with_lock_timeout(Duration::from_millis(200));
+    let notes = vault.notes().with_lock_timeout(Duration::from_millis(200));
     let lock_path = vault.lock_path();
     let (ready, acquired) = mpsc::channel();
 
@@ -128,10 +126,10 @@ fn a_configured_lock_window_still_bites_after_a_deliberate_hold() {
 
     let started = Instant::now();
     assert_eq!(
-        bikeshed
+        notes
             .write("A.md", "should fail while locked", None)
             .unwrap_err(),
-        DomainError::BikeshedLocked
+        DomainError::NotesLocked
     );
     let elapsed = started.elapsed();
     holder.join().expect("the holder releases");
@@ -144,7 +142,7 @@ fn a_configured_lock_window_still_bites_after_a_deliberate_hold() {
         elapsed < Duration::from_secs(5),
         "the writer did not wait far past the configured window: {elapsed:?}"
     );
-    bikeshed.write("A.md", "after release", None).unwrap();
+    notes.write("A.md", "after release", None).unwrap();
     assert_eq!(vault.read("A.md"), "after release");
 }
 
@@ -152,7 +150,7 @@ fn a_configured_lock_window_still_bites_after_a_deliberate_hold() {
 fn a_lock_free_reader_never_observes_a_partial_note() {
     let vault = Vault::new("lock-reader");
     vault.stage("A.md", "x");
-    let bikeshed = Bikeshed::new(vault.dir());
+    let notes = Notes::new(vault.dir());
     let done = Arc::new(AtomicBool::new(false));
     let writer_done = Arc::clone(&done);
 
@@ -171,7 +169,7 @@ fn a_lock_free_reader_never_observes_a_partial_note() {
     let mut partial = None;
     while !done.load(Ordering::SeqCst) {
         reads += 1;
-        if let Ok(result) = bikeshed.read("A.md") {
+        if let Ok(result) = notes.read("A.md") {
             let text = result.value.text;
             let complete = !text.is_empty()
                 && text.chars().all(|character| character == 'x')
@@ -192,7 +190,7 @@ fn a_lock_free_reader_never_observes_a_partial_note() {
 fn stale_orphan_temps_are_removed_and_fresh_temps_are_kept() {
     let vault = Vault::new("lock-orphans");
     vault.stage("A.md", "seed");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
     let orphan = "deep/.note-crash-orphan.tmp";
     vault.stage(orphan, "orphan");
@@ -203,7 +201,7 @@ fn stale_orphan_temps_are_removed_and_fresh_temps_are_kept() {
     let fresh = ".note-fresh.tmp";
     vault.stage(fresh, "fresh");
 
-    bikeshed.write("A.md", "trigger cleanup", None).unwrap();
+    notes.write("A.md", "trigger cleanup", None).unwrap();
 
     assert!(!vault.exists(orphan), "the stale orphan was not removed");
     assert!(vault.exists(fresh), "a fresh temp was wrongly removed");

@@ -14,9 +14,10 @@ The schema is versioned in the database itself: `schema_migrations` holds one ro
 | `tandem.db-wal`, `tandem.db-shm` | SQLite's write-ahead log and its index, present while the store is in use | only together with a restore (below), and only with `tandem serve` stopped |
 | `tandem.db.bak` | the rolling backup: the store as it was before the last changed write | yes, but it is your only backup |
 | `.tandem-*.tmp` | a backup that was being written when a process died | yes; the next write sweeps any older than a minute |
-| `bikeshed/` | the notes, plain markdown | no: this is your data |
+| `notes/` | the notes, plain markdown | no: this is your data |
 | `.tandem-export-*.tmp`, `.tandem-import-*.tmp` | an export's copy of the store, or an import's unpack folder, that was being written when a process died | yes; the next write sweeps any export copy older than a minute, and an import folder is removed by hand |
-| `bikeshed.lock` | the lock the note writes take; it holds nothing | yes, when nothing is running |
+| `notes.lock` | the lock the note writes take; it holds nothing | yes, when nothing is running |
+| `bikeshed/`, `bikeshed.lock` | what an older release called `notes/` and `notes.lock`; the first Tandem that opens the home renames them | see [the notes folder moved](#the-notes-folder-moved) |
 
 The home is `~/.tandem` unless `TANDEM_HOME` or `--home` names another. On Windows it is `%USERPROFILE%\.tandem`.
 
@@ -24,7 +25,7 @@ The home is `~/.tandem` unless `TANDEM_HOME` or `--home` names another. On Windo
 
 Beside the store, every changed write keeps **one previous complete copy** in `tandem.db.bak`, taken through SQLite's backup API before the write touches the database. There is one generation, no rotation.
 
-Be clear about what that covers. The backup is the store exactly **one write ago**. It protects against a write that goes wrong while it is happening. It is not a way back from a mistake you notice later: the next write replaces it, so two writes after a wrong bulk edit the backup holds the wrong edit too. Before anything risky (a large reorganisation, running a build from a branch against your real home), copy `tandem.db` somewhere yourself, with `tandem serve` stopped. The notes are not covered by the backup at all: `bikeshed/` is a folder of files, and keeping it in git or under your usual file backup is the way to protect it.
+Be clear about what that covers. The backup is the store exactly **one write ago**. It protects against a write that goes wrong while it is happening. It is not a way back from a mistake you notice later: the next write replaces it, so two writes after a wrong bulk edit the backup holds the wrong edit too. Before anything risky (a large reorganisation, running a build from a branch against your real home), copy `tandem.db` somewhere yourself, with `tandem serve` stopped. The notes are not covered by the backup at all: `notes/` is a folder of files, and keeping it in git or under your usual file backup is the way to protect it.
 
 Recovery is the backup and two commands, and the journal files go first or the restored file is read under a dead WAL:
 
@@ -98,15 +99,21 @@ tandem export --out ~/tandem-2026-11-17.tar.gz          # beside a running serve
 tandem --home ~/new-home import ~/tandem-2026-11-17.tar.gz   # serve stopped on that home
 ```
 
-What the archive holds, in order: `tandem.db` (one committed generation of the store), every note under `bikeshed/`, and `manifest.json` (the format, the schema version and each entry's size and SHA-256) last. `tar -tzf` lists it. It never holds `tandem.db.bak`, a lock file, a temp file, a WAL, or a symlink.
+What the archive holds, in order: `tandem.db` (one committed generation of the store), every note under `notes/`, and `manifest.json` (the format, the schema version and each entry's size and SHA-256) last. `tar -tzf` lists it. It never holds `tandem.db.bak`, a lock file, a temp file, a WAL, or a symlink.
 
 - **No sign-ins and no tokens travel.** Browser sessions and token digests are left out on purpose: after a move everyone signs in again and agents get new tokens, and a mislaid archive opens no workspace. The member names and roles and the access record do travel. The file is **not encrypted**, and it holds every ticket and note, so keeping it safe is your job.
 - **Consistent means a store at one instant and whole notes.** The store is one committed generation; each note is a whole version. The two are taken moments apart, not in one transaction, so a note you edit by hand in another program during an export may be caught on either side of the edit.
 - **The export is not a backup schedule.** It makes no rotation and replaces nothing. The rolling backup above is untouched, and nothing restores a `tandem.db.bak` from an archive.
 - **Import only goes into an empty home.** A home with a `tandem.db`, a `tandem.db.bak`, a WAL or journal file or any note is refused by name; there is no merge and no force, so point `--home` at a new directory. A lock file alone does not count. Run it with `tandem serve` stopped on that home. Nothing is written until the archive has passed every check (the digests, a store that opens and is not newer than this build, no entry that escapes the home), and a refusal leaves the home as it was. An archive from an older schema imports as it is and migrates on the first write, which rolls the backup first.
-- **A crash between the two renames.** Import moves `bikeshed/` into place first and `tandem.db` last, so the store's arrival is the commit. A crash in between leaves a home with notes and no store, and the next import refuses it by name as not empty. Remove that `bikeshed/` folder and run the import again.
+- **A crash between the two renames.** Import moves `notes/` into place first and `tandem.db` last, so the store's arrival is the commit. A crash in between leaves a home with notes and no store, and the next import refuses it by name as not empty. Remove that `notes/` folder and run the import again.
 - **The board's door.** A running `tandem serve` offers the same archive as one download: **Export workspace** in the header menu (beside the theme choice) is a plain link to `GET /export`, which answers `tandem-export-<UTC date>.tar.gz` as an attachment. It is streamed, never built in memory, with no `Content-Length`; the store copy is staged before the first byte, so the board keeps taking writes during a download. A cut download has no manifest, so `tandem import` refuses it as damaged. The route asks the same permission check as the CLI, and the menu entry is drawn only when the check allows the viewer. It refuses a request whose `Sec-Fetch-Site` header is present and is neither `same-origin` nor `none` (an absent header passes, so `curl` works). Off loopback it wants the token like every route: `curl -H "Authorization: Bearer $TANDEM_TOKEN" -OJ https://<host>/export`. It is not an MCP tool and has no remote CLI verb.
 - **What the export permission does and does not stop.** One check decides who may export. It is a thin caller of the one permission function: the owner credentials (loopback, `--allow-unauthenticated`, `TANDEM_TOKEN` and an owner browser session) always may, so a solo workspace exports as ever; in a team workspace only an admin's browser session may, and a member's session and every personal token are refused with a `403` page. It refuses a principal it does not know. That stops the one-step bulk download. It does not stop a member who can read every ticket and note from copying them, and it does not bind the offline CLI: anyone who can read the home's files can copy them, and file permissions are that boundary. Each export that starts writes one line (who, when, through which door) to the server log (`door=board` for the download), or to stderr for the CLI; no content and no path. The board's download also writes a row of the access record (above); the CLI does not.
+
+## The notes folder moved
+
+Releases before the rename kept the notes in `~/.tandem/bikeshed/`. The first `tandem serve`, MCP call or note verb that opens such a home renames the folder to `notes/` once, under both locks, and removes `bikeshed.lock`. It is one rename, so it either happened or it did not, and a second run finds nothing to do. An empty `notes/` beside `bikeshed/` does not block it.
+
+If both folders hold notes, or `bikeshed/` is a link or a file, Tandem refuses to open the notes, says which two paths are in the way and changes nothing: merge the notes into `notes/` by hand and remove `bikeshed/`. `tandem doctor` reports the same state and moves nothing. An older binary run after the move sees no notes; rename the folder back to downgrade. Editors, git repositories and scripts that point at `~/.tandem/bikeshed/` need repointing at `~/.tandem/notes/`.
 
 ## Upgrading
 
@@ -126,18 +133,18 @@ A home written by the Swift app is not read by this binary. Its `tandem.db` is r
 
 The notes are a wiki, not a log: their pages hold what a project is, how to run it, where things live, what is open now, and the decisions behind it. It does not hold the story of what was tried: git history and the ticket comments are that. See [ADR 0033](adr/0033-wiki-is-documentation.md).
 
-Notes are markdown files in folders under `~/.tandem/bikeshed/`, linked with `[[wikilinks]]`. You can edit them with any editor: the notes page and the agent's MCP tools read the files as they are on disk. A rename or a move made through Tandem (the notes page, `tandem-cli note rename`, the `note_move` tool) rewrites the wikilinks that pointed at the old path; a rename made in a file manager does not.
+Notes are markdown files in folders under `~/.tandem/notes/`, linked with `[[wikilinks]]`. You can edit them with any editor: the notes page and the agent's MCP tools read the files as they are on disk. A rename or a move made through Tandem (the notes page, `tandem-cli note rename`, the `note_move` tool) rewrites the wikilinks that pointed at the old path; a rename made in a file manager does not.
 
 The convention this repository's own notes follow gives every project one entry point, its **Overview**:
 
 ```
-~/.tandem/bikeshed/projects/<project>/<project>.md
+~/.tandem/notes/projects/<project>/<project>.md
 ```
 
 The prose says what the project is, how to run it and where things live; its `## Threads` list is what is open now (the board is the full list); and it links the project's Decisions, Risks, Processes and sub-pages. Each page names the date it was last true, `Reviewed <date>` - a page that has drifted is the page to fix. Tandem does not enforce the layout: it is a way to keep a wiki findable, and yours can differ.
 
 Link a note to a project or a label with `[[project:Name]]` or `[[label:Name]]`, resolved against the board. A note filed under `projects/<project>/` (a label's notes under `projects/<project>/<label>/`) is about that project. `tandem-cli note links` and the `note_health` tool list the broken links (typed ones included), the orphans (notes with no link in or out that are filed under no project folder) and the folders under `projects/` that match no project or label. The folders follow the board: adding a project or label creates `projects/<project>/` or `projects/<project>/<label>/` (a label named like its project has none), renaming moves the folder and rewrites the typed links, and deleting leaves the folder and its notes where they are. `tandem serve` creates any missing folder when it starts, and moves, renames and deletes nothing. When a step fails the board write stands, the answer carries a note, and `note_health` lists the leftovers (`missingFolders` for the board names with no folder). In the served notes face a typed link is a chip that opens a page for the project or label (a label's page lists the notes filed under it, the notes that link to it and its open tickets; a project's page is its entry note, `projects/<project>/<project>.md`, created on the first visit), the tree tags the folders the board names, and Today's note with a project in focus starts with `About: [[project:<name>]]`. See [ADR 0054](adr/0054-notes-link-to-projects-and-labels.md).
 
-Start at `~/.tandem/bikeshed/Index.md`, or the board's Notes page, when you do not know the project's name yet.
+Start at `~/.tandem/notes/Index.md`, or the board's Notes page, when you do not know the project's name yet.
 
-A delete moves the note or folder into `~/.tandem/bikeshed/.trash/`, under a UTC timestamp folder, and the notes page offers an undo until the page moves on. Trashed notes are kept for 30 days: the next delete after that removes them for good, so the trash is not a backup, and the bytes stay recoverable only until then.
+A delete moves the note or folder into `~/.tandem/notes/.trash/`, under a UTC timestamp folder, and the notes page offers an undo until the page moves on. Trashed notes are kept for 30 days: the next delete after that removes them for good, so the trash is not a backup, and the bytes stay recoverable only until then.

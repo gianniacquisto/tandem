@@ -38,13 +38,13 @@ use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 
-use crate::bikeshed::{Bikeshed, BikeshedNode, NodeKind};
 use crate::domain::markdown::{MarkdownBlock, TicketMarkdown};
 use crate::domain::text::TextMatch;
 use crate::domain::{
     AddTicket, AssigneeAxis, Board, Edit, LabelAxis, SetFields, Status, Ticket, TicketQuery,
 };
 use crate::env::Environment;
+use crate::notes::{NodeKind, Notes, NotesNode};
 use crate::store::{Actor, RevisionWatch, Store};
 
 mod assets;
@@ -120,9 +120,9 @@ impl SessionContext {
     }
 
     /// The vault beside the store's home: one rule, the same one `diagnostics`
-    /// and the CLI use, so the server reads the bikeshed the human edits.
-    fn bikeshed(&self) -> Bikeshed {
-        Bikeshed::new(self.store.home().directory().join("bikeshed"))
+    /// and the CLI use, so the server reads the notes the human edits.
+    fn notes(&self) -> Notes {
+        Notes::new(self.store.home().notes_directory())
     }
 }
 

@@ -6,13 +6,13 @@
 //! `note_health` shows the leftovers as unmatched folders, missing folders and
 //! broken typed links. Nothing here deletes a note or a folder.
 
-use crate::bikeshed::health::is_component;
-use crate::bikeshed::{Bikeshed, BikeshedNode, BoardNames, BoardProject, NodeKind};
 use crate::domain::Board;
 use crate::domain::error::DomainResult;
+use crate::notes::health::is_component;
+use crate::notes::{BoardNames, BoardProject, NodeKind, Notes, NotesNode};
 use crate::store::Store;
 
-use super::open_bikeshed;
+use super::open_notes_text;
 
 /// One board name the vault could not follow, and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,8 +70,8 @@ fn project_of<'a>(names: &'a BoardNames, label: &str) -> Option<&'a str> {
 /// Create every folder the board names that the vault lacks. Idempotent; it
 /// never moves, renames or deletes. A folder that matches ignoring case is
 /// reused. What could not be made comes back as leftovers.
-pub(super) fn sync(bikeshed: &Bikeshed, names: &BoardNames) -> Vec<Leftover> {
-    let tree = bikeshed.tree();
+pub(super) fn sync(notes: &Notes, names: &BoardNames) -> Vec<Leftover> {
+    let tree = notes.tree();
     let projects_dir = child(&tree, "projects");
     let projects_name = projects_dir
         .map(|node| node.name.clone())
@@ -79,7 +79,7 @@ pub(super) fn sync(bikeshed: &Bikeshed, names: &BoardNames) -> Vec<Leftover> {
     let mut leftovers = Vec::new();
     for project in &names.projects {
         let mut attempt = |label: Option<&str>| {
-            let outcome = ensure(bikeshed, projects_dir, &projects_name, project, label);
+            let outcome = ensure(notes, projects_dir, &projects_name, project, label);
             if let Err(reason) = outcome {
                 leftovers.push(Leftover {
                     project: project.name.clone(),
@@ -99,8 +99,8 @@ pub(super) fn sync(bikeshed: &Bikeshed, names: &BoardNames) -> Vec<Leftover> {
 /// The folder of one project or label, created when no folder matches it
 /// ignoring case.
 fn ensure(
-    bikeshed: &Bikeshed,
-    projects_dir: Option<&BikeshedNode>,
+    notes: &Notes,
+    projects_dir: Option<&NotesNode>,
     projects_name: &str,
     project: &BoardProject,
     label: Option<&str>,
@@ -138,22 +138,22 @@ fn ensure(
             format!("{projects_name}/{project_name}/{label}")
         }
     };
-    bikeshed
+    notes
         .create_folder(&path)
         .map(|_| ())
         .map_err(|error| error.message())
 }
 
 /// The direct child folder whose name matches `name` ignoring case.
-fn child<'a>(nodes: &'a [BikeshedNode], name: &str) -> Option<&'a BikeshedNode> {
+fn child<'a>(nodes: &'a [NotesNode], name: &str) -> Option<&'a NotesNode> {
     nodes.iter().find(|node| {
         node.kind == NodeKind::Folder && node.name.to_lowercase() == name.to_lowercase()
     })
 }
 
 /// The folder `projects/<project>[/<label>]` as the vault spells it, if any.
-fn existing(bikeshed: &Bikeshed, project: &str, label: Option<&str>) -> Option<String> {
-    let tree = bikeshed.tree();
+fn existing(notes: &Notes, project: &str, label: Option<&str>) -> Option<String> {
+    let tree = notes.tree();
     let projects = child(&tree, "projects")?;
     let project = child(&projects.children, project)?;
     match label {
@@ -180,7 +180,11 @@ pub(crate) fn added(
     label: Option<&str>,
 ) -> Option<String> {
     let after = names(board);
-    let leftovers = sync(&open_bikeshed(store), &after);
+    let vault = match open_notes_text(store) {
+        Ok(vault) => vault,
+        Err(refusal) => return Some(refusal),
+    };
+    let leftovers = sync(&vault, &after);
     join(
         leftovers
             .iter()
@@ -203,17 +207,20 @@ pub(crate) fn project_renamed(
     to: &str,
 ) -> Option<String> {
     let (from, to) = (from.trim(), to.trim());
-    let bikeshed = open_bikeshed(store);
+    let vault = match open_notes_text(store) {
+        Ok(vault) => vault,
+        Err(refusal) => return Some(refusal),
+    };
     let mut notes = Vec::new();
     if from != to {
-        if let Some(old) = existing(&bikeshed, from, None) {
+        if let Some(old) = existing(&vault, from, None) {
             let target = if !is_component(to) {
                 Err(format!(
                     "\"{to}\" is not a single path component, so the folder has no new name"
                 ))
             } else {
                 let parent = old.rsplit_once('/').map(|(parent, _)| parent).unwrap_or("");
-                match existing(&bikeshed, to, None) {
+                match existing(&vault, to, None) {
                     Some(taken) if taken.to_lowercase() != old.to_lowercase() => {
                         Err(format!("\"{taken}\" already exists"))
                     }
@@ -223,7 +230,7 @@ pub(crate) fn project_renamed(
             match target {
                 Ok(target) if target == old => {}
                 Ok(target) => {
-                    if let Err(error) = bikeshed.rename_folder(&old, &target) {
+                    if let Err(error) = vault.rename_folder(&old, &target) {
                         notes.push(format!(
                             "the folder \"{old}\" was not moved: {}",
                             error.message()
@@ -233,7 +240,7 @@ pub(crate) fn project_renamed(
                 Err(reason) => notes.push(format!("the folder \"{old}\" was not moved: {reason}")),
             }
         }
-        if let Err(error) = bikeshed.rewrite_typed_links(true, from, to) {
+        if let Err(error) = vault.rewrite_typed_links(true, from, to) {
             notes.push(format!(
                 "the links [[project:{from}]] were not all rewritten: {}",
                 error.message()
@@ -242,7 +249,7 @@ pub(crate) fn project_renamed(
     }
     let after = names(board);
     notes.extend(
-        sync(&bikeshed, &after)
+        sync(&vault, &after)
             .iter()
             .filter(|found| found.project == to && found.label.is_none())
             .map(Leftover::text),
@@ -263,13 +270,16 @@ pub(crate) fn label_renamed(
     let after = names(board);
     let old_project = project_of(before, from);
     let new_project = project_of(&after, to);
-    let bikeshed = open_bikeshed(store);
+    let vault = match open_notes_text(store) {
+        Ok(vault) => vault,
+        Err(refusal) => return Some(refusal),
+    };
     let mut notes = Vec::new();
     let moved = from != to || old_project != new_project;
     if moved
         && let (Some(old_project), Some(new_project)) = (old_project, new_project)
         && old_project.to_lowercase() != from.to_lowercase()
-        && let Some(old) = existing(&bikeshed, old_project, Some(from))
+        && let Some(old) = existing(&vault, old_project, Some(from))
     {
         let target = if new_project.to_lowercase() == to.to_lowercase() {
             Err("the label is named like its project, so it has no folder of its own".to_string())
@@ -278,9 +288,9 @@ pub(crate) fn label_renamed(
                 "\"{to}\" is not a single path component, so the folder has no new name"
             ))
         } else {
-            let tree = bikeshed.tree();
+            let tree = vault.tree();
             let projects = child(&tree, "projects");
-            let parent = match existing(&bikeshed, new_project, None) {
+            let parent = match existing(&vault, new_project, None) {
                 Some(path) => path,
                 None => format!(
                     "{}/{new_project}",
@@ -290,7 +300,7 @@ pub(crate) fn label_renamed(
                 ),
             };
             let target = format!("{parent}/{to}");
-            match existing(&bikeshed, new_project, Some(to)) {
+            match existing(&vault, new_project, Some(to)) {
                 Some(taken) if taken.to_lowercase() != old.to_lowercase() => {
                     Err(format!("\"{taken}\" already exists"))
                 }
@@ -300,7 +310,7 @@ pub(crate) fn label_renamed(
         match target {
             Ok(target) if target == old => {}
             Ok(target) => {
-                if let Err(error) = bikeshed.rename_folder(&old, &target) {
+                if let Err(error) = vault.rename_folder(&old, &target) {
                     notes.push(format!(
                         "the folder \"{old}\" was not moved: {}",
                         error.message()
@@ -311,7 +321,7 @@ pub(crate) fn label_renamed(
         }
     }
     if from != to
-        && let Err(error) = bikeshed.rewrite_typed_links(false, from, to)
+        && let Err(error) = vault.rewrite_typed_links(false, from, to)
     {
         notes.push(format!(
             "the links [[label:{from}]] were not all rewritten: {}",
@@ -319,7 +329,7 @@ pub(crate) fn label_renamed(
         ));
     }
     notes.extend(
-        sync(&bikeshed, &after)
+        sync(&vault, &after)
             .iter()
             .filter(|found| found.label.as_deref() == Some(to))
             .map(Leftover::text),
@@ -331,7 +341,14 @@ pub(crate) fn label_renamed(
 /// nothing. A failure is logged, and `note_health` lists what is still missing.
 pub fn reconcile(store: &Store, actor: &crate::store::Actor) {
     let board = Board::with_actor(store.clone(), actor.clone());
-    for leftover in sync(&open_bikeshed(store), &names(&board)) {
+    let vault = match open_notes_text(store) {
+        Ok(vault) => vault,
+        Err(refusal) => {
+            tracing::warn!(refusal = %refusal, "the notes folders were not reconciled");
+            return;
+        }
+    };
+    for leftover in sync(&vault, &names(&board)) {
         tracing::warn!(note = %leftover.text(), "a notes folder could not be created");
     }
 }

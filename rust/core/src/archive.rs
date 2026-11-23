@@ -7,7 +7,7 @@
 //! functions and add argument parsing and wording only.
 //!
 //! **The archive**, in this order: `tandem.db` (one committed generation of the
-//! store, scrubbed of secret tables), every regular file under `bikeshed/`, and
+//! store, scrubbed of secret tables), every regular file under `notes/`, and
 //! `manifest.json` last, because the digests are computed while the bytes
 //! stream. A cut archive therefore has no manifest and is refused as damaged.
 //!
@@ -36,7 +36,13 @@ use crate::store::{self, Actor, Home, Refusal, Store, StoreError};
 pub const FORMAT_VERSION: u32 = 1;
 
 const STORE_ENTRY: &str = "tandem.db";
-const NOTES_ENTRY: &str = "bikeshed";
+const NOTES_ENTRY: &str = "notes";
+
+/// What archives written before the rename (ADR 0055) called the notes entry.
+/// Import reads it for good, since an archive must import into a later
+/// release (`docs/versioning.md`), and lands it under `notes/`; export never
+/// writes it.
+const LEGACY_NOTES_ENTRY: &str = "bikeshed";
 const MANIFEST_ENTRY: &str = "manifest.json";
 
 /// The most entries an archive may hold: a bound on a hostile archive's
@@ -392,7 +398,7 @@ fn header_for(size: u64, mtime: u64) -> tar::Header {
 fn walk_notes(root: &Path) -> Result<Vec<(String, PathBuf)>, ArchiveError> {
     let mut found = Vec::new();
     match fs::symlink_metadata(root) {
-        Ok(metadata) if metadata.is_dir() && !crate::bikeshed::is_link(&metadata) => {}
+        Ok(metadata) if metadata.is_dir() && !crate::notes::is_link(&metadata) => {}
         _ => return Ok(found),
     }
     walk_into(root, "", &mut found)?;
@@ -418,7 +424,7 @@ fn walk_into(
             continue;
         }
         let metadata = fs::symlink_metadata(entry.path()).map_err(io_error("stat a note"))?;
-        if crate::bikeshed::is_link(&metadata) {
+        if crate::notes::is_link(&metadata) {
             continue;
         }
         let relative = if prefix.is_empty() {
@@ -519,18 +525,20 @@ fn refuse_if_not_empty(directory: &Path) -> Result<(), ArchiveError> {
             found.push(name.to_string());
         }
     }
-    let notes = directory.join(NOTES_ENTRY);
-    match fs::symlink_metadata(&notes) {
-        Ok(metadata) if metadata.is_dir() => {
-            let any = fs::read_dir(&notes)
-                .map(|mut entries| entries.next().is_some())
-                .unwrap_or(true);
-            if any {
-                found.push("bikeshed/ (has notes)".to_string());
+    for entry in [NOTES_ENTRY, LEGACY_NOTES_ENTRY] {
+        let notes = directory.join(entry);
+        match fs::symlink_metadata(&notes) {
+            Ok(metadata) if metadata.is_dir() => {
+                let any = fs::read_dir(&notes)
+                    .map(|mut entries| entries.next().is_some())
+                    .unwrap_or(true);
+                if any {
+                    found.push(format!("{entry}/ (has notes)"));
+                }
             }
+            Ok(_) => found.push(format!("{entry} (not an empty folder)")),
+            Err(_) => {}
         }
-        Ok(_) => found.push("bikeshed (not an empty folder)".to_string()),
-        Err(_) => {}
     }
     if found.is_empty() {
         Ok(())
@@ -551,6 +559,7 @@ fn unpack_and_commit<R: Read>(
     let mut archive = tar::Archive::new(GzDecoder::new(input));
     let entries = archive.entries().map_err(damaged)?;
 
+    let (mut saw_legacy, mut saw_current) = (false, false);
     let mut seen: BTreeMap<String, ManifestEntry> = BTreeMap::new();
     let mut directories: BTreeSet<String> = BTreeSet::new();
     let mut manifest: Option<Vec<u8>> = None;
@@ -580,6 +589,13 @@ fn unpack_and_commit<R: Read>(
             _ => return Err(hostile("not a regular file or a directory")),
         };
         let slot = classify(&raw, is_dir).map_err(|reason| hostile(&reason))?;
+        saw_legacy |= is_legacy_entry(&raw);
+        saw_current |= is_current_entry(&raw);
+        if saw_legacy && saw_current {
+            return Err(hostile(
+                "a notes folder under both notes/ and the older bikeshed/ name",
+            ));
+        }
         let size = entry.size();
 
         match slot {
@@ -654,8 +670,13 @@ fn unpack_and_commit<R: Read>(
     let manifest = manifest.ok_or_else(|| {
         ArchiveError::Damaged("it has no manifest, so it was cut short".to_string())
     })?;
-    let manifest: Manifest = serde_json::from_slice(&manifest)
+    let mut manifest: Manifest = serde_json::from_slice(&manifest)
         .map_err(|error| ArchiveError::Damaged(format!("the manifest does not read: {error}")))?;
+    // An older archive lists its notes under `bikeshed/`; they were unpacked
+    // under `notes/`, so the manifest is read the same way.
+    for entry in &mut manifest.entries {
+        entry.path = normalized_entry(&entry.path);
+    }
     if manifest.format != FORMAT_VERSION {
         return Err(ArchiveError::Format {
             found: manifest.format,
@@ -740,10 +761,10 @@ fn commit(home: &Path, scratch: &Path) -> Result<(), ArchiveError> {
     let notes_to = home.join(NOTES_ENTRY);
     let moved_notes = notes_from.is_dir();
     if moved_notes {
-        // An empty `bikeshed/` is allowed to be there; a rename onto a
+        // An empty `notes/` is allowed to be there; a rename onto a
         // directory is not portable.
         if notes_to.is_dir() {
-            fs::remove_dir(&notes_to).map_err(io_error("replace the empty bikeshed folder"))?;
+            fs::remove_dir(&notes_to).map_err(io_error("replace the empty notes folder"))?;
         }
         fs::rename(&notes_from, &notes_to).map_err(io_error("move the notes into the home"))?;
     }
@@ -777,16 +798,38 @@ fn commit(home: &Path, scratch: &Path) -> Result<(), ArchiveError> {
 #[derive(Debug)]
 enum Slot {
     Manifest,
-    /// A file: `tandem.db` or `bikeshed/<path>`.
+    /// A file: `tandem.db` or `notes/<path>`.
     File(String),
-    /// A folder: `bikeshed` or `bikeshed/<path>`.
+    /// A folder: `notes` or `notes/<path>`.
     Directory(String),
+}
+
+/// An entry path with the old first component `bikeshed` read as `notes`.
+fn normalized_entry(name: &str) -> String {
+    match name.strip_prefix(LEGACY_NOTES_ENTRY) {
+        Some(rest) if rest.is_empty() || rest.starts_with('/') => {
+            format!("{NOTES_ENTRY}{rest}")
+        }
+        _ => name.to_string(),
+    }
+}
+
+/// True when `name`'s first component is the old notes entry.
+fn is_legacy_entry(name: &[u8]) -> bool {
+    name.strip_prefix(LEGACY_NOTES_ENTRY.as_bytes())
+        .is_some_and(|rest| rest.is_empty() || rest[0] == b'/')
+}
+
+/// True when `name`'s first component is the notes entry.
+fn is_current_entry(name: &[u8]) -> bool {
+    name.strip_prefix(NOTES_ENTRY.as_bytes())
+        .is_some_and(|rest| rest.is_empty() || rest[0] == b'/')
 }
 
 /// Decide whether an entry name is one of the three allowed places, or say why
 /// not. Refused: an absolute path, an empty, `.` or `..` component, a backslash,
 /// a NUL, a drive-like first component, anything outside `manifest.json`,
-/// `tandem.db` and `bikeshed/`.
+/// `tandem.db` and `notes/`.
 fn classify(raw: &[u8], is_dir: bool) -> Result<Slot, String> {
     let name = std::str::from_utf8(raw).map_err(|_| "a name that is not UTF-8".to_string())?;
     if name.contains('\0') {
@@ -818,13 +861,21 @@ fn classify(raw: &[u8], is_dir: bool) -> Result<Slot, String> {
     if parts[0].contains(':') {
         return Err("a drive-like first component".into());
     }
-    match (parts[0], parts.len(), is_dir) {
+    let name = &normalized_entry(name);
+    let first = if parts[0] == LEGACY_NOTES_ENTRY {
+        NOTES_ENTRY
+    } else {
+        parts[0]
+    };
+    match (first, parts.len(), is_dir) {
         (MANIFEST_ENTRY, 1, false) => Ok(Slot::Manifest),
         (STORE_ENTRY, 1, false) => Ok(Slot::File(name.to_string())),
         (NOTES_ENTRY, 1, true) => Ok(Slot::Directory(name.to_string())),
         (NOTES_ENTRY, n, true) if n > 1 => Ok(Slot::Directory(name.to_string())),
         (NOTES_ENTRY, n, false) if n > 1 => Ok(Slot::File(name.to_string())),
-        _ => Err("a path outside manifest.json, tandem.db and bikeshed/".into()),
+        _ => Err(
+            "a path outside manifest.json, tandem.db and notes/ (or the older bikeshed/)".into(),
+        ),
     }
 }
 

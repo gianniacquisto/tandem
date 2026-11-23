@@ -9,10 +9,10 @@
 //! text, and the templates never see raw user HTML: the only markup in this
 //! output is the renderer's own.
 
-use crate::bikeshed::wikilink::{
+use crate::domain::markdown::{InlineStyle, MarkdownBlock, MarkdownInline};
+use crate::notes::wikilink::{
     ConceptKind, LinkResolution, Wikilink, typed_target, wikilink_tokens,
 };
-use crate::domain::markdown::{InlineStyle, MarkdownBlock, MarkdownInline};
 
 /// The whole document: the `.markdown` container and every block under it.
 pub fn document(blocks: &[MarkdownBlock]) -> String {

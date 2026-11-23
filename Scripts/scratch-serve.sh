@@ -44,7 +44,7 @@ if [[ "$fixture" != "empty" && ! -e "$home/tandem.db" ]]; then
   cp "$root/Fixtures/port/$fixture/tandem.db" "$home/tandem.db"
   chmod u+w "$home/tandem.db"
 fi
-mkdir -p "$home/bikeshed"
+mkdir -p "$home/notes"
 
 cargo build --quiet --manifest-path "$root/rust/Cargo.toml" --bin tandem
 

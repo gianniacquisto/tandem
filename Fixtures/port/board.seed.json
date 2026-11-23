@@ -83,7 +83,7 @@
     },
     {
       "id": "10000000-0000-4000-8000-000000000003",
-      "title": "the bikeshed face: tree, editor, backlinks, health",
+      "title": "the notes face: tree, editor, backlinks, health",
       "status": "in-progress",
       "archived": false,
       "project": "Port",
@@ -563,7 +563,7 @@
     },
     {
       "id": "10000000-0000-4000-8000-000000000035",
-      "title": "the bikeshed tree's hidden layer",
+      "title": "the notes tree's hidden layer",
       "status": "done",
       "archived": false,
       "project": "Tandem",

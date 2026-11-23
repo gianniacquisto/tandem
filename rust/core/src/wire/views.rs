@@ -19,9 +19,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
-use crate::bikeshed::{
-    Backlink, BikeshedNode, MovedNote, NodeKind, NoteContent, NoteGraph, WriteRecord,
-};
+use crate::notes::{Backlink, MovedNote, NodeKind, NoteContent, NoteGraph, NotesNode, WriteRecord};
 
 use crate::domain::{Comment, LabelDeletion, Ticket, TicketBlock};
 use crate::store::encode;
@@ -290,7 +288,7 @@ fn stamp(time: SystemTime) -> String {
 /// One tree row: a folder or a note, with its children.
 ///
 /// `kind` is `"folder"` or `"note"`, the two words the served tree branches on.
-/// The walk is the core's own (`Bikeshed::tree`): the wire adds no ordering and
+/// The walk is the core's own (`Notes::tree`): the wire adds no ordering and
 /// no filtering, and a dot component is never drawn (the reveal flag left the
 /// wire with the capture layer, CUT-7).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -303,7 +301,7 @@ pub struct NoteNodeView {
 }
 
 impl NoteNodeView {
-    pub fn new(node: &BikeshedNode) -> Self {
+    pub fn new(node: &NotesNode) -> Self {
         Self {
             name: node.name.clone(),
             path: node.path.clone(),
@@ -453,7 +451,7 @@ pub struct NoteMoveView {
 }
 
 impl NoteMoveView {
-    pub fn new(outcome: &crate::bikeshed::MoveOutcome) -> Self {
+    pub fn new(outcome: &crate::notes::MoveOutcome) -> Self {
         Self {
             path: outcome.path.clone(),
             old_path: outcome.old_path.clone(),
@@ -472,7 +470,7 @@ pub struct SearchHitView {
 }
 
 impl SearchHitView {
-    pub fn new(hit: &crate::bikeshed::SearchHit) -> Self {
+    pub fn new(hit: &crate::notes::SearchHit) -> Self {
         Self {
             path: hit.path.clone(),
             display: hit.display.clone(),

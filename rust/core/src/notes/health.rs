@@ -14,7 +14,7 @@ use crate::domain::error::DomainResult;
 use crate::domain::operation::Operation;
 
 use super::wikilink::{BoardNames, LinkResolution, line_number_of, link_occurrences};
-use super::{Bikeshed, BikeshedNode, NodeKind};
+use super::{NodeKind, Notes, NotesNode};
 
 /// One broken wikilink: the note that holds it, the target as written, and the
 /// 1-based line it sits on.
@@ -28,7 +28,7 @@ pub struct BrokenLink {
 /// A folder under `projects/` that matches no project or label on the board.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UnmatchedFolder {
-    /// The folder, bikeshed-root-relative, in the vault's own spelling.
+    /// The folder, notes-root-relative, in the vault's own spelling.
     pub path: String,
     /// `no project` or `no label`.
     pub reason: String,
@@ -41,14 +41,14 @@ pub struct UnmatchedFolder {
 pub struct MissingFolder {
     pub project: String,
     pub label: Option<String>,
-    /// The folder the board name maps to, bikeshed-root-relative.
+    /// The folder the board name maps to, notes-root-relative.
     pub path: String,
 }
 
 /// The vault's link-graph health:
 /// `{"broken": [...], "orphans": [...], "unmatchedFolders": [...], "missingFolders": [...], "counts": {...}}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct BikeshedHealth {
+pub struct NotesHealth {
     /// Every wikilink that resolves to no note, or to more than one.
     pub broken: Vec<BrokenLink>,
     /// The notes with no resolved link in or out that are not filed under a
@@ -60,10 +60,10 @@ pub struct BikeshedHealth {
     /// The board's projects and labels that have no folder.
     #[serde(rename = "missingFolders")]
     pub missing_folders: Vec<MissingFolder>,
-    pub counts: BikeshedHealthCounts,
+    pub counts: NotesHealthCounts,
 }
 
-impl BikeshedHealth {
+impl NotesHealth {
     /// The empty report: a vault with nothing in it.
     pub fn empty() -> Self {
         Self {
@@ -71,7 +71,7 @@ impl BikeshedHealth {
             orphans: Vec::new(),
             unmatched_folders: Vec::new(),
             missing_folders: Vec::new(),
-            counts: BikeshedHealthCounts {
+            counts: NotesHealthCounts {
                 notes: 0,
                 links: 0,
                 broken: 0,
@@ -85,7 +85,7 @@ impl BikeshedHealth {
 
 /// The totals of a health readout.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct BikeshedHealthCounts {
+pub struct NotesHealthCounts {
     pub notes: usize,
     pub links: usize,
     pub broken: usize,
@@ -96,10 +96,10 @@ pub struct BikeshedHealthCounts {
     pub missing_folders: usize,
 }
 
-impl Bikeshed {
+impl Notes {
     /// `health(names)`: the vault's link-graph health. The board's names come in
     /// as a value; the vault never opens the store.
-    pub fn health(&self, names: &BoardNames) -> DomainResult<Operation<BikeshedHealth>> {
+    pub fn health(&self, names: &BoardNames) -> DomainResult<Operation<NotesHealth>> {
         let tree = self.nodes(&self.directory, "");
         let mut notes = Vec::new();
         super::collect_notes(&tree, &mut notes);
@@ -157,7 +157,7 @@ impl Bikeshed {
                 .cmp(&(right.path.to_lowercase(), right.path.clone()))
         });
         let missing_folders = missing_folders(&tree, names);
-        let counts = BikeshedHealthCounts {
+        let counts = NotesHealthCounts {
             notes: notes.len(),
             links: link_count,
             broken: broken.len(),
@@ -166,7 +166,7 @@ impl Bikeshed {
             missing_folders: missing_folders.len(),
         };
         Ok(Operation {
-            value: BikeshedHealth {
+            value: NotesHealth {
                 broken,
                 orphans,
                 unmatched_folders,
@@ -201,7 +201,7 @@ fn is_filed_under_project(path: &str, names: &BoardNames) -> bool {
 /// The direct children of `projects/` that match no project, and the direct
 /// children of a matched project folder that match none of its labels. Deeper
 /// folders are free.
-pub(super) fn unmatched_folders(tree: &[BikeshedNode], names: &BoardNames) -> Vec<UnmatchedFolder> {
+pub(super) fn unmatched_folders(tree: &[NotesNode], names: &BoardNames) -> Vec<UnmatchedFolder> {
     let mut found = Vec::new();
     let Some(projects) = tree
         .iter()
@@ -272,11 +272,11 @@ pub fn is_component(name: &str) -> bool {
 /// The board's projects and labels with no folder: a project with no
 /// `projects/<project>` (matched ignoring case), a label with no folder under
 /// it. A name that is not a single component has no folder and is listed.
-fn missing_folders(tree: &[BikeshedNode], names: &BoardNames) -> Vec<MissingFolder> {
+fn missing_folders(tree: &[NotesNode], names: &BoardNames) -> Vec<MissingFolder> {
     let projects = tree
         .iter()
         .find(|node| node.kind == NodeKind::Folder && node.name.eq_ignore_ascii_case("projects"));
-    let child = |parent: Option<&BikeshedNode>, name: &str| -> Option<BikeshedNode> {
+    let child = |parent: Option<&NotesNode>, name: &str| -> Option<NotesNode> {
         parent?
             .children
             .iter()

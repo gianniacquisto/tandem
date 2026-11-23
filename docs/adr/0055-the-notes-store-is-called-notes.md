@@ -17,4 +17,16 @@ Its rule against a documented alias holds: there is one name, and no doc offers 
 
 This record covers the **word** on surfaces with no compatibility promise: the board page and its CSS classes, the error messages, the CLI help, the MCP parameter descriptions, the docs and the prompts.
 
-The following are public surface or code names and are decided by TAN-862, not here: the home folder `bikeshed/` and `bikeshed.lock`, the `/export` archive entry, the doctor check named `bikeshed`, the `note stats` output field and the Rust module, type and variant names. Until that ticket lands, the docs say "the notes, in `~/.tandem/bikeshed/`".
+The public surface and the code names were decided with the on-disk move (TAN-862), below.
+
+## The on-disk move (TAN-862)
+
+The word alone left the old name in the paths, the export and the doctor, so the human chose to finish the rename everywhere, with a migration, and to keep the old names answering where a promise needs it (`docs/versioning.md`).
+
+- **The folder.** `<home>/bikeshed/` is `<home>/notes/`, and `bikeshed.lock` is `notes.lock`. `Home::notes_directory()` is the one place the name is joined. The first door that opens the notes (serve start, an MCP note method, a CLI note verb or `export`) renames an older folder once, under both locks: one `rename(2)`, so it is atomic and a second run finds nothing to do. An empty `notes/` beside `bikeshed/` is removed first. If both hold notes, or `bikeshed/` is a link or a file, the move refuses with a `NotesFolderClash` error naming both paths and changes nothing. `doctor` only reads (ADR 0014) and `import` already refuses a non-empty home, so neither moves anything.
+- **The export.** `/export` writes `notes/` entries. Import reads `notes/` or `bikeshed/` entries for good, because an archive must import into a later release (ADR 0050), and lands either under `notes/`; an archive with both is refused.
+- **The doctor and `note stats`.** The check is `notes`. For one release the report also carries a `bikeshed` row with the same verdict, and `note stats` carries a `bikeshed` field with the same value as `notes`, each with one stderr warning on the CLI, then both go.
+- **The code.** The module is `tandem_core::notes`, `Bikeshed*` types are `Notes*`, and the test suites follow.
+- **No downgrade path.** An older binary run after the move finds no notes until the folder is renamed back. Release notes say so; a symlink left behind would be refused by the path guards and needs privileges on Windows.
+
+ADRs 0011, 0013, 0022 and the other dated records keep their words; a pointer line tells the reader that the folder they name is now `notes/`.

@@ -33,7 +33,7 @@ pub use views::{
 ///
 /// The three rows, in the pinned order, are built by
 /// [`crate::diagnostics::report`] (ADR 0045 cut the report to `home`, `store`
-/// and `bikeshed`). `ok` is the AND of the rows that can fail.
+/// and `notes`). `ok` is the AND of the rows that can fail.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DoctorReport {
     /// The AND of the rows that can fail.
