@@ -1,4 +1,4 @@
-//! The bikeshed notes surface: the tree, the note pane, the editor and the
+//! The notes surface: the tree, the note pane, the editor and the
 //! writes that move, create and save a note.
 
 use super::board::ProjectOption;
@@ -8,7 +8,7 @@ use crate::bikeshed::wikilink::{BoardNames, ConceptKind, LinkResolution, typed_t
 use crate::domain::DomainError;
 use crate::domain::ticket::Status;
 
-// MARK: - The bikeshed notes
+// MARK: - The notes page
 
 /// `GET /notes/graph.json?project=<name>`: the vault as typed nodes and edges
 /// for the graph view. The project value is matched against the board's names
@@ -515,7 +515,7 @@ fn notes_under(node: &BikeshedNode) -> Vec<String> {
 /// The crumbs of a trail of folder and page names under the vault's root.
 fn crumbs_of(labels: &[String]) -> Vec<Crumb> {
     let mut crumbs = vec![Crumb {
-        label: "Bikeshed".to_string(),
+        label: "Notes".to_string(),
         current: labels.is_empty(),
         first: true,
     }];
@@ -856,7 +856,7 @@ fn render_notes(
                 };
                 labels.push(note_name(note_path));
                 crumbs = crumbs_of(&labels);
-                // One resolver (ADR 0005): the bikeshed resolves every link in
+                // One resolver (ADR 0005): the notes store resolves every link in
                 // the text, and the renderer looks each target up here.
                 let occurrences = vault.links_with(&content.text, &names);
                 let resolved: HashMap<String, LinkResolution> = occurrences
@@ -1156,9 +1156,9 @@ pub(super) async fn note_view(
     notes_response(&context, &params, None, None, None, &headers)
 }
 
-/// Follow a wikilink the editor drew: resolve `target` through the bikeshed and
+/// Follow a wikilink the editor drew: resolve `target` through the notes store and
 /// open the note it names, else stay on `from` with the banner. The target
-/// never builds a path; only a path the bikeshed resolved is opened.
+/// never builds a path; only a path the notes store resolved is opened.
 pub(super) async fn note_open(
     context: Context,
     Query(mut params): Query<HashMap<String, String>>,

@@ -242,7 +242,7 @@ Each write answers the label list. `label delete` also answers `moved`, the numb
 
 ## Notes
 
-These verbs act on the [bikeshed](concepts.md#notes). Agents read and write individual notes through the `note_*` [MCP tools](mcp.md); there is no CLI verb that prints or writes a note's text, because the notes are plain files you can open directly.
+These verbs act on the [notes](concepts.md#notes). Agents read and write individual notes through the `note_*` [MCP tools](mcp.md); there is no CLI verb that prints or writes a note's text, because the notes are plain files you can open directly.
 
 ```
 tandem-cli note rename --from <path> --to <path>
@@ -252,7 +252,7 @@ tandem-cli note links
 
 | Verb | Notes |
 | --- | --- |
-| `note rename` | Renames or moves a note, rewriting every wikilink that points at it. Paths are relative to the bikeshed. Local only. |
+| `note rename` | Renames or moves a note, rewriting every wikilink that points at it. Paths are relative to the notes root. Local only. |
 | `note stats` | The notes-health readout, for every project or for one with `--project`. Local only. |
 | `note links` | Checks the links between notes. Answers `{"broken", "orphans", "counts"}`. |
 
@@ -264,7 +264,7 @@ Checks that the install and the home are healthy. It only reads.
 tandem-cli doctor
 ```
 
-Answers `{"ok", "checks": [{"name", "ok", "detail"}]}`, one check each for the home, the store, its integrity, the references between rows, disk space, the binary and schema versions, and the bikeshed. It exits `1` when any check fails, and the failing check's `detail` says what to do.
+Answers `{"ok", "checks": [{"name", "ok", "detail"}]}`, one check each for the home, the store, its integrity, the references between rows, disk space, the binary and schema versions, and the notes. It exits `1` when any check fails, and the failing check's `detail` says what to do.
 
 ## export and import
 

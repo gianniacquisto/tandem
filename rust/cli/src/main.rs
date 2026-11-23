@@ -48,7 +48,7 @@ use tracing_subscriber::EnvFilter;
 #[command(
     name = "tandem",
     version = tandem_core::release_version(),
-    about = "Tandem: the board, the bikeshed and the records",
+    about = "Tandem: the board, the notes and the records",
     disable_help_flag = true,
     disable_help_subcommand = true
 )]
@@ -117,7 +117,7 @@ enum Command {
         #[command(subcommand)]
         command: Option<ProjectCommand>,
     },
-    /// The bikeshed's agent face.
+    /// The notes' agent face.
     Note {
         #[command(subcommand)]
         command: Option<NoteCommand>,

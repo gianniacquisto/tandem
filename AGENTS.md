@@ -8,7 +8,7 @@ The ticket comment log is the work record: a pass narrates what landed, the outc
 
 ## Prose
 
-No em dash (U+2014) in anything an agent writes: use a comma, a colon, a full stop, or a hyphen instead. The ban covers PR bodies, review replies and issue comments; ticket titles, descriptions and comments; bikeshed notes and captures; commit messages, code comments and docs. Before filing a comment or opening a PR, run `grep -n $'\u2014' <file>` on what you wrote and expect no hits; for a whole branch, `bash Scripts/check-prose-dash.sh` checks every added line. The dashes already in the tree stay: a prose change does not sweep them.
+No em dash (U+2014) in anything an agent writes: use a comma, a colon, a full stop, or a hyphen instead. The ban covers PR bodies, review replies and issue comments; ticket titles, descriptions and comments; notes and captures; commit messages, code comments and docs. Before filing a comment or opening a PR, run `grep -n $'\u2014' <file>` on what you wrote and expect no hits; for a whole branch, `bash Scripts/check-prose-dash.sh` checks every added line. The dashes already in the tree stay: a prose change does not sweep them.
 
 ## Tickets
 

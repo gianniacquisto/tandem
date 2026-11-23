@@ -1,4 +1,4 @@
-<div id="notes-root" class="face face--wide bikeshed-face">
+<div id="notes-root" class="face face--wide notes-face">
   {% if let Some(error) = error %}
   <div class="banner" role="alert">
     <span>{{ error }}</span>
@@ -61,8 +61,8 @@
   </div>
   {% endif %}
 
-  <div class="bikeshed">
-    <aside class="bikeshed__tree" aria-label="Bikeshed notes">
+  <div class="notes">
+    <aside class="notes__tree" aria-label="Notes">
       <form class="focus" method="get" action="{{ focus_action }}" hx-get="{{ focus_action }}" hx-target="#notes-root" hx-swap="outerHTML">
         {% if let Some(path) = path %}
         <input type="hidden" name="path" value="{{ path }}">
@@ -80,7 +80,7 @@
       </form>
 
       <div class="tree__vault" data-drop-into="">
-        <span class="tree__vault-name">Bikeshed</span>
+        <span class="tree__vault-name">Notes</span>
         <div class="tree__tools" role="group" aria-label="Tree">
           <button class="tree__tool" type="button" data-tree-action="expand" title="Expand all" aria-label="Expand all"><svg class="tree__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg></button>
           <button class="tree__tool" type="button" data-tree-action="collapse" title="Collapse all" aria-label="Collapse all"><svg class="tree__icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/></svg></button>
@@ -120,7 +120,7 @@
       </details>
 
       {% if rows.is_empty() %}
-      <p class="tree__empty">The bikeshed is empty. Create a note or a folder to get started.</p>
+      <p class="tree__empty">No notes yet. Create a note or a folder to get started.</p>
       {% else %}
       <ul class="tree" role="tree">
         {% for row in rows %}
@@ -178,22 +178,22 @@
       {% endif %}
     </aside>
 
-    <div class="bikeshed__document">
+    <div class="notes__document">
       <div class="note-tabs" data-note-tabs hidden
            data-current="{{ current_path }}" data-current-name="{{ current_name }}"
            data-notes="{{ all_notes }}" data-from="{{ tab_from }}" data-to="{{ tab_to }}"
            data-gone="{{ tab_gone }}">
         <div class="note-tabs__list" role="tablist" aria-label="Open notes"></div>
       </div>
-      <header class="bikeshed__breadcrumb">
-        <div class="bikeshed__breadcrumb-inner">
-          <nav class="bikeshed__crumbs" aria-label="Breadcrumb">
+      <header class="notes__breadcrumb">
+        <div class="notes__breadcrumb-inner">
+          <nav class="notes__crumbs" aria-label="Breadcrumb">
             {% if graph.is_some() %}
-            <span class="bikeshed__crumb bikeshed__crumb--current" aria-current="page">Graph</span>
+            <span class="notes__crumb notes__crumb--current" aria-current="page">Graph</span>
             {% else %}
             {% for crumb in crumbs %}
-            {% if !crumb.first %}<span class="bikeshed__crumb-sep" aria-hidden="true">/</span>{% endif %}
-            <span class="bikeshed__crumb{% if crumb.current %} bikeshed__crumb--current{% endif %}"
+            {% if !crumb.first %}<span class="notes__crumb-sep" aria-hidden="true">/</span>{% endif %}
+            <span class="notes__crumb{% if crumb.current %} notes__crumb--current{% endif %}"
                   {% if crumb.current %}aria-current="page"{% endif %}>{{ crumb.label }}</span>
             {% endfor %}
             {% endif %}
@@ -290,7 +290,7 @@
       </section>
       {% else %}
       {% if let Some(note) = note %}
-      <div class="bikeshed__page">
+      <div class="notes__page">
         <div class="page-head">
           <form class="page-title-form" method="post" action="/notes/rename" hx-post="/notes/rename"
                 hx-target="#notes-root" hx-swap="outerHTML" hx-trigger="change, submit">
@@ -327,7 +327,7 @@
         </div>
       </div>
       {% else if let Some(label_page) = label_page %}
-      <div class="bikeshed__page">
+      <div class="notes__page">
         <div class="page-head">
           <h1 class="page-title page-title--static">{{ label_page.name }}</h1>
         </div>

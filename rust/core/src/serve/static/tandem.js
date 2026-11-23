@@ -1,5 +1,5 @@
 /*
- * The acts htmx does not own: a board card drop, a bikeshed tree move, the
+ * The acts htmx does not own: a board card drop, a notes tree move, the
  * ticket sheet's label select and shortcut keys, and the notes editor's
  * debounced autosave and preview.
  *
@@ -1776,7 +1776,7 @@
   }, true);
 })();
 
-// MARK: - Tabs for the open notes on the bikeshed face
+// MARK: - Tabs for the open notes on the notes face
 //
 // One global list of note paths in localStorage, shared by every project. The
 // server draws only a mount point (`data-note-tabs`) with hooks: the open note,
@@ -1856,7 +1856,7 @@
 
   function folderOf(path) {
     var at = path.lastIndexOf('/');
-    return at < 0 ? 'Bikeshed' : path.slice(0, at);
+    return at < 0 ? 'Notes' : path.slice(0, at);
   }
 
   // A label per tab: the note name, with its folder only where two tabs share
