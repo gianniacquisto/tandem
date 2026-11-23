@@ -2764,6 +2764,47 @@ async fn the_page_carries_the_release_version() {
     assert!(body.contains(&want), "the shell names the build: {body}");
 }
 
+#[test]
+fn the_source_link_names_the_tag_on_a_release_and_the_root_on_a_dev_build() {
+    assert_eq!(
+        super::source_url("https://example.test/tandem", Some("2.9.1")),
+        "https://example.test/tandem/tree/v2.9.1"
+    );
+    assert_eq!(
+        super::source_url("https://example.test/tandem", None),
+        "https://example.test/tandem"
+    );
+    assert_eq!(
+        super::source_url("https://example.test/tandem/", None),
+        "https://example.test/tandem",
+        "a trailing slash does not double"
+    );
+}
+
+#[tokio::test]
+async fn the_board_footer_links_the_source_and_the_sign_in_page_does_not() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("page-footer");
+    let app = router(context(sandbox.store()));
+    let (status, _, body) = get(&app, "/board").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("<footer class=\"shell__footer\">"), "the shell carries a footer");
+    let href = format!(
+        "href=\"{}\"",
+        super::source_url(env!("CARGO_PKG_REPOSITORY"), option_env!("TANDEM_VERSION"))
+    );
+    assert!(body.contains(&href), "the footer links the source: {body}");
+    assert_eq!(body.matches("class=\"shell__source\"").count(), 1, "one source link");
+    let request = Request::builder()
+        .uri("/board")
+        .header(header::HOST, "127.0.0.1:7700")
+        .header("hx-request", "true")
+        .body(Body::empty())
+        .expect("the request builds");
+    let (_, _, partial) = send(&app, request).await;
+    assert!(!partial.contains("shell__footer"), "a partial never repeats the footer");
+}
+
 #[tokio::test]
 async fn a_static_asset_logs_at_debug_under_its_route_template() {
     let _serial = ONE_AT_A_TIME.lock().await;
