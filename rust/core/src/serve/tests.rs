@@ -2788,13 +2788,20 @@ async fn the_board_footer_links_the_source_and_the_sign_in_page_does_not() {
     let app = router(context(sandbox.store()));
     let (status, _, body) = get(&app, "/board").await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("<footer class=\"shell__footer\">"), "the shell carries a footer");
+    assert!(
+        body.contains("<footer class=\"shell__footer\">"),
+        "the shell carries a footer"
+    );
     let href = format!(
         "href=\"{}\"",
         super::source_url(env!("CARGO_PKG_REPOSITORY"), option_env!("TANDEM_VERSION"))
     );
     assert!(body.contains(&href), "the footer links the source: {body}");
-    assert_eq!(body.matches("class=\"shell__source\"").count(), 1, "one source link");
+    assert_eq!(
+        body.matches("class=\"shell__source\"").count(),
+        1,
+        "one source link"
+    );
     let request = Request::builder()
         .uri("/board")
         .header(header::HOST, "127.0.0.1:7700")
@@ -2802,7 +2809,10 @@ async fn the_board_footer_links_the_source_and_the_sign_in_page_does_not() {
         .body(Body::empty())
         .expect("the request builds");
     let (_, _, partial) = send(&app, request).await;
-    assert!(!partial.contains("shell__footer"), "a partial never repeats the footer");
+    assert!(
+        !partial.contains("shell__footer"),
+        "a partial never repeats the footer"
+    );
 }
 
 #[tokio::test]
