@@ -86,12 +86,12 @@ body {
   border-top: 0;
 }
 
-/* Bikeshed's full bleed: the face's own rows keep a gutter, the tree reaches
+/* Notes full bleed: the face's own rows keep a gutter, the tree reaches
  * the window edge. */
 .shell__body--bleed .shell__error,
 .shell__body--bleed .shell__notice,
-.shell__body--bleed .bikeshed-face > .banner,
-.shell__body--bleed .bikeshed-face > .conflict {
+.shell__body--bleed .notes-face > .banner,
+.shell__body--bleed .notes-face > .conflict {
   max-width: none;
   margin: var(--space-gutter);
 }
@@ -1247,7 +1247,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   cursor: pointer;
 }
 
-/* The Bikeshed face: a 260 px tree column on parchment, a document column on
+/* The notes face: a 260 px tree column on parchment, a document column on
  * paper with a sticky breadcrumb and the note's links in its footer. No card:
  * the body bleeds and the tree starts at the window edge. */
 
@@ -1278,14 +1278,14 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   cursor: pointer;
 }
 
-.bikeshed {
+.notes {
   display: flex;
   height: calc(100vh - 56px);
   min-height: 380px;
   overflow: hidden;
 }
 
-.bikeshed__tree {
+.notes__tree {
   display: flex;
   box-sizing: border-box;
   flex: 0 0 260px;
@@ -1295,12 +1295,12 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   background: var(--parchment);
 }
 
-.bikeshed__tree > .focus {
+.notes__tree > .focus {
   margin: 10px 0 4px;
   padding: 0 10px;
 }
 
-.bikeshed__document {
+.notes__document {
   display: flex;
   flex: 1 1 auto;
   min-width: 0;
@@ -1309,7 +1309,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   background: var(--paper);
 }
 
-.bikeshed__breadcrumb {
+.notes__breadcrumb {
   position: sticky;
   top: 0;
   z-index: 2;
@@ -1318,7 +1318,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   background: var(--paper);
 }
 
-.bikeshed__breadcrumb-inner {
+.notes__breadcrumb-inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1331,7 +1331,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   padding: 0 calc(var(--space-gutter) * 2);
 }
 
-.bikeshed__crumbs {
+.notes__crumbs {
   display: flex;
   align-items: baseline;
   gap: 6px;
@@ -1340,30 +1340,30 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   white-space: nowrap;
 }
 
-.bikeshed__crumb {
+.notes__crumb {
   overflow: hidden;
   color: var(--ink-dim);
   font-size: 12.5px;
   text-overflow: ellipsis;
 }
 
-.bikeshed__crumb--current {
+.notes__crumb--current {
   color: var(--ink);
   font-weight: 600;
 }
 
-.bikeshed__crumb-sep {
+.notes__crumb-sep {
   color: var(--ink-dim);
 }
 
-.bikeshed__breadcrumb-end {
+.notes__breadcrumb-end {
   display: flex;
   flex: none;
   align-items: center;
   gap: 8px;
 }
 
-.bikeshed__page {
+.notes__page {
   display: flex;
   flex: 1 0 auto;
   box-sizing: border-box;
@@ -1377,7 +1377,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 /* The mode control: one button at the breadcrumb's end, on the paper register:
  * a reader reads, a human presses Edit to hold the whole file in a textarea. */
 
-.bikeshed__mode {
+.notes__mode {
   flex: none;
   height: var(--space-control);
   padding: 0 12px;
@@ -1390,11 +1390,11 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   cursor: pointer;
 }
 
-.bikeshed__mode:hover {
+.notes__mode:hover {
   background: var(--sand);
 }
 
-.bikeshed__mode:disabled {
+.notes__mode:disabled {
   color: var(--line);
   cursor: default;
 }
@@ -3023,7 +3023,7 @@ a.menu__option {
 }
 
 /* Notes: an icon and a properties block over the page, a large first title. */
-.bikeshed__page {
+.notes__page {
   max-width: var(--measure);
   margin: 0 auto;
   padding: 32px 40px 80px;
@@ -3058,7 +3058,7 @@ a.menu__option {
 }
 
 
-.bikeshed__tree {
+.notes__tree {
   flex-basis: 280px;
 }
 
@@ -3155,8 +3155,8 @@ a.menu__option {
 .board,
 .board__column,
 .sheet__body,
-.bikeshed__document,
-.bikeshed__tree {
+.notes__document,
+.notes__tree {
   scrollbar-width: thin;
   scrollbar-color: var(--shadow) transparent;
 }
@@ -3465,19 +3465,19 @@ a.menu__option {
 
 
 /* Notes: a sidebar of quiet rows with icons, a page with a large title. */
-.bikeshed__tree {
+.notes__tree {
   flex-basis: 260px;
   padding: 8px 6px;
   border-right: 0;
   background: var(--parchment);
 }
 
-.bikeshed__tree > .focus {
+.notes__tree > .focus {
   margin: 0 0 8px;
   padding: 0 4px;
 }
 
-.bikeshed__tree .focus__all {
+.notes__tree .focus__all {
   height: 28px;
   border-color: transparent;
   background: transparent;
@@ -3564,36 +3564,36 @@ a.menu__option {
   width: 12px;
 }
 
-.bikeshed__breadcrumb {
+.notes__breadcrumb {
   border-bottom: 0;
 }
 
-.bikeshed__breadcrumb-inner {
+.notes__breadcrumb-inner {
   max-width: 900px;
   padding: 0 48px;
 }
 
-.bikeshed__crumb {
+.notes__crumb {
   color: var(--ink-dim);
   font-size: 13.5px;
 }
 
-.bikeshed__crumb--current {
+.notes__crumb--current {
   color: var(--ink);
   font-weight: 500;
 }
 
-.bikeshed__mode {
+.notes__mode {
   padding: 4px 10px;
   border-radius: 6px;
   text-decoration: none;
 }
 
-.bikeshed__mode:hover {
+.notes__mode:hover {
   background: var(--sand);
 }
 
-.bikeshed__page {
+.notes__page {
   max-width: 900px;
   padding: 40px 48px 96px;
 }
@@ -4099,7 +4099,7 @@ a.menu__option {
   display: none;
 }
 
-.bikeshed__document:has(.note-tabs:not([hidden])) .bikeshed__breadcrumb {
+.notes__document:has(.note-tabs:not([hidden])) .notes__breadcrumb {
   top: 36px;
 }
 
@@ -5035,7 +5035,7 @@ a.menu__option {
 }
 
 @media (max-width: 1100px) {
-  .bikeshed {
+  .notes {
     position: relative;
   }
 
@@ -5184,7 +5184,7 @@ div.relations__row {
   margin-left: 8px;
 }
 
-.bikeshed__document:has(.graph) .bikeshed__breadcrumb-inner {
+.notes__document:has(.graph) .notes__breadcrumb-inner {
   max-width: none;
   padding: 0 var(--space-gutter);
 }

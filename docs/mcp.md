@@ -350,7 +350,7 @@ Read-only.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `path` | string | yes | the bikeshed-root-relative path |
+| `path` | string | yes | the path relative to the notes root |
 
 #### `note_write`
 
@@ -361,7 +361,7 @@ Writes. Destructive: it removes or overwrites.
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `expectedHash` | string | no | the hash note_read returned; the write is refused if the note changed since. Use "absent" for a note that does not exist yet. Omit to overwrite |
-| `path` | string | yes | the bikeshed-root-relative path |
+| `path` | string | yes | the path relative to the notes root |
 | `text` | string | yes | the note's whole text; a missing text is refused |
 
 #### `note_edit`
@@ -375,7 +375,7 @@ Writes. Destructive: it removes or overwrites.
 | `expectedHash` | string | no | the hash note_read returned; the edit is refused if the note changed since. Omit to edit the note as it is |
 | `newText` | string | yes | the replacement, or the text to append |
 | `oldText` | string | yes | the text to replace; it must occur exactly once in the note, else the edit is refused and nothing changes. Empty appends newText at the end of the note (a note that already ends in newText is left as it is) |
-| `path` | string | yes | the bikeshed-root-relative path |
+| `path` | string | yes | the path relative to the notes root |
 
 #### `note_search`
 
@@ -396,7 +396,7 @@ Read-only.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `path` | string | yes | the bikeshed-root-relative path |
+| `path` | string | yes | the path relative to the notes root |
 
 #### `note_create`
 
@@ -406,7 +406,7 @@ Writes.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `path` | string | yes | the bikeshed-root-relative path |
+| `path` | string | yes | the path relative to the notes root |
 
 #### `note_create_folder`
 
@@ -416,7 +416,7 @@ Writes.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
-| `path` | string | yes | the bikeshed-root-relative path |
+| `path` | string | yes | the path relative to the notes root |
 
 #### `note_move`
 

@@ -41,7 +41,7 @@ pub enum DomainError {
     /// `set` named `--description` and `--append-description` together.
     ConflictingDescriptionEdit,
     /// A stdin body was not UTF-8. A body is text, not a vault path, so this is
-    /// its own failure rather than the bikeshed's I/O one.
+    /// its own failure rather than the notes store's I/O one.
     StandardInputNotUtf8,
     /// `list` was given a filter that is not `open`, `done` or `all`.
     InvalidFilter(String),
@@ -121,12 +121,12 @@ pub enum DomainError {
     /// `--assignee self` / `--origin self` was used and `TANDEM_AGENT` names no
     /// agent.
     AgentNameUnset,
-    /// The bikeshed lock could not be acquired within its bounded retry window.
+    /// The notes lock could not be acquired within its bounded retry window.
     BikeshedLocked,
-    /// The bikeshed itself failed: an unreadable note, a failed rename.
+    /// The notes store itself failed: an unreadable note, a failed rename.
     BikeshedIo(String),
     /// `read` / `delete` / `rename` / `move` / `backlinks` was called with a path
-    /// not present in the bikeshed.
+    /// not present in the notes.
     UnknownNote(String),
     /// A create, rename or move target that already exists. An error, never an
     /// overwrite.
@@ -141,7 +141,7 @@ pub enum DomainError {
     EditAmbiguous { path: String, count: usize },
     /// A targeted edit that would append nothing: both texts empty.
     EditEmpty,
-    /// A name the bikeshed's create/rename rule refuses.
+    /// A name the notes' create/rename rule refuses.
     InvalidName(String),
     /// A folder moved into itself or one of its own descendants.
     MoveCycle { path: String, into: String },
@@ -307,11 +307,11 @@ impl DomainError {
                  name, or pass a name instead of self."
                 .to_string(),
             Self::BikeshedLocked => {
-                "The bikeshed is locked by another process. Please retry.".to_string()
+                "The notes are locked by another process. Please retry.".to_string()
             }
-            Self::BikeshedIo(detail) => format!("Bikeshed error: {detail}. Try again."),
+            Self::BikeshedIo(detail) => format!("Notes error: {detail}. Try again."),
             Self::UnknownNote(path) => format!(
-                "No note at \"{path}\" in the bikeshed. List the bikeshed to see what is there."
+                "No note at \"{path}\". List the notes to see what is there."
             ),
             Self::StaleNote(path) => format!(
                 "The note \"{path}\" changed since you read it, so nothing was written. \
@@ -335,7 +335,7 @@ impl DomainError {
             ),
             Self::MoveCycle { path, into } => {
                 let destination = if into.is_empty() {
-                    "the bikeshed root".to_string()
+                    "the notes root".to_string()
                 } else {
                     format!("\"{into}\"")
                 };

@@ -74,7 +74,7 @@ The `X-Tandem-Agent` header only accepts lowercase letters, digits and hyphens; 
 
 ## Notes
 
-The **bikeshed** is Tandem's notes folder, `~/.tandem/bikeshed/`: plain markdown files you can open in any editor or keep in git. The board shows and edits them, and agents read and write them through the `note_*` MCP tools.
+The **notes** are Tandem's store, in `~/.tandem/bikeshed/`: markdown files you can open in any editor or keep in git. The board shows and edits them, and agents read and write them through the `note_*` MCP tools.
 
 - A **note** is one `.md` file. Its path is its identity.
 - A **wikilink**, `[[name]]`, links one note to another by name, case-insensitively, with an optional `#heading` and `|alias`. A wikilink that matches no note is a **broken link**, and a note no other note links to is an **orphan**. `tandem-cli note links` reports both.

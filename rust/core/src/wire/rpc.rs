@@ -110,7 +110,7 @@ methods! {
     ProjectAdd: "project.add", ProjectAddParams, "project add";
     ProjectRename: "project.rename", ProjectRenameParams, "project rename";
     ProjectDelete: "project.delete", ProjectDeleteParams, "project delete";
-    // The Bikeshed face's reads: the CLI spells no verb for them, and they
+    // The notes face's reads: the CLI spells no verb for them, and they
     // write nothing, so the parity test's empty-verb list names each.
     NoteTree: "note.tree", EmptyParams, "";
     NoteRead: "note.read", NotePathParams, "";
@@ -442,7 +442,7 @@ impl NotePathParams {
     /// The tool input for the note reads and creates that name one path.
     pub fn schema() -> serde_json::Value {
         object_schema(
-            &[("path", string("the bikeshed-root-relative path"))],
+            &[("path", string("the path relative to the notes root"))],
             &["path"],
         )
     }
@@ -453,7 +453,7 @@ impl NoteWriteParams {
     pub fn schema() -> serde_json::Value {
         object_schema(
             &[
-                ("path", string("the bikeshed-root-relative path")),
+                ("path", string("the path relative to the notes root")),
                 (
                     "text",
                     string("the note's whole text; a missing text is refused"),
@@ -498,7 +498,7 @@ impl NoteEditParams {
     pub fn schema() -> serde_json::Value {
         object_schema(
             &[
-                ("path", string("the bikeshed-root-relative path")),
+                ("path", string("the path relative to the notes root")),
                 (
                     "oldText",
                     string(

@@ -1,6 +1,6 @@
 # The store
 
-`~/.tandem/tandem.db` is the store: one SQLite database holding the tickets and their labels, the comment logs and the projects. The server watches it, so the board updates live whenever anything changes it, including an agent. There is no second source of truth and no sidecar file to keep in step; the bikeshed's notes stay plain markdown beside it.
+`~/.tandem/tandem.db` is the store: one SQLite database holding the tickets and their labels, the comment logs and the projects. The server watches it, so the board updates live whenever anything changes it, including an agent. There is no second source of truth and no sidecar file to keep in step; the notes stay plain markdown beside it.
 
 The tickets are rows, in stored order - `tickets.position` **is** the list order, new tickets land on top, and the order is never recomputed from `createdAt`. Each ticket's `label` names one of the `labels` rows, and a null label is the default (ungrouped) area, which always comes first. See [ADR 0031](adr/0031-one-database-the-store.md) for the decision, [ADR 0006](adr/0006-stored-order-and-sections.md) for order and labels, and [ADR 0030](adr/0030-one-entity-the-ticket.md) for the vocabulary.
 
@@ -124,7 +124,7 @@ A home written by the Swift app is not read by this binary. Its `tandem.db` is r
 
 ## The notes
 
-The bikeshed is a wiki, not a log: its pages hold what a project is, how to run it, where things live, what is open now, and the decisions behind it. It does not hold the story of what was tried: git history and the ticket comments are that. See [ADR 0033](adr/0033-wiki-is-documentation.md).
+The notes are a wiki, not a log: their pages hold what a project is, how to run it, where things live, what is open now, and the decisions behind it. It does not hold the story of what was tried: git history and the ticket comments are that. See [ADR 0033](adr/0033-wiki-is-documentation.md).
 
 Notes are markdown files in folders under `~/.tandem/bikeshed/`, linked with `[[wikilinks]]`. You can edit them with any editor: the notes page and the agent's MCP tools read the files as they are on disk. A rename or a move made through Tandem (the notes page, `tandem-cli note rename`, the `note_move` tool) rewrites the wikilinks that pointed at the old path; a rename made in a file manager does not.
 

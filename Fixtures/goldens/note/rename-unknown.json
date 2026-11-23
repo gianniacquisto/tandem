@@ -9,7 +9,7 @@
   ],
   "exit": 1,
   "stderr": [
-    "No note at \"projects/fixture/nope.md\" in the bikeshed. List the bikeshed to see what is there."
+    "No note at \"projects/fixture/nope.md\". List the notes to see what is there."
   ],
   "stdin": "",
   "stdout": [],

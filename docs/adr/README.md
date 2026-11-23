@@ -47,7 +47,7 @@ The status comes from each record's own header and from the "Prior records" list
 | 0012 | [Editor formatting](0012-editor-formatting.md) | Superseded by 0045 | Amended earlier by 0042. |
 | 0013 | [Bikeshed folders](0013-bikeshed-folders.md) | In force | Folders are plain directories. |
 | 0014 | [`doctor`](0014-cli-doctor.md) | In force as amended | Seven checks: home, store, integrity, references, space, versions, bikeshed. Read-only. |
-| 0015 | [Bikeshed, not vault](0015-bikeshed-not-vault.md) | In force | The name of the notes folder. |
+| 0015 | [Bikeshed, not vault](0015-bikeshed-not-vault.md) | Superseded on the word by 0055 | The name of the notes folder. |
 | 0016 | [Note capture](0016-note-capture.md) | Superseded by 0045 | The capture verb and the hidden `.raw/` layer. |
 | 0017 | [The ticket model](0017-the-ticket-model.md) | In force as amended | Amended by 0031, 0041 and 0043. Status is six fixed stages again since 0045. |
 | 0018 | [Rolling store backup](0018-rolling-store-backup.md) | In force, amended by 0031 | The backup is `tandem.db.bak`. |
@@ -88,6 +88,7 @@ The status comes from each record's own header and from the "Prior records" list
 | 0052 | [Members and personal tokens](0052-members-and-personal-tokens.md) | In force | Members (admin or member), personal tokens (`tdm_`, `/mcp` only) and sign-in keys (`tdk_`, `/login` only), stored as digests in schema v14; the actor comes from the credential, and team mode fails closed. Part 2 (CUT-39): one permission function, the last-admin rule, and the append-only access record (schema v15). Supersedes by quotation parts of 0047, 0049 and 0050. |
 | 0053 | [One prefix per project](0053-one-prefix-per-project.md) | In force | The project owns the ref key and the counter (schema v16); a ticket stores its project and never changes it; there is no default area; a label is optional inside one project; retired refs resolve through `ticket_aliases`. Amends 0039 and 0047. |
 | 0054 | [Notes link to projects and labels](0054-notes-link-to-projects-and-labels.md) | In force | Typed wikilinks `[[project:X]]` and `[[label:x]]` resolve against the board; an orphan has no link in or out and is not filed under a project folder; `note_health` reports `unmatchedFolders`; the graph's node and edge types. Amends 0005. |
+| 0055 | [The notes store is called notes](0055-the-notes-store-is-called-notes.md) | In force | Supersedes 0015 on the word: the store is notes, one file is a note; the on-disk paths and Rust names are TAN-862. |
 
 ## Adding a record
 

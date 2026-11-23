@@ -227,7 +227,7 @@ pub fn group(name: &str) -> Option<&'static str> {
             "  tandem-cli project delete --name <name>",
         ),
         "note" => concat!(
-            "tandem-cli note \u{2014} the bikeshed's agent face.",
+            "tandem-cli note: the notes' agent face.",
             "\n",
             "",
             "\n",
@@ -660,7 +660,7 @@ pub fn verb(name: &str) -> Option<&'static str> {
             "\n",
             "rewritten, then the subtree moves in one rename. An empty --into is",
             "\n",
-            "the bikeshed root.",
+            "the notes root.",
         ),
         "note create" => concat!(
             "tandem-cli note create: a new empty note, never an overwrite.",
