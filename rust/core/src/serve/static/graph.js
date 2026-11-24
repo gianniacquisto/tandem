@@ -1747,8 +1747,28 @@
       }
     }
 
+    /* A hidden container has no box to fit: fit once, without animation, on
+       the first non-zero size. */
+    var fitWatch = null;
+    function fitWhenSized() {
+      if (fitWatch || !window.ResizeObserver) {
+        return;
+      }
+      fitWatch = new window.ResizeObserver(function () {
+        if (fitTarget()) {
+          fitWatch.disconnect();
+          fitWatch = null;
+          fit(false);
+        }
+      });
+      fitWatch.observe(svg);
+    }
+
     function show(graph) {
-      showMessage(loading, false);
+      if (fitWatch) {
+        fitWatch.disconnect();
+        fitWatch = null;
+      }
       showMessage(errorBanner, false);
       sim.stop();
       local = null;
@@ -1770,6 +1790,7 @@
         showMessage(capBanner, false);
       }
       if (!nodes.length) {
+        showMessage(loading, false);
         showMessage(empty, true);
         if (controls) {
           controls.hidden = true;
@@ -1793,16 +1814,19 @@
       setEdges();
       sim.load(nodes, edges);
       draw();
-      // The first settle fits twice: once mid-way, once when it rests.
-      fitAt = 0.12;
-      fitOnSettle = true;
+      // The first paint is the final picture: settle off-screen, fit without
+      // animation, then swap the placeholder out in the same step.
+      fitAt = null;
+      fitOnSettle = false;
       sim.alpha = 1;
       sim.alphaTarget = 0;
-      if (reduceMotion()) {
-        sim.settle();
+      sim.settle();
+      if (fitTarget()) {
+        fit(false);
       } else {
-        sim.start();
+        fitWhenSized();
       }
+      showMessage(loading, false);
     }
 
     function load() {
