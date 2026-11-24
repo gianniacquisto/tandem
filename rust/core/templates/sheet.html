@@ -21,7 +21,7 @@
             hx-post="/tickets/{{ id }}" hx-target="#board-root" hx-swap="outerHTML">
         <input type="hidden" name="board_project" value="{{ filters.project }}">
         <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
-        <input type="hidden" name="board_label" value="{{ filters.label }}">
+        {% for label in filters.labels %}<input type="hidden" name="board_label" value="{{ label }}">{% endfor %}
         <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
         <input type="hidden" name="board_text" value="{{ filters.text }}">
       </form>
@@ -67,7 +67,7 @@
               <input type="hidden" name="expected_revision" value="{{ revision }}">
               <input type="hidden" name="board_project" value="{{ filters.project }}">
               <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
-              <input type="hidden" name="board_label" value="{{ filters.label }}">
+              {% for label in filters.labels %}<input type="hidden" name="board_label" value="{{ label }}">{% endfor %}
               <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
               <input type="hidden" name="board_text" value="{{ filters.text }}">
               <select class="sheet__select" name="label" aria-label="Label" data-sheet-label>
@@ -155,7 +155,7 @@
               hx-post="/tickets/{{ id }}/comments" hx-target="#board-root" hx-swap="outerHTML">
           <input type="hidden" name="board_project" value="{{ filters.project }}">
           <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
-          <input type="hidden" name="board_label" value="{{ filters.label }}">
+          {% for label in filters.labels %}<input type="hidden" name="board_label" value="{{ label }}">{% endfor %}
           <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
           <input type="hidden" name="board_text" value="{{ filters.text }}">
           <label class="sheet__addition">

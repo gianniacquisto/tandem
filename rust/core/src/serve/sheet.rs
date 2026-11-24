@@ -203,7 +203,7 @@ fn render_sheet(
         filters: FiltersView {
             project: filters.project.clone(),
             show_all: filters.show_all,
-            label: filters.label.clone(),
+            labels: filters.labels.clone(),
             assignee: filters.assignee.clone(),
             text: filters.text.clone(),
         },
@@ -281,10 +281,10 @@ pub(super) fn encode_component(value: &str) -> String {
 pub(super) async fn ticket_page(
     context: Context,
     Path(id): Path<String>,
-    Query(params): Query<HashMap<String, String>>,
+    Query(pairs): Query<Pairs>,
     headers: HeaderMap,
 ) -> Response {
-    let filters = Filters::parse(&params);
+    let filters = Filters::parse(&pairs);
     sheet_response(&context, &id, &filters, None, None, &headers)
 }
 
@@ -292,12 +292,13 @@ pub(super) async fn save_ticket(
     context: Context,
     Path(id): Path<String>,
     headers: HeaderMap,
-    form: Result<Form<HashMap<String, String>>, FormRejection>,
+    form: Result<Form<Pairs>, FormRejection>,
 ) -> Response {
-    let Some(params) = form_params(form) else {
+    let Ok(Form(pairs)) = form else {
         return bad_request("the form could not be read");
     };
-    let filters = Filters::parse_board_fields(&params);
+    let params = pairs_map(&pairs);
+    let filters = Filters::parse_board_fields(&pairs);
     let expected = match expected_revision(&params) {
         Ok(revision) => revision,
         Err(message) => return bad_request(&message),
@@ -382,12 +383,13 @@ pub(super) async fn add_comment(
     context: Context,
     Path(id): Path<String>,
     headers: HeaderMap,
-    form: Result<Form<HashMap<String, String>>, FormRejection>,
+    form: Result<Form<Pairs>, FormRejection>,
 ) -> Response {
-    let Some(params) = form_params(form) else {
+    let Ok(Form(pairs)) = form else {
         return bad_request("the form could not be read");
     };
-    let filters = Filters::parse_board_fields(&params);
+    let params = pairs_map(&pairs);
+    let filters = Filters::parse_board_fields(&pairs);
     let body = field(&params, "body");
     if body.trim().is_empty() {
         return sheet_response(
@@ -424,12 +426,13 @@ pub(super) async fn move_to_label(
     context: Context,
     Path(id): Path<String>,
     headers: HeaderMap,
-    form: Result<Form<HashMap<String, String>>, FormRejection>,
+    form: Result<Form<Pairs>, FormRejection>,
 ) -> Response {
-    let Some(params) = form_params(form) else {
+    let Ok(Form(pairs)) = form else {
         return bad_request("the form could not be read");
     };
-    let filters = Filters::parse_board_fields(&params);
+    let params = pairs_map(&pairs);
+    let filters = Filters::parse_board_fields(&pairs);
     let expected = match expected_revision(&params) {
         Ok(revision) => revision,
         Err(message) => return bad_request(&message),

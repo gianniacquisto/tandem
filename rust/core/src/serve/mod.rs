@@ -40,9 +40,7 @@ use tokio_stream::wrappers::BroadcastStream;
 
 use crate::domain::markdown::{MarkdownBlock, TicketMarkdown};
 use crate::domain::text::TextMatch;
-use crate::domain::{
-    AddTicket, AssigneeAxis, Board, Edit, LabelAxis, SetFields, Status, Ticket, TicketQuery,
-};
+use crate::domain::{AddTicket, AssigneeAxis, Board, Edit, SetFields, Status, Ticket, TicketQuery};
 use crate::env::Environment;
 use crate::notes::{NodeKind, Notes, NotesNode};
 use crate::store::{Actor, RevisionWatch, Store};
@@ -662,8 +660,9 @@ fn run_watch(store: Store, changes: broadcast::Sender<i64>, stop: Arc<AtomicBool
 struct Filters {
     project: String,
     show_all: bool,
-    /// `""` is any label, `" "` the unnamed default area, anything else a name.
-    label: String,
+    /// The checked labels: none is any label, `" "` the unnamed default area,
+    /// anything else a name. A ticket matches when it carries any of them.
+    labels: Vec<String>,
     /// `""` is any assignee, `" "` the unassigned, anything else a name.
     assignee: String,
     text: String,
@@ -671,7 +670,13 @@ struct Filters {
 }
 
 impl Filters {
-    fn parse(params: &HashMap<String, String>) -> Self {
+    fn parse(pairs: &[(String, String)]) -> Self {
+        // A repeated key keeps its last value, as the map the handlers read did;
+        // only `label` keeps every value.
+        let params: HashMap<&str, &String> = pairs
+            .iter()
+            .map(|(key, value)| (key.as_str(), value))
+            .collect();
         let project = params
             .get("project")
             .map(|value| value.trim().to_string())
@@ -679,17 +684,29 @@ impl Filters {
         let show_all = params
             .get("show_all")
             .is_some_and(|value| !matches!(value.as_str(), "" | "0" | "false"));
-        let label = params.get("label").cloned().unwrap_or_default();
-        let assignee = params.get("assignee").cloned().unwrap_or_default();
-        let text = params.get("text").cloned().unwrap_or_default();
+        let mut labels: Vec<String> = Vec::new();
+        for (key, value) in pairs {
+            // An empty `label=` (an old hidden input) means none.
+            if key == "label" && !value.is_empty() && !labels.contains(value) {
+                labels.push(value.clone());
+            }
+        }
+        let assignee = params
+            .get("assignee")
+            .map(|value| (*value).clone())
+            .unwrap_or_default();
+        let text = params
+            .get("text")
+            .map(|value| (*value).clone())
+            .unwrap_or_default();
         let selected = params
             .get("selected")
             .filter(|value| !value.is_empty())
-            .cloned();
+            .map(|value| (*value).clone());
         Self {
             project,
             show_all,
-            label,
+            labels,
             assignee,
             text,
             selected,
@@ -700,8 +717,8 @@ impl Filters {
     /// a `board_` prefix because the same form carries the ticket's own fields:
     /// its `assignee` and `label` mean the ticket's, and reading them as the
     /// board's would redraw the board behind narrowed to this very ticket.
-    fn parse_board_fields(params: &HashMap<String, String>) -> Self {
-        let board = params
+    fn parse_board_fields(pairs: &[(String, String)]) -> Self {
+        let board: Vec<(String, String)> = pairs
             .iter()
             .filter_map(|(key, value)| {
                 key.strip_prefix("board_")
@@ -711,12 +728,14 @@ impl Filters {
         Self::parse(&board)
     }
 
-    fn label_axis(&self) -> LabelAxis {
-        match self.label.as_str() {
-            "" => LabelAxis::Any,
-            " " => LabelAxis::Unnamed,
-            name => LabelAxis::Named(name.to_string()),
-        }
+    /// Whether a ticket's label passes: any checked label, or no label with
+    /// "No label" checked. Nothing checked passes every ticket.
+    fn label_matches(&self, label: Option<&str>) -> bool {
+        self.labels.is_empty()
+            || self.labels.iter().any(|checked| match label {
+                None => checked == " ",
+                Some(name) => checked == name,
+            })
     }
 
     fn assignee_axis(&self) -> AssigneeAxis {
@@ -740,10 +759,12 @@ impl Filters {
                     String::new()
                 },
             ),
-            ("label", self.label.clone()),
+        ];
+        pairs.extend(self.labels.iter().map(|label| ("label", label.clone())));
+        pairs.extend([
             ("assignee", self.assignee.clone()),
             ("text", self.text.clone()),
-        ];
+        ]);
         if let Some(selected) = &self.selected {
             pairs.push(("selected", selected.clone()));
         }
@@ -759,8 +780,17 @@ impl Filters {
 
 impl Default for Filters {
     fn default() -> Self {
-        Self::parse(&HashMap::new())
+        Self::parse(&[])
     }
+}
+
+/// The key/value pairs of a request, repeats kept, for `Filters` and the
+/// checked labels.
+type Pairs = Vec<(String, String)>;
+
+/// The pairs as one map: a repeated key keeps its last value.
+fn pairs_map(pairs: &[(String, String)]) -> HashMap<String, String> {
+    pairs.iter().cloned().collect()
 }
 
 fn field<'a>(params: &'a HashMap<String, String>, key: &str) -> &'a str {

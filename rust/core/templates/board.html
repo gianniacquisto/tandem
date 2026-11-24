@@ -46,14 +46,17 @@
           <input id="show-all" type="checkbox" name="show_all" value="1"{% if show_all %} checked{% endif %}>
           Show all
         </label>
-        <label class="menu__field">
-          <span class="menu__title">Label</span>
-          <select class="filter" name="label" aria-label="Label">
+        <fieldset class="menu__group">
+          <legend class="menu__title">Label</legend>
+          <div class="menu__list">
             {% for option in label_options %}
-            <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+            <label class="menu__check">
+              <input type="checkbox" name="label" value="{{ option.value }}"{% if option.selected %} checked{% endif %}>
+              <span class="menu__text" title="{{ option.label }}">{{ option.label }}</span>
+            </label>
             {% endfor %}
-          </select>
-        </label>
+          </div>
+        </fieldset>
         <label class="menu__field">
           <span class="menu__title">Assignee</span>
           <select class="filter" name="assignee" aria-label="Assignee">
@@ -72,9 +75,9 @@
       {% if show_all %}
       <li><button type="button" class="chip" data-clear="show_all" aria-label="Remove show all">Show all <span aria-hidden="true">×</span></button></li>
       {% endif %}
-      {% for option in label_options %}{% if option.selected && !option.value.is_empty() %}
-      <li><button type="button" class="chip" data-clear="label" aria-label="Remove label filter {{ option.label }}">{{ option.label }} <span aria-hidden="true">×</span></button></li>
-      {% endif %}{% endfor %}
+      {% if let Some(chip) = label_chip %}
+      <li><button type="button" class="chip" data-clear="label" aria-label="{{ chip.aria }}">{{ chip.text }} <span aria-hidden="true">×</span></button></li>
+      {% endif %}
       {% for option in assignee_options %}{% if option.selected && !option.value.is_empty() %}
       <li><button type="button" class="chip" data-clear="assignee" aria-label="Remove assignee filter {{ option.label }}">{{ option.label }} <span aria-hidden="true">×</span></button></li>
       {% endif %}{% endfor %}
@@ -89,7 +92,7 @@
             hx-target="#board-root" hx-swap="outerHTML">
         <input type="hidden" name="project" value="{{ form.project }}">
         <input type="hidden" name="show_all" value="{% if form.show_all %}1{% endif %}">
-        <input type="hidden" name="label" value="{{ form.label }}">
+        {% for label in form.labels %}<input type="hidden" name="label" value="{{ label }}">{% endfor %}
         <input type="hidden" name="assignee" value="{{ form.assignee }}">
         <input type="hidden" name="text" value="{{ form.text }}">
         <input class="label-form__name" name="name" aria-label="New label name" placeholder="Label name" required>
@@ -101,7 +104,7 @@
             hx-post="/labels/{{ label.encoded }}/rename" hx-target="#board-root" hx-swap="outerHTML">
         <input type="hidden" name="project" value="{{ form.project }}">
         <input type="hidden" name="show_all" value="{% if form.show_all %}1{% endif %}">
-        <input type="hidden" name="label" value="{{ form.label }}">
+        {% for label in form.labels %}<input type="hidden" name="label" value="{{ label }}">{% endfor %}
         <input type="hidden" name="assignee" value="{{ form.assignee }}">
         <input type="hidden" name="text" value="{{ form.text }}">
         <input class="label-form__name" name="to" aria-label="Name of label {{ label.name }}" value="{{ label.name }}">
@@ -121,7 +124,7 @@
         <input type="hidden" name="expected_revision" value="{{ revision }}">
         <input type="hidden" name="project" value="{{ form.project }}">
         <input type="hidden" name="show_all" value="{% if form.show_all %}1{% endif %}">
-        <input type="hidden" name="label" value="{{ form.label }}">
+        {% for label in form.labels %}<input type="hidden" name="label" value="{{ label }}">{% endfor %}
         <input type="hidden" name="assignee" value="{{ form.assignee }}">
         <input type="hidden" name="text" value="{{ form.text }}">
         <input class="new-form__title" name="title" placeholder="Ticket title" aria-label="Ticket title" required{% if no_projects %} disabled{% endif %}>
