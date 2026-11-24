@@ -2386,6 +2386,59 @@
   }, true);
 })();
 
+// MARK: - Popover menus
+//
+// The board and notes popovers are `<details>` elements that nothing closes but
+// their own summary (TAN-868). One document-level listener per event serves
+// every menu, so an htmx swap needs no re-binding. Disclosures such as
+// `relations__section`, `gctl` and `tree__create` are not menus and stay out.
+(function () {
+  var MENU_SELECTOR = 'details.menu, details.row-menu';
+
+  function openMenus() {
+    return document.querySelectorAll(MENU_SELECTOR.split(', ').map(function (part) { return part + '[open]'; }).join(', '));
+  }
+
+  // Escape closes the innermost open menu, puts focus back on its summary and
+  // stops there, so a sheet or drawer under it does not also close.
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape' || event.isComposing || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    var open = openMenus();
+    if (!open.length) return;
+    var menu = open[open.length - 1];
+    var active = document.activeElement;
+    for (var i = 0; i < open.length; i += 1) {
+      if (active && open[i].contains(active)) menu = open[i];
+    }
+    for (var j = 0; j < open.length; j += 1) open[j].open = false;
+    var summary = menu.querySelector('summary');
+    if (summary) summary.focus();
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+
+  // A pointer outside an open menu closes it. The click still lands and focus
+  // stays where the human put it. `contains` is read now: a swap may remove
+  // the target later.
+  document.addEventListener('pointerdown', function (event) {
+    var open = openMenus();
+    for (var i = 0; i < open.length; i += 1) {
+      if (!open[i].contains(event.target)) open[i].open = false;
+    }
+  }, true);
+
+  // One at a time: opening a menu closes the others. toggle does not bubble,
+  // so this listens in the capture phase.
+  document.addEventListener('toggle', function (event) {
+    var details = event.target;
+    if (!details.matches || !details.matches(MENU_SELECTOR) || !details.open) return;
+    var open = openMenus();
+    for (var i = 0; i < open.length; i += 1) {
+      if (open[i] !== details) open[i].open = false;
+    }
+  }, true);
+})();
+
 // MARK: - Tabs for the open notes on the notes face
 //
 // The server keeps the list and draws the strip (`notes.html`, TAN-887): the
