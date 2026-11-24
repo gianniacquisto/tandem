@@ -9737,6 +9737,54 @@ async fn the_shell_names_the_ui_cookie_prefix_on_the_html_element() {
 }
 
 #[tokio::test]
+async fn the_relations_cookie_draws_the_pane_and_its_sections_on_the_first_paint() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("ui-cookie-relations");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    let notes = vault(&store);
+    notes.create("Index.md").expect("the note is created");
+    notes.create("Other.md").expect("the note is created");
+    notes
+        .write("Other.md", "See [[Index]]", None)
+        .expect("the note is written");
+    let app = router(context(store));
+    let uri = "/notes?path=Index.md";
+
+    // No cookie: today's page, the pane open and Backlinks open (one links here).
+    let (_, _, body) = send(&app, notes_get_with_cookie(uri, "", false)).await;
+    assert!(!body.contains("relations--shut"), "no cookie, open pane");
+    assert!(body.contains("data-section=\"backlinks\" open>"), "{body}");
+    assert!(body.contains("aria-expanded=\"true\">Relations"), "{body}");
+
+    // Stored shut: the wide pane is hidden by class and the toggle says so.
+    let shut = "tandem_7700_relations=%7B%22open%22%3Afalse%7D";
+    let (_, _, body) = send(&app, notes_get_with_cookie(uri, shut, false)).await;
+    assert!(body.contains("relations--shut"), "{body}");
+    assert!(body.contains("aria-expanded=\"false\">Relations"), "{body}");
+
+    // A stored section shut: Backlinks loses `open`, the pane stays open.
+    let section = "tandem_7700_relations=%7B%22sections%22%3A%7B%22backlinks%22%3Afalse%7D%7D";
+    let (_, _, body) = send(&app, notes_get_with_cookie(uri, section, false)).await;
+    assert!(!body.contains("relations--shut"));
+    assert!(body.contains("data-section=\"backlinks\">"), "{body}");
+
+    // A damaged cookie reads as absent: the first-visit page.
+    let damaged = "tandem_7700_relations=%7Bnot-json";
+    let (_, _, body) = send(&app, notes_get_with_cookie(uri, damaged, false)).await;
+    assert!(!body.contains("relations--shut"), "damaged reads as absent");
+    assert!(body.contains("data-section=\"backlinks\" open>"), "{body}");
+
+    // Another port's cookie is not this serve's.
+    let other_port = "tandem_9999_relations=%7B%22open%22%3Afalse%7D";
+    let (_, _, body) = send(&app, notes_get_with_cookie(uri, other_port, false)).await;
+    assert!(
+        !body.contains("relations--shut"),
+        "another port reads as absent"
+    );
+}
+
+#[tokio::test]
 async fn the_tree_cookie_draws_the_folds_on_the_first_paint() {
     let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("ui-cookie-tree");

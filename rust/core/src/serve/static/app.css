@@ -5178,6 +5178,12 @@ a.menu__option {
   .relations__close {
     display: none;
   }
+
+  /* Stored shut (TAN-886): the wide layout hides the pane; the narrow drawer
+   * keeps its own open class and ignores this. */
+  .relations--shut {
+    display: none;
+  }
 }
 
 /* A typed [[project:X]] or [[label:x]] link: a chip with its kind word in the

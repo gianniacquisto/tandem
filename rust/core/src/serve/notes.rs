@@ -248,6 +248,12 @@ struct NotesView {
     label_page: Option<LabelPage>,
     /// Every row the Relations pane lists, for the toggle's count.
     relations_count: usize,
+    /// The pane stored shut (TAN-886): the wide layout hides it, the toggle
+    /// says so; a narrow drawer ignores it and starts shut as before.
+    relations_shut: bool,
+    /// The stored open state of the Backlinks and Tickets sections.
+    backlinks_open: bool,
+    tickets_open: bool,
     recoveries: Vec<String>,
     recovery_count: usize,
     notice: Option<String>,
@@ -598,6 +604,7 @@ fn recoverable_label(recovery: &crate::notes::Recovery) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_notes(
     context: &Context,
     params: &HashMap<String, String>,
@@ -606,6 +613,7 @@ fn render_notes(
     conflict: Option<ConflictView>,
     fold_state: Option<&ui_state::TreeState>,
     tabs_cookie: Option<&ui_state::TabsState>,
+    relations: Option<&ui_state::RelationsState>,
 ) -> Result<NotesView, String> {
     let project = field(params, "project").trim().to_string();
     let show_all = !matches!(field(params, "show_all"), "" | "0" | "false");
@@ -1056,6 +1064,14 @@ fn render_notes(
             .iter()
             .map(|section| section.rows.len())
             .sum::<usize>();
+    // The stored sections (TAN-886) are drawn as the server reads them; a kind
+    // the map does not name keeps the template's default.
+    let relations = relations.cloned().unwrap_or_default();
+    for section in &mut sections {
+        section.open = relations.section_open(section.key, section.open);
+    }
+    let backlinks_open = relations.section_open("backlinks", !backlinks.is_empty());
+    let tickets_open = relations.section_open("tickets", false);
 
     let current_path = note
         .as_ref()
@@ -1141,6 +1157,9 @@ fn render_notes(
             .map_or(String::new(), |found| found.name.clone()),
         label_page,
         relations_count,
+        relations_shut: !relations.open,
+        backlinks_open,
+        tickets_open,
         recovery_count: recoveries.len(),
         recoveries,
         notice,
@@ -1184,6 +1203,8 @@ fn notes_response(
     let tree: Option<ui_state::TreeState> = ui_state::read(headers, &context.ui_cookie(), "tree");
     let stored_tabs: Option<ui_state::TabsState> =
         ui_state::read(headers, &context.ui_cookie(), "tabs");
+    let stored_relations: Option<ui_state::RelationsState> =
+        ui_state::read(headers, &context.ui_cookie(), "relations");
     let view = match render_notes(
         context,
         params,
@@ -1192,6 +1213,7 @@ fn notes_response(
         conflict,
         tree.as_ref(),
         stored_tabs.as_ref(),
+        stored_relations.as_ref(),
     ) {
         Ok(view) => view,
         Err(error) => {

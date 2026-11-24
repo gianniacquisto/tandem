@@ -2188,12 +2188,14 @@
 
 // MARK: - The Relations pane beside a note
 //
-// Open state and each section's state are kept per browser, keyed by section
-// kind and not by note. Wide windows apply the stored (or default) choice;
-// narrow ones start with the drawer closed and open it only on the toggle.
+// The open pane and each section's open state live in the `relations` cookie
+// (TAN-886), which the server reads to draw the first paint; this script only
+// writes it and applies the toggles. Wide windows apply the stored (or default)
+// choice; narrow ones start with the drawer closed and open it only on the
+// toggle, and that choice is not kept.
 (function () {
-  var OPEN_KEY = 'tandem.relations.open';
-  var SECTIONS_KEY = 'tandem.relations.sections';
+  var LEGACY_OPEN = 'tandem.relations.open';
+  var LEGACY_SECTIONS = 'tandem.relations.sections';
   var narrow = window.matchMedia ? window.matchMedia('(max-width: 1100px)') : null;
   var drawerOpen = false;
 
@@ -2201,55 +2203,67 @@
     return !!(narrow && narrow.matches);
   }
 
-  function storedOpen() {
-    try {
-      var value = window.localStorage.getItem(OPEN_KEY);
-      return value === null ? true : value === '1';
-    } catch (error) {
-      return true;
-    }
+  // The stored state: open unless stored shut; a damaged value is the default.
+  function stored() {
+    var state = window.tandem.uiState.read('relations');
+    if (!state || typeof state !== 'object') return { open: true, sections: {} };
+    var sections = state.sections && typeof state.sections === 'object' ? state.sections : {};
+    return { open: state.open !== false, sections: sections };
   }
 
-  function storedSections() {
-    try {
-      var parsed = JSON.parse(window.localStorage.getItem(SECTIONS_KEY) || '{}');
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch (error) {
-      return {};
-    }
+  function saveStored(state) {
+    window.tandem.uiState.write('relations', state);
   }
 
-  function save(key, value) {
+  // The old localStorage choices carry over once, booleans only, then the keys go.
+  function migrateLegacy() {
+    if (window.tandem.uiState.has('relations')) return;
     try {
-      window.localStorage.setItem(key, value);
+      var openRaw = window.localStorage.getItem(LEGACY_OPEN);
+      var sectionsRaw = window.localStorage.getItem(LEGACY_SECTIONS);
+      if (openRaw === null && sectionsRaw === null) return;
+      var parsed = {};
+      try {
+        parsed = JSON.parse(sectionsRaw || '{}') || {};
+      } catch (error) {
+        parsed = {};
+      }
+      var sections = {};
+      Object.keys(parsed).forEach(function (kind) {
+        if (typeof parsed[kind] === 'boolean') sections[kind] = parsed[kind];
+      });
+      saveStored({ open: openRaw !== '0', sections: sections });
+      window.localStorage.removeItem(LEGACY_OPEN);
+      window.localStorage.removeItem(LEGACY_SECTIONS);
     } catch (error) {
-      // Private mode: the choice holds until the next redraw.
+      // Private mode or no storage: the choices start from the default.
     }
   }
 
   function paneOpen() {
-    return isNarrow() ? drawerOpen : storedOpen();
+    return isNarrow() ? drawerOpen : stored().open;
   }
 
+  // Applies the open pane and the toggles' state. The server has already drawn
+  // the sections and the wide pane's shut state, so nothing here reopens them.
   function applyRelations() {
     var pane = document.getElementById('relations');
     if (!pane) return;
     var open = paneOpen();
-    pane.hidden = !isNarrow() && !open;
     pane.classList.toggle('relations--open', open);
+    pane.classList.toggle('relations--shut', !isNarrow() && !open);
     var toggles = document.querySelectorAll('[data-relations-toggle]');
     for (var i = 0; i < toggles.length; i += 1) toggles[i].setAttribute('aria-expanded', open ? 'true' : 'false');
-    var stored = storedSections();
-    var sections = pane.querySelectorAll('details[data-section]');
-    for (var j = 0; j < sections.length; j += 1) {
-      var kind = sections[j].getAttribute('data-section');
-      if (typeof stored[kind] === 'boolean') sections[j].open = stored[kind];
-    }
   }
 
   function setPane(open) {
-    if (isNarrow()) drawerOpen = open;
-    else save(OPEN_KEY, open ? '1' : '0');
+    if (isNarrow()) {
+      drawerOpen = open;
+    } else {
+      var state = stored();
+      state.open = open;
+      saveStored(state);
+    }
     applyRelations();
     if (!open) {
       var toggle = document.querySelector('[data-relations-toggle]');
@@ -2274,15 +2288,18 @@
     if (!details.getAttribute || !details.closest || !details.closest('#relations')) return;
     var kind = details.getAttribute('data-section');
     if (!kind) return;
-    var stored = storedSections();
-    if (stored[kind] === details.open) return;
-    stored[kind] = details.open;
-    save(SECTIONS_KEY, JSON.stringify(stored));
+    var state = stored();
+    if (state.sections[kind] === details.open) return;
+    state.sections[kind] = details.open;
+    saveStored(state);
   }, true);
 
   if (narrow && narrow.addEventListener) narrow.addEventListener('change', applyRelations);
-  document.addEventListener('DOMContentLoaded', applyRelations);
-  document.addEventListener('htmx:afterSettle', applyRelations);
+  document.addEventListener('DOMContentLoaded', function () {
+    migrateLegacy();
+    applyRelations();
+  });
+  document.addEventListener('htmx:afterSwap', applyRelations);
 })();
 
 // MARK: - The board bar's filter chips and the New ticket form

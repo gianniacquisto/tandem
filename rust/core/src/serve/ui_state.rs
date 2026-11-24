@@ -13,7 +13,7 @@
 //! value reads as absent, and a path in it that the vault does not hold is
 //! dropped by the caller matching it against the vault's own rows.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use axum::http::{HeaderMap, HeaderValue, header};
 use serde::{Deserialize, Serialize};
@@ -266,6 +266,39 @@ pub(super) fn fit_tabs(mut open: Vec<String>, active: &str) -> TabsState {
             }
             None => return state,
         }
+    }
+}
+
+/// The `relations` state: `{"open":bool,"sections":{"<kind>":bool}}` (TAN-886).
+/// Absent means today's default: the pane open, each section as the template
+/// draws it. A section kind not in the map keeps the template's default; a
+/// kind the template does not draw is ignored.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub(super) struct RelationsState {
+    #[serde(default = "open_by_default")]
+    pub open: bool,
+    #[serde(default)]
+    pub sections: BTreeMap<String, bool>,
+}
+
+fn open_by_default() -> bool {
+    true
+}
+
+impl Default for RelationsState {
+    fn default() -> Self {
+        Self {
+            open: true,
+            sections: BTreeMap::new(),
+        }
+    }
+}
+
+impl RelationsState {
+    /// The stored open state of a section kind, or `default` when the map
+    /// does not name it.
+    pub(super) fn section_open(&self, kind: &str, default: bool) -> bool {
+        self.sections.get(kind).copied().unwrap_or(default)
     }
 }
 

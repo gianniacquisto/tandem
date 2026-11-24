@@ -217,7 +217,7 @@
           </div>
           {% if note.is_some() || label_page.is_some() %}
           <button class="relations-toggle" type="button" data-relations-toggle
-                  aria-controls="relations" aria-expanded="true">Relations
+                  aria-controls="relations" aria-expanded="{% if relations_shut %}false{% else %}true{% endif %}">Relations
             <span class="relations-toggle__count">{{ relations_count }}</span></button>
           {% endif %}
         </div>
@@ -353,14 +353,14 @@
       {% endif %}
     </div>
     {% if note.is_some() || label_page.is_some() %}
-    <aside class="relations" id="relations" aria-label="Relations" data-relations>
+    <aside class="relations{% if relations_shut %} relations--shut{% endif %}" id="relations" aria-label="Relations" data-relations>
       <header class="relations__head">
         <h2 class="relations__heading">Relations</h2>
         <button class="relations__close" type="button" data-relations-close aria-label="Close relations">&times;</button>
       </header>
       <div class="relations__body">
         {% if note_sections %}
-        <details class="relations__section" data-section="backlinks"{% if !backlinks.is_empty() %} open{% endif %}>
+        <details class="relations__section" data-section="backlinks"{% if backlinks_open %} open{% endif %}>
           <summary class="relations__summary">
             <span class="relations__title">Backlinks</span>
             <span class="relations__count">{{ backlink_count }}</span>
@@ -385,7 +385,7 @@
         {% endif %}
 
         {% if note_sections && !linked.is_empty() %}
-        <details class="relations__section" data-section="tickets">
+        <details class="relations__section" data-section="tickets"{% if tickets_open %} open{% endif %}>
           <summary class="relations__summary">
             <span class="relations__title">Tickets</span>
             <span class="relations__count">{{ linked_count }}</span>
