@@ -114,7 +114,7 @@ fn column_of(body: &str, title: &str) -> Option<&'static str> {
         ("on-hold", "On hold"),
         ("ready", "Ready"),
         ("in-progress", "In progress"),
-        ("in-review", "In Review"),
+        ("in-review", "In review"),
         ("done", "Done"),
     ];
     let mut found = None;
@@ -243,7 +243,7 @@ async fn get_board_renders_six_status_columns_in_order_and_empty_copy() {
         ("on-hold", "On hold"),
         ("ready", "Ready"),
         ("in-progress", "In progress"),
-        ("in-review", "In Review"),
+        ("in-review", "In review"),
         ("done", "Done"),
     ];
     let mut cursor = 0;
