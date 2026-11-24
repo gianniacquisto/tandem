@@ -1331,10 +1331,10 @@ fn a_replaced_store_at_the_same_revision_still_reports_changed() {
     );
 }
 
-// MARK: - Seam 1b: the ticket sheet and the bikeshed notes
+// MARK: - Seam 1b: the ticket sheet and the notes notes
 
-use crate::bikeshed::Bikeshed;
 use crate::domain::{Edit, SetFields};
+use crate::notes::Notes;
 
 fn sheet_get(uri: &str) -> Request<Body> {
     Request::builder()
@@ -1353,8 +1353,8 @@ fn page_get(uri: &str) -> Request<Body> {
         .expect("the request builds")
 }
 
-fn vault(store: &Store) -> Bikeshed {
-    Bikeshed::new(store.home().directory().join("bikeshed"))
+fn vault(store: &Store) -> Notes {
+    Notes::new(store.home().directory().join("notes"))
 }
 
 #[tokio::test]
@@ -5084,7 +5084,7 @@ async fn the_export_route_streams_an_archive_that_imports_into_an_empty_home() {
             .len(),
         board.list(&query).expect("the board lists").len()
     );
-    let note = std::fs::read_to_string(fresh.directory().join("bikeshed/export-probe.md"))
+    let note = std::fs::read_to_string(fresh.directory().join("notes/export-probe.md"))
         .expect("the note is restored");
     assert!(note.contains("A note that travels."));
 }
@@ -5286,7 +5286,7 @@ async fn a_board_write_succeeds_while_an_export_is_streaming() {
             .wrapping_add(1442695040888963407);
         big.push_str(&format!("{seed:016x}"));
     }
-    std::fs::write(store.home().directory().join("bikeshed/big.md"), big)
+    std::fs::write(store.home().directory().join("notes/big.md"), big)
         .expect("the large note is written");
     let app = router(context(store.clone()));
 
@@ -8948,7 +8948,7 @@ async fn the_people_screens_log_no_key_token_or_cookie() {
     }
 }
 
-fn wikilink_vault(notes: &crate::bikeshed::Bikeshed, text: &str) {
+fn wikilink_vault(notes: &crate::notes::Notes, text: &str) {
     for path in ["A.md", "B.md", "x/Dup.md", "y/Dup.md"] {
         notes.create(path).expect("the note is created");
     }
@@ -9069,7 +9069,7 @@ async fn serve_start_creates_the_missing_folders_and_a_label_add_creates_its_own
     let sandbox = Sandbox::new("serve-folders");
     let store = sandbox.store();
     setup_board(&store);
-    let vault = sandbox.root.join("home").join("bikeshed");
+    let vault = sandbox.root.join("home").join("notes");
     assert!(
         !vault.join("projects").exists(),
         "nothing exists before serve starts"
@@ -9399,7 +9399,7 @@ async fn get_notes_with_a_note_renders_the_switch_with_note_pressed_and_a_graph_
 /// The vault the typed-link tests share: the Alpha project with its `alpha`
 /// label folder holding two notes, a project subfolder no label names, a
 /// loose note, and notes that link in.
-fn typed_vault(notes: &crate::bikeshed::Bikeshed) {
+fn typed_vault(notes: &crate::notes::Notes) {
     for path in [
         "projects/Alpha/shared/CLI.md",
         "projects/Alpha/shared/Dist.md",

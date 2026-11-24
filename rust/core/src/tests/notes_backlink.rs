@@ -1,14 +1,14 @@
-//! Ported from `BikeshedBacklinkTests`: one row per linking note with the line
+//! Ported from `NotesBacklinkTests`: one row per linking note with the line
 //! of its first resolving wikilink; self-links included, broken links, code and
 //! embeds contribute nothing; a missing target is `UnknownNote`.
 
-use crate::bikeshed::{Backlink, Bikeshed};
 use crate::domain::error::DomainError;
+use crate::notes::{Backlink, Notes};
 
-use super::bikeshed_support::Vault;
+use super::notes_support::Vault;
 
-fn rows(bikeshed: &Bikeshed, path: &str) -> Vec<Backlink> {
-    bikeshed.backlinks(path).expect("the backlinks read").value
+fn rows(notes: &Notes, path: &str) -> Vec<Backlink> {
+    notes.backlinks(path).expect("the backlinks read").value
 }
 
 #[test]
@@ -16,16 +16,16 @@ fn one_row_per_linking_note_with_the_line_of_the_link() {
     let vault = Vault::new("backlink-basic");
     vault.stage("A.md", "see [[B]] below");
     vault.stage("B.md", "bee");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
     assert_eq!(
-        rows(&bikeshed, "B.md"),
+        rows(&notes, "B.md"),
         vec![Backlink {
             path: "A.md".to_string(),
             line: "see [[B]] below".to_string(),
         }]
     );
-    assert!(rows(&bikeshed, "A.md").is_empty());
+    assert!(rows(&notes, "A.md").is_empty());
 }
 
 #[test]
@@ -33,10 +33,10 @@ fn multiple_links_in_one_note_yield_one_row() {
     let vault = Vault::new("backlink-one-row");
     vault.stage("A.md", "first [[B]]\nsecond [[B]] again");
     vault.stage("B.md", "bee");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
     assert_eq!(
-        rows(&bikeshed, "B.md"),
+        rows(&notes, "B.md"),
         vec![Backlink {
             path: "A.md".to_string(),
             line: "first [[B]]".to_string(),
@@ -53,9 +53,9 @@ fn every_form_that_resolves_produces_a_row() {
     vault.stage("a/aliased.md", "aliased [[B|the bee]]");
     vault.stage("a/fraged.md", "fraged [[B#Top]]");
     vault.stage("a/cased.md", "cased [[b]]");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
-    let found = rows(&bikeshed, "B.md");
+    let found = rows(&notes, "B.md");
     assert_eq!(
         found
             .iter()
@@ -84,7 +84,7 @@ fn self_links_are_included() {
     let vault = Vault::new("backlink-self");
     vault.stage("B.md", "self [[B]] reference");
     assert_eq!(
-        rows(&vault.bikeshed(), "B.md"),
+        rows(&vault.notes(), "B.md"),
         vec![Backlink {
             path: "B.md".to_string(),
             line: "self [[B]] reference".to_string(),
@@ -99,7 +99,7 @@ fn broken_links_contribute_nothing() {
     vault.stage("onlyBroken.md", "[[Missing]] and [[ghost]]");
     vault.stage("mixed.md", "[[Missing]] then [[B]]");
     assert_eq!(
-        rows(&vault.bikeshed(), "B.md"),
+        rows(&vault.notes(), "B.md"),
         vec![Backlink {
             path: "mixed.md".to_string(),
             line: "[[Missing]] then [[B]]".to_string(),
@@ -113,7 +113,7 @@ fn code_and_embeds_are_not_links() {
     vault.stage("B.md", "bee");
     vault.stage("coded.md", "```\n[[B]]\n```");
     vault.stage("embedded.md", "![[B]]");
-    assert!(rows(&vault.bikeshed(), "B.md").is_empty());
+    assert!(rows(&vault.notes(), "B.md").is_empty());
 }
 
 #[test]
@@ -124,7 +124,7 @@ fn rows_are_sorted_by_the_linking_notes_path() {
     vault.stage("a/a.md", "[[B]]");
     vault.stage("m.md", "[[B]]");
     assert_eq!(
-        rows(&vault.bikeshed(), "B.md")
+        rows(&vault.notes(), "B.md")
             .iter()
             .map(|row| row.path.as_str())
             .collect::<Vec<_>>(),
@@ -137,7 +137,7 @@ fn a_missing_target_is_unknown_note() {
     let vault = Vault::new("backlink-missing");
     vault.stage("A.md", "[[B]]");
     assert_eq!(
-        vault.bikeshed().backlinks("B.md").unwrap_err(),
+        vault.notes().backlinks("B.md").unwrap_err(),
         DomainError::UnknownNote("B.md".to_string())
     );
 }
@@ -147,7 +147,7 @@ fn a_folder_target_is_unknown_note() {
     let vault = Vault::new("backlink-folder");
     vault.stage("d/n.md", "x");
     assert_eq!(
-        vault.bikeshed().backlinks("d").unwrap_err(),
+        vault.notes().backlinks("d").unwrap_err(),
         DomainError::UnknownNote("d".to_string())
     );
 }
@@ -156,12 +156,12 @@ fn a_folder_target_is_unknown_note() {
 fn backlinks_are_recomputed_after_note_creation() {
     let vault = Vault::new("backlink-create");
     vault.stage("B.md", "bee");
-    let bikeshed = vault.bikeshed();
-    assert!(rows(&bikeshed, "B.md").is_empty());
+    let notes = vault.notes();
+    assert!(rows(&notes, "B.md").is_empty());
 
-    bikeshed.write("C.md", "new link to [[B]]", None).unwrap();
+    notes.write("C.md", "new link to [[B]]", None).unwrap();
     assert_eq!(
-        rows(&bikeshed, "B.md"),
+        rows(&notes, "B.md"),
         vec![Backlink {
             path: "C.md".to_string(),
             line: "new link to [[B]]".to_string(),
@@ -174,11 +174,11 @@ fn backlinks_are_recomputed_after_note_deletion() {
     let vault = Vault::new("backlink-delete");
     vault.stage("B.md", "bee");
     vault.stage("A.md", "see [[B]]");
-    let bikeshed = vault.bikeshed();
-    assert_eq!(rows(&bikeshed, "B.md").len(), 1);
+    let notes = vault.notes();
+    assert_eq!(rows(&notes, "B.md").len(), 1);
 
-    bikeshed.delete("A.md").unwrap();
-    assert!(rows(&bikeshed, "B.md").is_empty());
+    notes.delete("A.md").unwrap();
+    assert!(rows(&notes, "B.md").is_empty());
 }
 
 #[test]
@@ -186,25 +186,25 @@ fn backlinks_are_recomputed_after_rename() {
     let vault = Vault::new("backlink-rename");
     vault.stage("B.md", "bee");
     vault.stage("A.md", "see [[B]]");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
-    bikeshed.rename("B.md", "C.md").unwrap();
+    notes.rename("B.md", "C.md").unwrap();
 
     assert_eq!(
-        rows(&bikeshed, "C.md"),
+        rows(&notes, "C.md"),
         vec![Backlink {
             path: "A.md".to_string(),
             line: "see [[C]]".to_string(),
         }]
     );
     assert_eq!(
-        bikeshed.backlinks("B.md").unwrap_err(),
+        notes.backlinks("B.md").unwrap_err(),
         DomainError::UnknownNote("B.md".to_string())
     );
 }
 
-fn board() -> crate::bikeshed::BoardNames {
-    use crate::bikeshed::{BoardNames, BoardProject};
+fn board() -> crate::notes::BoardNames {
+    use crate::notes::{BoardNames, BoardProject};
     BoardNames {
         projects: vec![BoardProject {
             name: "Tandem".to_string(),
@@ -213,8 +213,8 @@ fn board() -> crate::bikeshed::BoardNames {
     }
 }
 
-fn typed(bikeshed: &Bikeshed, kind: crate::bikeshed::ConceptKind, name: &str) -> Vec<Backlink> {
-    bikeshed
+fn typed(notes: &Notes, kind: crate::notes::ConceptKind, name: &str) -> Vec<Backlink> {
+    notes
         .typed_backlinks(kind, name, &board())
         .expect("the typed backlinks read")
         .value
@@ -222,7 +222,7 @@ fn typed(bikeshed: &Bikeshed, kind: crate::bikeshed::ConceptKind, name: &str) ->
 
 #[test]
 fn typed_backlinks_list_the_notes_and_lines_for_a_label_and_a_project_ignoring_case() {
-    use crate::bikeshed::ConceptKind;
+    use crate::notes::ConceptKind;
 
     let vault = Vault::new("backlink-typed");
     vault.stage(
@@ -236,10 +236,10 @@ fn typed_backlinks_list_the_notes_and_lines_for_a_label_and_a_project_ignoring_c
     vault.stage("B.md", "only a project [[project:tandem]]");
     vault.stage("C.md", "broken [[label:nope]] and a plain [[A]]");
     vault.stage("D.md", "```\n[[label:cli]]\n```");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
     assert_eq!(
-        typed(&bikeshed, ConceptKind::Label, "cli"),
+        typed(&notes, ConceptKind::Label, "cli"),
         vec![
             Backlink {
                 path: "A.md".to_string(),
@@ -252,16 +252,16 @@ fn typed_backlinks_list_the_notes_and_lines_for_a_label_and_a_project_ignoring_c
         ]
     );
     assert_eq!(
-        typed(&bikeshed, ConceptKind::Label, "CLI").len(),
+        typed(&notes, ConceptKind::Label, "CLI").len(),
         2,
         "the asked name matches ignoring case"
     );
     assert_eq!(
-        typed(&bikeshed, ConceptKind::Project, "Tandem")
+        typed(&notes, ConceptKind::Project, "Tandem")
             .into_iter()
             .map(|row| row.path)
             .collect::<Vec<_>>(),
         vec!["B.md".to_string(), "daily/2026-11-20.md".to_string()]
     );
-    assert!(typed(&bikeshed, ConceptKind::Label, "nope").is_empty());
+    assert!(typed(&notes, ConceptKind::Label, "nope").is_empty());
 }

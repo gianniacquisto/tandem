@@ -4,9 +4,9 @@
 use super::board::ProjectOption;
 use super::sheet::sheet_handle;
 use super::*;
-use crate::bikeshed::wikilink::{BoardNames, ConceptKind, LinkResolution, typed_target};
 use crate::domain::DomainError;
 use crate::domain::ticket::Status;
+use crate::notes::wikilink::{BoardNames, ConceptKind, LinkResolution, typed_target};
 
 // MARK: - The notes page
 
@@ -18,11 +18,11 @@ pub(super) async fn note_graph(
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
     let project = field(&params, "project").trim().to_string();
-    let scope = crate::bikeshed::GraphScope {
+    let scope = crate::notes::GraphScope {
         project: Some(project).filter(|project| !project.is_empty()),
     };
     let graph = crate::rpc::vault::try_names(&context.board())
-        .and_then(|names| context.bikeshed().graph(&names, &scope));
+        .and_then(|names| context.notes().graph(&names, &scope));
     let (status, body) = match graph {
         Ok(graph) => (
             StatusCode::OK,
@@ -61,7 +61,7 @@ pub(super) async fn note_targets(context: Context) -> Response {
                 .flat_map(|p| p.labels.iter().map(|l| (l.as_str(), p.name.as_str())))
                 .collect();
             label_rows.sort_by(|a, b| by_name(a.0, b.0));
-            let mut note_rows = context.bikeshed().link_targets();
+            let mut note_rows = context.notes().link_targets();
             note_rows.sort_by(|a, b| by_name(&a.0, &b.0));
             let body = serde_json::json!({
                 "projects": project_rows.iter().map(|name| serde_json::json!({ "name": name })).collect::<Vec<_>>(),
@@ -321,7 +321,7 @@ fn graph_pane(project: &str, show_all: bool) -> GraphPane {
 /// folder its name answers, case-insensitively. No focus, no matching folder
 /// (ambiguous, renamed or absent) draws the whole vault, so a focus never hides
 /// notes.
-fn focus_nodes(nodes: Vec<BikeshedNode>, active: Option<&str>) -> Vec<BikeshedNode> {
+fn focus_nodes(nodes: Vec<NotesNode>, active: Option<&str>) -> Vec<NotesNode> {
     let Some(active) = active.filter(|active| !active.trim().is_empty()) else {
         return nodes;
     };
@@ -331,7 +331,7 @@ fn focus_nodes(nodes: Vec<BikeshedNode>, active: Option<&str>) -> Vec<BikeshedNo
         if node.kind != NodeKind::Folder || node.path != "projects" {
             continue;
         }
-        let narrowed: Vec<BikeshedNode> = node
+        let narrowed: Vec<NotesNode> = node
             .children
             .iter()
             .filter(|child| child.kind == NodeKind::Folder && child.name.to_lowercase() == wanted)
@@ -344,7 +344,7 @@ fn focus_nodes(nodes: Vec<BikeshedNode>, active: Option<&str>) -> Vec<BikeshedNo
     out
 }
 
-fn note_paths(nodes: &[BikeshedNode], out: &mut Vec<String>) {
+fn note_paths(nodes: &[NotesNode], out: &mut Vec<String>) {
     for node in nodes {
         if node.kind == NodeKind::Folder {
             note_paths(&node.children, out);
@@ -389,7 +389,7 @@ fn tree_tag(path: &str, names: &BoardNames) -> (&'static str, bool) {
 }
 
 fn flatten_tree(
-    nodes: &[BikeshedNode],
+    nodes: &[NotesNode],
     depth: usize,
     names: &BoardNames,
     rows: &mut Vec<TreeRowView>,
@@ -448,7 +448,7 @@ fn resolve_concept(names: &BoardNames, kind: &str, name: &str) -> Option<Concept
 }
 
 /// The direct child folder whose name matches `name` ignoring case.
-fn child_folder<'a>(nodes: &'a [BikeshedNode], name: &str) -> Option<&'a BikeshedNode> {
+fn child_folder<'a>(nodes: &'a [NotesNode], name: &str) -> Option<&'a NotesNode> {
     nodes.iter().find(|node| {
         node.kind == NodeKind::Folder && node.name.to_lowercase() == name.to_lowercase()
     })
@@ -456,10 +456,10 @@ fn child_folder<'a>(nodes: &'a [BikeshedNode], name: &str) -> Option<&'a Bikeshe
 
 /// The vault's folder for a project, or for one of its labels.
 fn board_folder<'a>(
-    tree: &'a [BikeshedNode],
+    tree: &'a [NotesNode],
     project: &str,
     label: Option<&str>,
-) -> Option<&'a BikeshedNode> {
+) -> Option<&'a NotesNode> {
     let projects = tree
         .iter()
         .find(|node| node.kind == NodeKind::Folder && node.name.eq_ignore_ascii_case("projects"))?;
@@ -474,8 +474,8 @@ fn board_folder<'a>(
 /// the project, ignoring case. Created on the first visit when there is none.
 /// The path comes from the vault's own tree or from the board's name through
 /// the vault's path guard, never from the query.
-fn entry_note(vault: &crate::bikeshed::Bikeshed, project: &str) -> Result<String, String> {
-    if !crate::bikeshed::health::is_component(project) {
+fn entry_note(vault: &crate::notes::Notes, project: &str) -> Result<String, String> {
+    if !crate::notes::health::is_component(project) {
         return Err(format!(
             "The project {project} has no folder of its own, so it has no entry note."
         ));
@@ -506,7 +506,7 @@ fn count_of(count: usize, one: &str, many: &str) -> String {
     format!("{count} {}", if count == 1 { one } else { many })
 }
 
-fn notes_under(node: &BikeshedNode) -> Vec<String> {
+fn notes_under(node: &NotesNode) -> Vec<String> {
     let mut out = Vec::new();
     note_paths(&node.children, &mut out);
     out
@@ -529,7 +529,7 @@ fn crumbs_of(labels: &[String]) -> Vec<Crumb> {
     crumbs
 }
 
-fn recoverable_label(recovery: &crate::bikeshed::Recovery) -> String {
+fn recoverable_label(recovery: &crate::notes::Recovery) -> String {
     match recovery.file.rsplit_once('/') {
         Some((folder, _)) if !folder.is_empty() => {
             format!("Unsaved draft kept from an interrupted save in {folder}")
@@ -579,7 +579,7 @@ fn render_notes(
         options
     };
 
-    let vault = context.bikeshed();
+    let vault = context.notes();
     let mut render_error = error;
 
     // A project or label page: the board's name decides, never the query.
@@ -1167,7 +1167,7 @@ pub(super) async fn note_open(
     let target = field(&params, "target").to_string();
     let from = field(&params, "from").to_string();
     params.remove("path");
-    match context.bikeshed().resolve(&target) {
+    match context.notes().resolve(&target) {
         LinkResolution::Resolved(path) => {
             params.insert("path".to_string(), path);
             params.insert("mode".to_string(), "edit".to_string());
@@ -1241,7 +1241,7 @@ pub(super) async fn note_save(
     let text = field(&params, "text");
     let baseline = field(&params, "baseline_hash");
     let resolution = field(&params, "resolution");
-    let vault = context.bikeshed();
+    let vault = context.notes();
 
     if resolution == "take_theirs" {
         return notes_response(&context, &params, None, None, None, &headers);
@@ -1317,7 +1317,7 @@ async fn note_create_thing(
         return bad_request("the form could not be read");
     };
     let path = field(&params, "path").to_string();
-    let vault = context.bikeshed();
+    let vault = context.notes();
     let outcome = if folder {
         vault.create_folder(&path)
     } else {
@@ -1402,7 +1402,7 @@ pub(super) async fn note_daily(
         utc_today()
     };
     let path = format!("daily/{date}.md");
-    let vault = context.bikeshed();
+    let vault = context.notes();
     // An existing page is the common case and not an error: open it.
     let opened = match vault.create(&path) {
         Ok(read) => {
@@ -1452,7 +1452,7 @@ pub(super) async fn note_rename(
         params.insert("path".to_string(), field(&params, "open").to_string());
         return notes_response(&context, &params, None, None, None, &headers);
     }
-    match context.bikeshed().rename(&path, &target) {
+    match context.notes().rename(&path, &target) {
         Ok(read) => {
             tracing::info!(
                 actor = ?context.actor.as_str(),
@@ -1515,7 +1515,7 @@ pub(super) async fn note_delete(
     let path = field(&params, "path").to_string();
     let open = field(&params, "open").to_string();
     let mut notice = None;
-    let error = match context.bikeshed().delete(&path) {
+    let error = match context.notes().delete(&path) {
         Ok(read) => {
             tracing::info!(
                 actor = ?context.actor.as_str(),
@@ -1550,7 +1550,7 @@ pub(super) async fn note_restore(
         return bad_request("the form could not be read");
     };
     let trash = field(&params, "trash").to_string();
-    match context.bikeshed().restore(&trash) {
+    match context.notes().restore(&trash) {
         Ok(read) => {
             tracing::info!(
                 actor = ?context.actor.as_str(),
@@ -1587,7 +1587,7 @@ pub(super) async fn note_new(
         return bad_request("the form could not be read");
     };
     let folder = field(&params, "dir").trim().trim_matches('/').to_string();
-    let vault = context.bikeshed();
+    let vault = context.notes();
     let mut created = None;
     for number in 1..100 {
         let name = if number == 1 {
@@ -1639,7 +1639,7 @@ pub(super) async fn note_move(
     };
     let path = field(&params, "path").to_string();
     let into = field(&params, "into").to_string();
-    let vault = context.bikeshed();
+    let vault = context.notes();
     match vault.move_into(&path, &into) {
         Ok(read) => {
             tracing::info!(

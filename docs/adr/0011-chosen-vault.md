@@ -1,6 +1,8 @@
 # The notes vault is a chosen folder: persisted in settings, switched live
 
 > **Status:** Surface retired by 0045. See [the index](README.md).
+>
+> **Paths:** the folder this record calls `bikeshed/` (and `bikeshed.lock`) is `notes/` (and `notes.lock`) since [ADR 0055](0055-the-notes-store-is-called-notes.md); a home from before is moved once on open.
 
 [ADR 0004](0004-vault-protocol.md) fixed the vault as `<home>/bikeshed/` — one folder, right beside the todo store — and the bikeshed spec cut *"Multiple vaults — one fixed folder"* out of scope on purpose. A human already keeps notes in Obsidian vaults, iCloud folders, and Dropbox; Tandem only being useful if the notes live in *its* folder is a real adoption cost. We decided: **the vault is now a folder the human chooses from the app**, persisted so it survives restarts, and **applied live** — no relaunch. The default is unchanged: with no choice made, the vault is still `<home>/bikeshed`. The choice lives in a tiny `<home>/settings.json` (`{"vaultPath": "<absolute path>"}`), sibling of the store and the lockfiles, never inside the vault itself.
 

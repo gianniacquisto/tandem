@@ -257,7 +257,7 @@ jobs:
         # (TAN-252: `board.rs:354` answered `Locked` on #291, #302 and the
         # docs-only #292 with no Rust in the diff), plus PRT-37's
         # `two_writers_on_threads_interleave_without_lost_or_torn_notes` on the
-        # bikeshed's bounded lock. PRT-23 removed the store's sidecar and
+        # notes' bounded lock. PRT-23 removed the store's sidecar and
         # serialized this process's writers on a home-keyed gate; PRT-37 gave
         # the store-level contention cases their own wider window (the
         # production 2 s constants are untouched), and TAN-252 retries the
@@ -272,7 +272,7 @@ jobs:
         run: |
           $cases = @(
             @{ Name = 'concurrent_writers_keep_every_row'; Args = @('-p', 'tandem-core', '--lib', '--', 'store::tests::writes::concurrent_writers_keep_every_row', '--exact') }
-            @{ Name = 'two_writers_on_threads_interleave_without_lost_or_torn_notes'; Args = @('-p', 'tandem-core', '--lib', '--', 'tests::bikeshed_locking::two_writers_on_threads_interleave_without_lost_or_torn_notes', '--exact') }
+            @{ Name = 'two_writers_on_threads_interleave_without_lost_or_torn_notes'; Args = @('-p', 'tandem-core', '--lib', '--', 'tests::notes_locking::two_writers_on_threads_interleave_without_lost_or_torn_notes', '--exact') }
             @{ Name = 'a_concurrent_edit_is_not_reverted_by_another_writers_snapshot'; Args = @('-p', 'tandem-core', '--test', 'board', '--', 'a_concurrent_edit_is_not_reverted_by_another_writers_snapshot', '--exact') }
             @{ Name = 'two_writers_over_one_home_keep_every_row_and_issue_every_ref_once'; Args = @('-p', 'tandem-core', '--test', 'board', '--', 'two_writers_over_one_home_keep_every_row_and_issue_every_ref_once', '--exact') }
           )

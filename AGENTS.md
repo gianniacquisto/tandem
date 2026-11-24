@@ -45,7 +45,7 @@ The prompts under `examples/` are generic: where one says the repo's AGENTS.md n
 - **Release**: follow `docs/releasing.md`. Tag the landed `main` head, push the tag, watch the Release workflow publish, and generate the notes with `Scripts/release-notes.sh vX.Y.Z`. Once the tag is on origin, run `Scripts/pin-plugin.sh X.Y.Z` and land the one-line `.claude-plugin/marketplace.json` change on `main` through a PR, so the Claude Code plugin moves to the release.
 - **Layers**: `rust/core` holds the domain and knows nothing of a UI; `rust/cli` is a face over it; `rust/core/src/serve` is the served HTML face (ADR 0009, ADR 0046).
 - **Store**: `rust/core/src/store/` holds the SQL, and `rust/core/src/store/mod.rs` is its one writer. A change to `rust/core/src/store/schema.rs` lands with its numbered migration step in its own transaction (ADR 0031). The rolling backup `tandem.db.bak` is the only sanctioned copy of the database (ADR 0018).
-- **Input guards**: shell commands are built in `rust/cli/src/main.rs`. A path built from input stays inside the guards in `rust/core/src/bikeshed/` and `rust/core/src/store/locked.rs`.
+- **Input guards**: shell commands are built in `rust/cli/src/main.rs`. A path built from input stays inside the guards in `rust/core/src/notes/` and `rust/core/src/store/locked.rs`.
 - **Docs**: `README.md`, `docs/*.md`, `GLOSSARY.md`, `DESIGN.md`, the `examples/` prompts and skills, and the ADRs in `docs/adr/`.
 
 ## Contributor agreement

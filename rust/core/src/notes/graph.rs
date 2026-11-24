@@ -4,7 +4,7 @@
 //!
 //! One walk of the tree and one read of each note's links, through the same
 //! folder matching, typed-link resolver and orphan rule `note_health` uses. The
-//! bikeshed stays store-free: the board's names come in as a value.
+//! notes stays store-free: the board's names come in as a value.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -12,7 +12,7 @@ use crate::domain::error::{DomainError, DomainResult};
 
 use super::health::{is_orphan, unmatched_folders};
 use super::wikilink::{BoardNames, LinkResolution, link_occurrences};
-use super::{Bikeshed, BikeshedNode, NodeKind};
+use super::{NodeKind, Notes, NotesNode};
 
 /// The most nodes one answer carries.
 pub const GRAPH_CAP: usize = 1000;
@@ -92,7 +92,7 @@ pub struct GraphScope {
     pub project: Option<String>,
 }
 
-impl Bikeshed {
+impl Notes {
     /// `graph(names, scope)`: the vault, or one project's slice of it, capped
     /// at [`GRAPH_CAP`] nodes.
     pub fn graph(&self, names: &BoardNames, scope: &GraphScope) -> DomainResult<NoteGraph> {
@@ -336,8 +336,8 @@ fn scope_ids(
 
 #[allow(clippy::too_many_arguments)]
 fn walk(
-    level: &[BikeshedNode],
-    parent: Option<&BikeshedNode>,
+    level: &[NotesNode],
+    parent: Option<&NotesNode>,
     names: &BoardNames,
     unmatched: &HashMap<String, String>,
     nodes: &mut HashMap<String, NoteGraphNode>,
@@ -413,7 +413,7 @@ fn walk(
 
 /// What a folder is: `projects/<p>` for a board project, `projects/<p>/<l>` for
 /// one of its labels (not the label named like the project), else a folder.
-fn folder_kind(node: &BikeshedNode, names: &BoardNames) -> (GraphNodeKind, String) {
+fn folder_kind(node: &NotesNode, names: &BoardNames) -> (GraphNodeKind, String) {
     let parts: Vec<&str> = node.path.split('/').collect();
     if parts[0].eq_ignore_ascii_case("projects") {
         if parts.len() == 2

@@ -6,10 +6,13 @@
     "fixture"
   ],
   "exit": 0,
-  "stderr": [],
+  "stderr": [
+    "note stats: the `bikeshed` field is deprecated and goes in the next release; read `notes`."
+  ],
   "stdin": "",
   "stdout": {
-    "bikeshed": "<tandem-home>/bikeshed",
+    "bikeshed": "<tandem-home>/notes",
+    "notes": "<tandem-home>/notes",
     "projects": [
       {
         "curatedNotes": 1,

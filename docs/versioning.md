@@ -25,11 +25,16 @@ Tandem moves quickly, and different surfaces carry different promises. A change 
 
 The store's schema only moves forward. A newer binary migrates the store on its first write, keeping the copy from before the migration as the backup, and an older binary then refuses to open it. So an upgrade is one-way unless you restore the backup: see [the store](store.md#upgrading) before downgrading.
 
-An archive made by [`tandem-cli export`](cli.md#export-and-import) can be imported by the same release or a later one.
+An archive made by [`tandem-cli export`](cli.md#export-and-import) can be imported by the same release or a later one, including an archive whose notes sit under the older `bikeshed/` entry name.
 
 ## Deprecated now
 
-Nothing is deprecated at the moment. A deprecation is listed here, with what to use instead and the release that deprecated it, until the release that removes it.
+A deprecation is listed here, with what to use instead and the release that deprecated it, until the release that removes it.
+
+- **The `bikeshed` row of `tandem-cli doctor`** (and of the `doctor_report` tool). Use the `notes` row. Deprecated in the release after v2.9.1; removed in the one after. While it lasts, the row carries the same `ok` as `notes` with `deprecated: renamed to notes.` in front of its `detail`, and the CLI prints one warning on stderr.
+- **The `bikeshed` field of `tandem-cli note stats`.** Use `notes`, which holds the same value. Deprecated in the release after v2.9.1; removed in the one after. The CLI prints one warning on stderr.
+
+The notes folder itself moved, and that has no deprecation window because an older binary cannot be told to follow it: `~/.tandem/bikeshed/` became `~/.tandem/notes/` (and `bikeshed.lock` became `notes.lock`) in the release after v2.9.1. The first Tandem that opens the home renames the folder once, and it refuses, changing nothing, if both folders hold notes. An older binary run afterwards finds no notes until the folder is renamed back by hand. Repoint editors, git repositories and scripts at `~/.tandem/notes/`. Archives made before the move still import, for good: an archive's `bikeshed/` entries land in `notes/`.
 
 ## Known issues
 

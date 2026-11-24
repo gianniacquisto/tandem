@@ -1,10 +1,10 @@
 //! The notes graph read (ADR 0054): typed nodes, `contains` and `links` edges,
 //! the project scope and the node cap, over a staged vault and a `BoardNames`.
 
-use crate::bikeshed::wikilink::{BoardNames, BoardProject};
-use crate::bikeshed::{GraphScope, NoteGraph, NoteGraphNode};
+use crate::notes::wikilink::{BoardNames, BoardProject};
+use crate::notes::{GraphScope, NoteGraph, NoteGraphNode};
 
-use super::bikeshed_support::Vault;
+use super::notes_support::Vault;
 
 fn names() -> BoardNames {
     BoardNames {
@@ -23,14 +23,14 @@ fn names() -> BoardNames {
 
 fn graph(vault: &Vault) -> NoteGraph {
     vault
-        .bikeshed()
+        .notes()
         .graph(&names(), &GraphScope::default())
         .expect("the graph reads")
 }
 
 fn scoped(vault: &Vault, project: &str) -> NoteGraph {
     vault
-        .bikeshed()
+        .notes()
         .graph(
             &names(),
             &GraphScope {
@@ -216,7 +216,7 @@ fn a_project_scope_keeps_its_subtree_and_what_links_into_it() {
 #[test]
 fn an_unknown_project_is_an_error_naming_the_projects() {
     let error = staged()
-        .bikeshed()
+        .notes()
         .graph(
             &names(),
             &GraphScope {
@@ -243,7 +243,7 @@ fn past_the_cap_every_folder_stays_and_notes_go_by_link_degree() {
         vault.stage(&format!("Plain{n}.md"), "# plain");
     }
     let uncapped = vault
-        .bikeshed()
+        .notes()
         .graph(&names(), &GraphScope::default())
         .expect("reads");
     let folders = uncapped
@@ -252,7 +252,7 @@ fn past_the_cap_every_folder_stays_and_notes_go_by_link_degree() {
         .filter(|node| node.kind.word() != "note")
         .count();
     let capped = vault
-        .bikeshed()
+        .notes()
         .graph_capped(&names(), &GraphScope::default(), folders + 2)
         .expect("reads");
     assert_eq!(capped.total, uncapped.total);

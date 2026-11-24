@@ -1,4 +1,4 @@
-//! Ported from `BikeshedCrashRecoveryTests`: a mid-sequence crash leaves no torn
+//! Ported from `NotesCrashRecoveryTests`: a mid-sequence crash leaves no torn
 //! files and at most broken links; re-running the rename self-heals; an orphaned
 //! temp older than 60 s is swept by the next locked operation.
 
@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use crate::domain::error::DomainError;
 
-use super::bikeshed_support::Vault;
+use super::notes_support::Vault;
 
 /// The state a kill between the rewrite pass and the file rename leaves: A.md
 /// already references C.md; B.md is not moved yet.
@@ -19,7 +19,7 @@ fn stage_crashed_rename(vault: &Vault) {
 fn a_crashed_rename_state_has_no_torn_files_and_at_most_broken_links() {
     let vault = Vault::new("crash-state");
     stage_crashed_rename(&vault);
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
     let entries = std::fs::read_dir(vault.dir()).unwrap();
     for entry in entries.flatten() {
@@ -40,15 +40,15 @@ fn a_crashed_rename_state_has_no_torn_files_and_at_most_broken_links() {
     assert_eq!(vault.read("A.md"), "see [[C]]");
 
     assert_eq!(
-        bikeshed.resolve("C"),
-        crate::bikeshed::wikilink::LinkResolution::Broken
+        notes.resolve("C"),
+        crate::notes::wikilink::LinkResolution::Broken
     );
     assert_eq!(
-        bikeshed.resolve("B"),
-        crate::bikeshed::wikilink::LinkResolution::Resolved("B.md".to_string())
+        notes.resolve("B"),
+        crate::notes::wikilink::LinkResolution::Resolved("B.md".to_string())
     );
     assert_eq!(
-        bikeshed.backlinks("C.md").unwrap_err(),
+        notes.backlinks("C.md").unwrap_err(),
         DomainError::UnknownNote("C.md".to_string())
     );
 }
@@ -57,20 +57,20 @@ fn a_crashed_rename_state_has_no_torn_files_and_at_most_broken_links() {
 fn re_running_the_crashed_rename_self_heals() {
     let vault = Vault::new("crash-heal");
     stage_crashed_rename(&vault);
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
-    bikeshed.rename("B.md", "C.md").unwrap();
+    notes.rename("B.md", "C.md").unwrap();
 
     assert_eq!(vault.read("C.md"), "bee");
     assert!(!vault.exists("B.md"));
     assert_eq!(vault.read("A.md"), "see [[C]]");
     assert_eq!(
-        bikeshed.resolve("C"),
-        crate::bikeshed::wikilink::LinkResolution::Resolved("C.md".to_string())
+        notes.resolve("C"),
+        crate::notes::wikilink::LinkResolution::Resolved("C.md".to_string())
     );
     assert_eq!(
-        bikeshed.backlinks("C.md").unwrap().value,
-        vec![crate::bikeshed::Backlink {
+        notes.backlinks("C.md").unwrap().value,
+        vec![crate::notes::Backlink {
             path: "A.md".to_string(),
             line: "see [[C]]".to_string(),
         }]
@@ -80,7 +80,7 @@ fn re_running_the_crashed_rename_self_heals() {
 #[test]
 fn an_orphaned_temp_older_than_60_seconds_is_cleaned_by_the_next_locked_op() {
     let vault = Vault::new("crash-orphan");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
     vault.stage("B.md", "bee");
     vault.stage("A.md", "see [[B]]");
 
@@ -89,7 +89,7 @@ fn an_orphaned_temp_older_than_60_seconds_is_cleaned_by_the_next_locked_op() {
     vault.set_modified(orphan, SystemTime::now() - Duration::from_secs(120));
     assert!(vault.exists(orphan));
 
-    bikeshed.write("A.md", "see [[B]] still", None).unwrap();
+    notes.write("A.md", "see [[B]] still", None).unwrap();
 
     assert!(!vault.exists(orphan));
     assert_eq!(vault.read("A.md"), "see [[B]] still");
@@ -98,22 +98,22 @@ fn an_orphaned_temp_older_than_60_seconds_is_cleaned_by_the_next_locked_op() {
 #[test]
 fn a_recovery_names_the_temp_until_the_next_locked_op_sweeps_it() {
     let vault = Vault::new("crash-recovery");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
     let temp = ".note-crash-0000-0000-0000-000000000001.tmp";
     vault.stage(temp, "partial bytes");
 
-    let recoveries = bikeshed.recoveries();
+    let recoveries = notes.recoveries();
     assert_eq!(recoveries.len(), 1);
     assert_eq!(recoveries[0].file, temp);
     assert_eq!(recoveries[0].bytes, "partial bytes".len() as u64);
 
     // A fresh temp is a writer's, not a crash's: the next locked operation
     // leaves it alone.
-    bikeshed.write("A.md", "x", None).unwrap();
-    assert_eq!(bikeshed.recoveries().len(), 1);
+    notes.write("A.md", "x", None).unwrap();
+    assert_eq!(notes.recoveries().len(), 1);
 
     // Past the sweep's age, the next locked operation takes it.
     vault.set_modified(temp, SystemTime::now() - Duration::from_secs(120));
-    bikeshed.write("A.md", "y", None).unwrap();
-    assert!(bikeshed.recoveries().is_empty());
+    notes.write("A.md", "y", None).unwrap();
+    assert!(notes.recoveries().is_empty());
 }

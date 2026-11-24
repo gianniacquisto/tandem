@@ -169,7 +169,7 @@ pub struct Ticket {
     pub number: Option<i64>,
     /// `KEY-N`, the project's key and this ticket's number. Derived, never stored.
     pub reference: Option<String>,
-    /// A bikeshed-root-relative note path, or `None` for an unlinked ticket.
+    /// A notes-root-relative note path, or `None` for an unlinked ticket.
     pub link: Option<String>,
     /// What this ticket waits on, in the order the edges were set. Derived.
     pub blocked_by: Vec<TicketBlock>,

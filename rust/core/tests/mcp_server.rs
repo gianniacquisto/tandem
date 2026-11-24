@@ -1399,7 +1399,7 @@ fn note_search_does_not_follow_a_link_out_of_the_vault() {
     let outside = sandbox.root().join("outside");
     std::fs::create_dir_all(&outside).unwrap();
     std::fs::write(outside.join("Secret.md"), "Title\nneedle-outside").unwrap();
-    let vault = sandbox.home().directory().join("bikeshed");
+    let vault = sandbox.home().directory().join("notes");
     std::os::unix::fs::symlink(&outside, vault.join("link")).unwrap();
     let (_, found) = result_of(&store, "note_search", json!({"query": "needle-outside"}));
     assert_eq!(found["hits"], json!([]), "{found}");
@@ -1473,7 +1473,7 @@ fn note_edit_refuses_zero_and_two_matches_and_leaves_the_bytes_alone() {
         sandbox.store()
     };
     seed(&store, "Plan.md", "Title\ntodo\ntodo\n");
-    let on_disk = sandbox.home().directory().join("bikeshed").join("Plan.md");
+    let on_disk = sandbox.home().directory().join("notes").join("Plan.md");
     let before = std::fs::read(&on_disk).unwrap();
     for (old, word) in [("absent", "not in"), ("todo", "2 times")] {
         let answer = call(
@@ -1490,4 +1490,72 @@ fn note_edit_refuses_zero_and_two_matches_and_leaves_the_bytes_alone() {
         assert!(words.contains(word), "{words}");
         assert_eq!(std::fs::read(&on_disk).unwrap(), before, "bytes unchanged");
     }
+}
+
+#[test]
+fn a_note_write_on_a_home_that_still_has_bikeshed_lands_in_notes() {
+    let sandbox = Sandbox::new("mcp-notes-migration");
+    let home = sandbox.home();
+    std::fs::create_dir_all(home.legacy_notes_directory()).unwrap();
+    std::fs::write(home.legacy_notes_directory().join("Old.md"), "old\n").unwrap();
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
+
+    let written: Value = serde_json::from_str(&tool_text(
+        &call(
+            &store,
+            &tool_call(
+                1,
+                "note_write",
+                json!({"path": "New.md", "text": "# New\n"}),
+            ),
+        )
+        .expect("the call answers"),
+    ))
+    .expect("the tool result is JSON");
+
+    assert_eq!(written["write"]["path"], "New.md", "{written}");
+    assert!(
+        !home.legacy_notes_directory().exists(),
+        "the older folder moved"
+    );
+    assert_eq!(
+        std::fs::read_to_string(home.notes_directory().join("Old.md")).unwrap(),
+        "old\n"
+    );
+    assert!(home.notes_directory().join("New.md").is_file());
+}
+
+#[test]
+fn a_note_write_with_both_folders_refuses_and_changes_nothing() {
+    let sandbox = Sandbox::new("mcp-notes-clash");
+    let home = sandbox.home();
+    for directory in [home.legacy_notes_directory(), home.notes_directory()] {
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("a.md"), "a\n").unwrap();
+    }
+    let store = {
+        sandbox.board();
+        sandbox.store()
+    };
+
+    let answer = call(
+        &store,
+        &tool_call(
+            1,
+            "note_write",
+            json!({"path": "New.md", "text": "# New\n"}),
+        ),
+    )
+    .expect("the call answers");
+
+    assert_eq!(answer["result"]["isError"], true, "{answer}");
+    let text = answer["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or("");
+    assert!(text.contains("Merge the notes"), "{answer}");
+    assert!(!home.notes_directory().join("New.md").exists());
+    assert!(home.legacy_notes_directory().join("a.md").is_file());
 }

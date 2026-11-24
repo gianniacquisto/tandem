@@ -4,7 +4,8 @@
   ],
   "exit": 1,
   "stderr": [
-    "doctor: bikeshed \u2014 <tandem-home>/bikeshed \u2014 a file, not a folder; pick a folder"
+    "doctor: the `bikeshed` check is deprecated and goes in the next release; read `notes`.",
+    "doctor: notes \u2014 <tandem-home>/notes \u2014 a file, not a folder; pick a folder"
   ],
   "stdin": "",
   "stdout": {
@@ -40,7 +41,12 @@
         "ok": true
       },
       {
-        "detail": "<tandem-home>/bikeshed \u2014 a file, not a folder; pick a folder",
+        "detail": "<tandem-home>/notes \u2014 a file, not a folder; pick a folder",
+        "name": "notes",
+        "ok": false
+      },
+      {
+        "detail": "deprecated: renamed to notes. <tandem-home>/notes \u2014 a file, not a folder; pick a folder",
         "name": "bikeshed",
         "ok": false
       }

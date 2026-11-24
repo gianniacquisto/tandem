@@ -31,7 +31,7 @@ fn fixture_home() -> PathBuf {
         .unwrap_or_else(|| panic!("{} sits two levels below the repo root", manifest.display()));
     let path = root.join("Fixtures").join("port").join("Home");
     assert!(
-        path.join("bikeshed").is_dir(),
+        path.join("notes").is_dir(),
         "the fixture home is committed at Fixtures/port/Home ({})",
         path.display()
     );
@@ -109,15 +109,15 @@ fn report(output: &Output) -> Value {
     value
 }
 
-/// The `home` row, shaped as ADR 0014 pins it, inside the seven-row report.
+/// The `home` row, shaped as ADR 0014 pins it, inside the eight-row report.
 fn home_row(value: &Value) -> &Value {
     let rows = value["checks"]
         .as_array()
         .expect("`checks` is an array of rows");
     assert_eq!(
         rows.len(),
-        7,
-        "the report carries the seven checks: {value}"
+        8,
+        "the report carries the eight checks: {value}"
     );
     let row = rows
         .iter()
@@ -248,9 +248,9 @@ fn a_run_against_the_fixture_home_writes_nothing_there() {
     assert_eq!(reported_home(&value), fixture);
     assert_eq!(fs::read_dir(&fixture).unwrap().count(), before);
     assert_eq!(
-        fs::read_dir(fixture.join("bikeshed")).unwrap().count(),
+        fs::read_dir(fixture.join("notes")).unwrap().count(),
         3,
-        "the fixture bikeshed is untouched"
+        "the fixture notes is untouched"
     );
     assert!(!sandbox.user_home().join(".tandem").exists());
 }

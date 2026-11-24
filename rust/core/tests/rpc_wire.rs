@@ -493,8 +493,8 @@ fn note_health_resolves_typed_links_against_the_boards_names() {
 fn the_note_methods_read_write_move_and_report_the_vault() {
     let sandbox = Sandbox::new("rpc-notes");
     let store = sandbox.store();
-    let bikeshed = sandbox.root().join("home").join("bikeshed");
-    std::fs::create_dir_all(bikeshed.join("projects")).expect("the folder is creatable");
+    let notes = sandbox.root().join("home").join("notes");
+    std::fs::create_dir_all(notes.join("projects")).expect("the folder is creatable");
 
     let wrote = handle(
         &store,
@@ -567,10 +567,9 @@ fn the_note_methods_read_write_move_and_report_the_vault() {
 fn the_note_tree_never_draws_a_hidden_entry() {
     let sandbox = Sandbox::new("rpc-note-hidden");
     let store = sandbox.store();
-    let bikeshed = sandbox.root().join("home").join("bikeshed");
-    std::fs::create_dir_all(bikeshed.join(".raw")).expect("the folder is creatable");
-    std::fs::write(bikeshed.join(".raw").join("capture.md"), "hidden")
-        .expect("the note is written");
+    let notes = sandbox.root().join("home").join("notes");
+    std::fs::create_dir_all(notes.join(".raw")).expect("the folder is creatable");
+    std::fs::write(notes.join(".raw").join("capture.md"), "hidden").expect("the note is written");
 
     let curated = handle(&store, &frame(1, "note.tree", json!({})));
     assert!(
@@ -634,7 +633,7 @@ fn a_note_write_without_text_is_refused_rather_than_emptied() {
 fn note_create_and_create_folder_write_through_the_domain() {
     let sandbox = Sandbox::new("rpc-note-create");
     let store = sandbox.store();
-    let vault = sandbox.root().join("home").join("bikeshed");
+    let vault = sandbox.root().join("home").join("notes");
 
     let created = handle(
         &store,
@@ -813,7 +812,7 @@ fn label_move_reorders_the_declared_labels_over_the_wire() {
 // MARK: - The vault follows the board (TAN-531)
 
 fn vault_dir(sandbox: &Sandbox) -> std::path::PathBuf {
-    sandbox.root().join("home").join("bikeshed")
+    sandbox.root().join("home").join("notes")
 }
 
 fn write_note(store: &tandem_core::store::Store, path: &str, text: &str) {

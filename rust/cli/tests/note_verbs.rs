@@ -21,7 +21,7 @@ impl Sandbox {
         let root =
             std::env::temp_dir().join(format!("tandem-note-verbs-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(root.join("Home").join("bikeshed")).expect("the sandbox is creatable");
+        fs::create_dir_all(root.join("Home").join("notes")).expect("the sandbox is creatable");
         Self { root }
     }
 
@@ -30,7 +30,7 @@ impl Sandbox {
     }
 
     fn vault(&self) -> PathBuf {
-        self.home().join("bikeshed")
+        self.home().join("notes")
     }
 
     fn run(&self, args: &[&str], stdin: Option<&str>) -> Output {
@@ -162,4 +162,119 @@ fn the_group_help_stays_the_swift_capture_and_the_new_verbs_name_themselves() {
 
     let moved = sandbox.run(&["note", "move", "--help"], None);
     assert!(String::from_utf8_lossy(&moved.stdout).contains("tandem-cli note move"));
+}
+
+// MARK: - The one-time move of an older `bikeshed/` folder (ADR 0055)
+
+impl Sandbox {
+    /// A home that an older release left: `bikeshed/` with notes, no `notes/`.
+    fn older(name: &str) -> Self {
+        let sandbox = Self::new(name);
+        fs::remove_dir_all(sandbox.vault()).unwrap();
+        let older = sandbox.home().join("bikeshed");
+        fs::create_dir_all(older.join("projects")).unwrap();
+        fs::write(older.join("Index.md"), "# Index\n").unwrap();
+        fs::write(older.join("projects/p.md"), "# p\n").unwrap();
+        sandbox
+    }
+}
+
+fn names(root: &std::path::Path) -> Vec<String> {
+    let mut found: Vec<String> = fs::read_dir(root)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().to_string())
+        .collect();
+    found.sort();
+    found
+}
+
+#[test]
+fn a_note_verb_moves_an_older_bikeshed_folder_to_notes_once() {
+    let sandbox = Sandbox::older("migrate");
+
+    let first = sandbox.run(&["note", "stats"], None);
+    printed(&first);
+
+    assert_eq!(names(&sandbox.home()), ["notes", "notes.lock"]);
+    assert_eq!(
+        fs::read_to_string(sandbox.vault().join("Index.md")).unwrap(),
+        "# Index\n",
+        "every note still reads"
+    );
+    assert_eq!(
+        fs::read_to_string(sandbox.vault().join("projects/p.md")).unwrap(),
+        "# p\n"
+    );
+
+    let second = sandbox.run(&["note", "stats"], None);
+    printed(&second);
+    assert_eq!(
+        names(&sandbox.home()),
+        ["notes", "notes.lock"],
+        "a second run changes nothing"
+    );
+}
+
+#[test]
+fn an_empty_notes_folder_beside_bikeshed_still_migrates() {
+    let sandbox = Sandbox::older("migrate-empty");
+    fs::create_dir_all(sandbox.vault()).unwrap();
+
+    printed(&sandbox.run(&["note", "stats"], None));
+
+    assert!(!sandbox.home().join("bikeshed").exists());
+    assert!(sandbox.vault().join("Index.md").is_file());
+}
+
+#[test]
+fn both_folders_with_notes_refuse_with_the_error_and_leave_both_trees_alone() {
+    let sandbox = Sandbox::older("migrate-clash");
+    fs::create_dir_all(sandbox.vault()).unwrap();
+    fs::write(sandbox.vault().join("Mine.md"), "mine\n").unwrap();
+
+    let output = sandbox.run(&["note", "stats"], None);
+
+    assert_ne!(output.status.code(), Some(0));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Merge the notes"), "{stderr}");
+    assert!(
+        stderr.contains("bikeshed") && stderr.contains("notes"),
+        "{stderr}"
+    );
+    assert_eq!(names(&sandbox.home()), ["bikeshed", "notes"]);
+    assert_eq!(names(&sandbox.vault()), ["Mine.md"]);
+    assert_eq!(
+        names(&sandbox.home().join("bikeshed")),
+        ["Index.md", "projects"]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_symlinked_bikeshed_is_refused_and_not_followed() {
+    let sandbox = Sandbox::new("migrate-link");
+    let elsewhere = sandbox.root.join("elsewhere");
+    fs::create_dir_all(&elsewhere).unwrap();
+    fs::remove_dir_all(sandbox.vault()).unwrap();
+    std::os::unix::fs::symlink(&elsewhere, sandbox.home().join("bikeshed")).unwrap();
+
+    let output = sandbox.run(&["note", "stats"], None);
+
+    assert_ne!(output.status.code(), Some(0));
+    assert!(sandbox.home().join("bikeshed").is_symlink());
+    assert!(!sandbox.vault().exists());
+    assert!(names(&elsewhere).is_empty());
+}
+
+#[test]
+fn note_stats_carries_the_deprecated_bikeshed_field_and_warns_on_stderr() {
+    let sandbox = Sandbox::new("stats-alias");
+
+    let output = sandbox.run(&["note", "stats"], None);
+    let stats = printed(&output);
+
+    assert_eq!(stats["bikeshed"], stats["notes"]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("deprecated"), "{stderr}");
 }

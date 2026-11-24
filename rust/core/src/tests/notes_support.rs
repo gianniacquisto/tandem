@@ -1,9 +1,9 @@
-//! A throwaway vault for the bikeshed suites: one directory per sandbox under
-//! the temp dir, removed on drop, with the sibling `bikeshed.lock` inside the
+//! A throwaway vault for the notes suites: one directory per sandbox under
+//! the temp dir, removed on drop, with the sibling `notes.lock` inside the
 //! sandbox's own parent so no two suites share a lock.
 //!
 //! Nothing here touches `~/.tandem`. The vault directory is **not** created up
-//! front: a missing bikeshed is a valid empty bikeshed, and several suites rely
+//! front: a missing notes is a valid empty notes, and several suites rely
 //! on that.
 
 use std::fs;
@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
-use crate::bikeshed::Bikeshed;
+use crate::notes::Notes;
 
 static NEXT_SANDBOX: AtomicUsize = AtomicUsize::new(0);
 
@@ -23,16 +23,16 @@ impl Vault {
     pub fn new(name: &str) -> Self {
         let serial = NEXT_SANDBOX.fetch_add(1, Ordering::Relaxed);
         let parent = std::env::temp_dir().join(format!(
-            "tandem-bikeshed-{name}-{}-{serial}",
+            "tandem-notes-{name}-{}-{serial}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&parent);
         Self {
-            root: parent.join("bikeshed"),
+            root: parent.join("notes"),
         }
     }
 
-    /// The vault root (`<parent>/bikeshed`).
+    /// The vault root (`<parent>/notes`).
     pub fn dir(&self) -> &Path {
         &self.root
     }
@@ -42,12 +42,12 @@ impl Vault {
         self.root.parent().expect("the vault has a parent")
     }
 
-    pub fn bikeshed(&self) -> Bikeshed {
-        Bikeshed::new(&self.root)
+    pub fn notes(&self) -> Notes {
+        Notes::new(&self.root)
     }
 
     pub fn lock_path(&self) -> PathBuf {
-        self.parent().join("bikeshed.lock")
+        self.parent().join("notes.lock")
     }
 
     /// Write a file straight to disk, bypassing the core.

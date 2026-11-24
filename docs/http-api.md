@@ -73,7 +73,7 @@ data: 4
 
 ## GET /export
 
-Downloads the whole home (the store and `bikeshed/`) as one `.tar.gz`, the same archive as [`tandem-cli export`](cli.md#export-and-import).
+Downloads the whole home (the store and `notes/`) as one `.tar.gz`, the same archive as [`tandem-cli export`](cli.md#export-and-import).
 
 ```sh
 curl -fsS -H "Authorization: Bearer $TANDEM_TOKEN" -o tandem-home.tar.gz https://board.example.com/export

@@ -30,8 +30,8 @@
 //!   enter it in the same ~2 s window answers "locked", so in-process
 //!   contention is bounded exactly as the engine bounds it across processes.
 //!   The atomic file helper here (temp naming, commit, directory sync, orphan
-//!   sweep) is shared by the rolling backup and by the bikeshed's locked
-//!   writes; the bikeshed's sidecar lock lives in [`crate::bikeshed`].
+//!   sweep) is shared by the rolling backup and by the notes' locked
+//!   writes; the notes' sidecar lock lives in [`crate::notes`].
 
 mod access_record;
 pub(crate) mod board_rows;
@@ -67,7 +67,7 @@ pub use diagnostics::{BackupHealth, Health, Pages, References, StoreInspection};
 #[cfg(test)]
 pub(crate) use export::inspect_with;
 pub use export::{ExportCopy, Inspection, Refusal, inspect_unpacked};
-pub use home::{ENVIRONMENT, Home, HomeSource, user_home};
+pub use home::{ENVIRONMENT, Home, HomeSource, LEGACY_NOTES_FOLDER, NOTES_FOLDER, user_home};
 pub use members::{
     CredentialKind, IssuedCredential, LabelRule, MAX_LABEL_CHARS, MAX_LIVE_TOKENS, Member,
     MemberError, MemberState, PersonSummary, Role, SIGNIN_KEY_PREFIX, TOKEN_PREFIX, TokenError,
@@ -609,7 +609,7 @@ impl Store {
         let _gate = enter_gate(&gate, self.home.directory(), self.gate_timeout)?;
         // A writer killed mid-backup leaves its temp beside the database, and
         // nothing renames it: the sweep under the gate clears it, the same rule
-        // the bikeshed's vault applies to its notes' temps (ADR 0031).
+        // the notes' vault applies to its notes' temps (ADR 0031).
         sweep_orphans(self.home.directory());
         let database = self.database();
         let existed = database.exists();
@@ -785,7 +785,7 @@ impl StoreFile {
 }
 
 /// The store's temp prefix: its own files only, so the sweep cannot touch the
-/// bikeshed's.
+/// notes'.
 const TEMP_PREFIX: &str = ".tandem-";
 
 const TEMP_SUFFIX: &str = ".tmp";

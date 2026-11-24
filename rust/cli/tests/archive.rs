@@ -64,7 +64,7 @@ impl Sandbox {
             );
             assert!(output.status.success(), "{}", text(&output.stderr));
         }
-        let notes = self.home(home).join("bikeshed");
+        let notes = self.home(home).join("notes");
         fs::create_dir_all(&notes).unwrap();
         fs::write(notes.join("Index.md"), "# Index\n").unwrap();
     }
@@ -136,7 +136,7 @@ fn export_writes_the_archive_and_prints_its_path_and_size() {
                 .lines()
                 .map(|line| line.trim_end_matches('/').to_string())
                 .collect();
-            assert_eq!(names, ["tandem.db", "bikeshed/Index.md", "manifest.json"]);
+            assert_eq!(names, ["tandem.db", "notes/Index.md", "manifest.json"]);
         }
     }
 }
@@ -228,7 +228,7 @@ fn import_restores_a_home_and_names_the_next_steps() {
     assert!(stdout.contains("new tokens"), "{stdout}");
     assert_eq!(ticket_count(&sandbox, "target"), 2);
     assert_eq!(
-        fs::read_to_string(sandbox.home("target").join("bikeshed/Index.md")).unwrap(),
+        fs::read_to_string(sandbox.home("target").join("notes/Index.md")).unwrap(),
         "# Index\n"
     );
 }

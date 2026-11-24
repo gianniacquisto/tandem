@@ -744,7 +744,7 @@ impl Board {
         )
     }
 
-    /// `set_link(id, to)`: point a ticket at a bikeshed note, or clear the link.
+    /// `set_link(id, to)`: point a ticket at a notes note, or clear the link.
     /// The link is trimmed; an empty value unlinks. An unchanged link writes
     /// nothing.
     pub fn set_link(&self, handle: &str, to: Option<&str>) -> Result<Ticket, DomainError> {

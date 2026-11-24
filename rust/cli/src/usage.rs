@@ -743,7 +743,7 @@ pub fn verb(name: &str) -> Option<&'static str> {
             "\n",
             "",
             "\n",
-            "Writes tandem.db and bikeshed/ into one .tar.gz, private to you (0600). An",
+            "Writes tandem.db and notes/ into one .tar.gz, private to you (0600). An",
             "\n",
             "existing path is refused, never overwritten; `-` streams to stdout. The",
             "\n",

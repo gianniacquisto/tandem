@@ -4,7 +4,7 @@ Tandem has no configuration file. A run is configured by environment variables a
 
 ## The home
 
-The home holds the store (`tandem.db`), its rolling backup and the notes (`bikeshed/`). Every command resolves it the same way, first match wins:
+The home holds the store (`tandem.db`), its rolling backup and the notes (`notes/`). Every command resolves it the same way, first match wins:
 
 1. The `--home <path>` flag, on any verb.
 2. The `TANDEM_HOME` environment variable, when it is set and not empty.

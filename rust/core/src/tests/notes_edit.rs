@@ -1,10 +1,10 @@
-//! `Bikeshed::edit`: one occurrence replaced under the vault lock, refusals that
+//! `Notes::edit`: one occurrence replaced under the vault lock, refusals that
 //! change nothing, and two edits to one note that both land (MCP-6).
 
 use std::sync::{Arc, Barrier};
 use std::thread;
 
-use super::bikeshed_support::{Vault, sha256};
+use super::notes_support::{Vault, sha256};
 use crate::domain::DomainError;
 
 #[test]
@@ -12,7 +12,7 @@ fn one_match_is_replaced_and_the_record_carries_the_new_hash() {
     let vault = Vault::new("edit-one");
     vault.stage("note.md", "alpha\nbeta\ngamma\n");
     let record = vault
-        .bikeshed()
+        .notes()
         .edit("note.md", "beta", "BETA", None)
         .unwrap()
         .value;
@@ -24,10 +24,10 @@ fn one_match_is_replaced_and_the_record_carries_the_new_hash() {
 fn zero_and_two_matches_are_refused_and_the_bytes_stay() {
     let vault = Vault::new("edit-refuse");
     vault.stage("note.md", "one two two\n");
-    let bikeshed = vault.bikeshed();
-    let none = bikeshed.edit("note.md", "three", "3", None).unwrap_err();
+    let notes = vault.notes();
+    let none = notes.edit("note.md", "three", "3", None).unwrap_err();
     assert_eq!(none, DomainError::EditNoMatch("note.md".to_string()));
-    let many = bikeshed.edit("note.md", "two", "2", None).unwrap_err();
+    let many = notes.edit("note.md", "two", "2", None).unwrap_err();
     assert_eq!(
         many,
         DomainError::EditAmbiguous {
@@ -42,14 +42,14 @@ fn zero_and_two_matches_are_refused_and_the_bytes_stay() {
 fn an_empty_old_text_appends_once() {
     let vault = Vault::new("edit-append");
     vault.stage("note.md", "start\n");
-    let bikeshed = vault.bikeshed();
-    bikeshed.edit("note.md", "", "end\n", None).unwrap();
+    let notes = vault.notes();
+    notes.edit("note.md", "", "end\n", None).unwrap();
     assert_eq!(vault.read("note.md"), "start\nend\n");
-    let again = bikeshed.edit("note.md", "", "end\n", None).unwrap().value;
+    let again = notes.edit("note.md", "", "end\n", None).unwrap().value;
     assert_eq!(vault.read("note.md"), "start\nend\n", "a retry lands once");
     assert_eq!(again.hash, sha256("start\nend\n"));
     assert_eq!(
-        bikeshed.edit("note.md", "", "", None).unwrap_err(),
+        notes.edit("note.md", "", "", None).unwrap_err(),
         DomainError::EditEmpty
     );
 }
@@ -58,15 +58,15 @@ fn an_empty_old_text_appends_once() {
 fn a_stale_hash_a_missing_note_and_an_escape_are_refused() {
     let vault = Vault::new("edit-guards");
     vault.stage("note.md", "text");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
     assert_eq!(
-        bikeshed
+        notes
             .edit("note.md", "text", "new", Some("deadbeef"))
             .unwrap_err(),
         DomainError::StaleNote("note.md".to_string())
     );
-    assert!(bikeshed.edit("missing.md", "a", "b", None).is_err());
-    assert!(bikeshed.edit("../escape.md", "a", "b", None).is_err());
+    assert!(notes.edit("missing.md", "a", "b", None).is_err());
+    assert!(notes.edit("../escape.md", "a", "b", None).is_err());
     assert_eq!(vault.read("note.md"), "text");
 }
 
@@ -75,16 +75,16 @@ fn two_concurrent_edits_to_different_lines_both_land() {
     for round in 0..20 {
         let vault = Vault::new(&format!("edit-race-{round}"));
         vault.stage("note.md", "line one\nline two\n");
-        let bikeshed = Arc::new(vault.bikeshed());
+        let notes = Arc::new(vault.notes());
         let barrier = Arc::new(Barrier::new(2));
         let handles: Vec<_> = [("line one", "FIRST"), ("line two", "SECOND")]
             .into_iter()
             .map(|(old, new)| {
-                let bikeshed = Arc::clone(&bikeshed);
+                let notes = Arc::clone(&notes);
                 let barrier = Arc::clone(&barrier);
                 thread::spawn(move || {
                     barrier.wait();
-                    bikeshed.edit("note.md", old, new, None)
+                    notes.edit("note.md", old, new, None)
                 })
             })
             .collect();

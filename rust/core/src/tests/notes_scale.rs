@@ -1,5 +1,5 @@
-//! Ported from `BikeshedScaleTests`: one generous, non-flaky bound. A full
-//! bikeshed-wide recompute (every note read, scanned, and its wikilinks
+//! Ported from `NotesScaleTests`: one generous, non-flaky bound. A full
+//! notes-wide recompute (every note read, scanned, and its wikilinks
 //! resolved, the heaviest derived operation: `backlinks` over a hub note) over a
 //! synthetic vault of hundreds of notes and ~100 MB completes in seconds.
 //!
@@ -7,7 +7,7 @@
 
 use std::time::Instant;
 
-use super::bikeshed_support::Vault;
+use super::notes_support::Vault;
 
 /// ~0.34 MB of deterministic prose: a heading, bulk paragraphs, and a realistic
 /// link load (~250 wikilinks per note, to the hub and a few siblings) so the scan
@@ -34,7 +34,7 @@ fn synthetic_note(index: usize) -> String {
 #[test]
 fn a_full_recompute_over_about_100_mb_of_hundreds_of_notes_stays_fast() {
     let vault = Vault::new("scale");
-    let bikeshed = vault.bikeshed();
+    let notes = vault.notes();
 
     let note_count = 280;
     let folders = 14;
@@ -51,10 +51,7 @@ fn a_full_recompute_over_about_100_mb_of_hundreds_of_notes_stays_fast() {
     let expected = note_count;
 
     let start = Instant::now();
-    let rows = bikeshed
-        .backlinks("Hub.md")
-        .expect("the recompute runs")
-        .value;
+    let rows = notes.backlinks("Hub.md").expect("the recompute runs").value;
     let elapsed = start.elapsed();
 
     eprintln!(
@@ -65,7 +62,7 @@ fn a_full_recompute_over_about_100_mb_of_hundreds_of_notes_stays_fast() {
     );
     assert!(
         total_bytes >= 90 * 1024 * 1024,
-        "bikeshed smaller than intended: {total_bytes} bytes"
+        "notes smaller than intended: {total_bytes} bytes"
     );
     assert_eq!(rows.len(), expected, "expected {expected} backlink rows");
     assert!(

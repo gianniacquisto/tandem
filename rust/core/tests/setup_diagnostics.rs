@@ -1,5 +1,5 @@
 //! The `doctor` report (ADR 0014), cut to the three checks the board and the
-//! notes store need (ADR 0045): the home, the store and the bikeshed.
+//! notes store need (ADR 0045): the home, the store and the notes.
 //!
 //! The impure gathering is deliberately not tested here: it only reads the
 //! machine. Everything with a decision in it is `report`, which these tests
@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use tandem_core::diagnostics::{self, CHECK_NAMES, Facts, age_text, report};
 use tandem_core::domain::{AddTicket, Board};
+use tandem_core::notes::migrate::Pending;
 use tandem_core::store::{
     BackupHealth, Health, Home, HomeSource, Pages, References, Store, StoreInspection,
 };
@@ -36,9 +37,11 @@ fn facts() -> Facts {
             wal_bytes: 0,
         }),
         binary_version: "1.2.3".to_string(),
-        bikeshed_path: PathBuf::from("/Users/tester/.tandem-dev/bikeshed"),
-        bikeshed_note_count: 4,
-        bikeshed_is_file: false,
+        notes_path: PathBuf::from("/Users/tester/.tandem-dev/notes"),
+        notes_note_count: 4,
+        notes_is_file: false,
+        notes_migration: Pending::Nothing,
+        legacy_notes_path: PathBuf::from("/Users/tester/.tandem-dev/bikeshed"),
     }
 }
 
@@ -83,6 +86,7 @@ fn a_healthy_machine_passes_with_every_check_in_the_pinned_order() {
             "references",
             "space",
             "versions",
+            "notes",
             "bikeshed"
         ]
     );
@@ -96,9 +100,77 @@ fn a_healthy_machine_passes_with_every_check_in_the_pinned_order() {
         "/Users/tester/.tandem-dev/tandem.db \u{2014} v1; 3 open, 2 done; backup 5m old"
     );
     assert_eq!(
-        check(&report, "bikeshed").detail,
-        "/Users/tester/.tandem-dev/bikeshed \u{2014} 4 note(s)"
+        check(&report, "notes").detail,
+        "/Users/tester/.tandem-dev/notes \u{2014} 4 note(s)"
     );
+    let alias = check(&report, "bikeshed");
+    assert!(alias.ok);
+    assert_eq!(
+        alias.detail,
+        "deprecated: renamed to notes. /Users/tester/.tandem-dev/notes \u{2014} 4 note(s)"
+    );
+}
+
+#[test]
+fn a_pending_move_reports_in_the_notes_row_and_stays_green() {
+    let mut facts = facts();
+    facts.notes_migration = Pending::Move;
+    let report = report(&facts);
+    assert!(report.ok);
+    let row = check(&report, "notes");
+    assert!(row.detail.contains("the next tandem run moves it"));
+    assert!(
+        check(&report, "bikeshed")
+            .detail
+            .starts_with("deprecated: renamed to notes. ")
+    );
+}
+
+#[test]
+fn both_folders_with_notes_is_red_in_both_rows_and_says_what_to_do() {
+    let mut facts = facts();
+    facts.notes_migration = Pending::Clash;
+    let report = report(&facts);
+    assert!(!report.ok);
+    let row = check(&report, "notes");
+    assert!(!row.ok);
+    assert!(row.detail.contains("merge the notes"));
+    assert!(!check(&report, "bikeshed").ok);
+}
+
+#[test]
+fn gathering_a_home_that_still_holds_bikeshed_reports_the_pending_move_and_changes_nothing() {
+    let (store, root) = temp_store("pending");
+    let home = store.home().clone();
+    std::fs::create_dir_all(home.legacy_notes_directory()).unwrap();
+    std::fs::write(home.legacy_notes_directory().join("a.md"), "a\n").unwrap();
+
+    let report = report(&diagnostics::gather(&home));
+
+    assert!(report.ok);
+    assert!(check(&report, "notes").detail.contains("1 note(s)"));
+    assert!(
+        home.legacy_notes_directory().is_dir(),
+        "doctor moves nothing"
+    );
+    assert!(!home.notes_directory().exists());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn gathering_both_folders_with_notes_is_red() {
+    let (store, root) = temp_store("clash");
+    let home = store.home().clone();
+    for directory in [home.legacy_notes_directory(), home.notes_directory()] {
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("a.md"), "a\n").unwrap();
+    }
+
+    let report = report(&diagnostics::gather(&home));
+
+    assert!(!report.ok);
+    assert!(!check(&report, "notes").ok);
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]
@@ -166,16 +238,16 @@ fn an_unreadable_store_is_red_and_names_the_recovery() {
 }
 
 #[test]
-fn a_bikeshed_path_that_is_a_file_is_red() {
+fn a_notes_path_that_is_a_file_is_red() {
     let mut facts = facts();
-    facts.bikeshed_is_file = true;
+    facts.notes_is_file = true;
     let report = report(&facts);
     assert!(!report.ok);
-    let row = check(&report, "bikeshed");
+    let row = check(&report, "notes");
     assert!(!row.ok);
     assert_eq!(
         row.detail,
-        "/Users/tester/.tandem-dev/bikeshed \u{2014} a file, not a folder; pick a folder"
+        "/Users/tester/.tandem-dev/notes \u{2014} a file, not a folder; pick a folder"
     );
 }
 
@@ -208,14 +280,14 @@ fn gathering_reads_a_fresh_home_without_creating_it() {
     let home = store.home().clone();
     let facts = diagnostics::gather(&home);
     assert_eq!(facts.store_health, Health::Absent);
-    assert_eq!(facts.bikeshed_note_count, 0);
+    assert_eq!(facts.notes_note_count, 0);
     assert_eq!(facts.home_path, home.directory());
     assert!(!root.exists(), "doctor writes nothing, not even the home");
     let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]
-fn gathering_counts_the_stores_rows_and_the_bikeshed_notes() {
+fn gathering_counts_the_stores_rows_and_the_notes_notes() {
     let (store, root) = temp_store("counts");
     let home = store.home().clone();
     let board = Board::new(store);
@@ -225,28 +297,28 @@ fn gathering_counts_the_stores_rows_and_the_bikeshed_notes() {
     board
         .add("Doctor probe", probe_fields())
         .expect("the ticket is written");
-    std::fs::create_dir_all(home.directory().join("bikeshed")).unwrap();
-    std::fs::write(home.directory().join("bikeshed/note.md"), "a note\n").unwrap();
+    std::fs::create_dir_all(home.directory().join("notes")).unwrap();
+    std::fs::write(home.directory().join("notes/note.md"), "a note\n").unwrap();
 
     let report = report(&diagnostics::gather(&home));
 
     assert!(report.ok);
     assert!(check(&report, "store").detail.contains("1 open, 0 done"));
-    assert!(check(&report, "bikeshed").detail.contains("1 note(s)"));
+    assert!(check(&report, "notes").detail.contains("1 note(s)"));
     let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]
-fn gathering_names_a_bikeshed_path_that_is_a_file() {
-    let (store, root) = temp_store("bikeshed-file");
+fn gathering_names_a_notes_path_that_is_a_file() {
+    let (store, root) = temp_store("notes-file");
     let home = store.home().clone();
     std::fs::create_dir_all(home.directory()).unwrap();
-    std::fs::write(home.directory().join("bikeshed"), "not a folder\n").unwrap();
+    std::fs::write(home.directory().join("notes"), "not a folder\n").unwrap();
 
     let report = report(&diagnostics::gather(&home));
 
     assert!(!report.ok);
-    assert!(!check(&report, "bikeshed").ok);
+    assert!(!check(&report, "notes").ok);
     let _ = std::fs::remove_dir_all(&root);
 }
 

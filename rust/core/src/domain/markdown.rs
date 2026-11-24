@@ -6,7 +6,7 @@
 //! table or rule, and one run per styled span inside them. The source stays the
 //! source: the sheet's `Edit source` shows the exact stored bytes.
 //!
-//! It rides `comrak`, the GFM parser the bikeshed's scanner uses, so the ticket
+//! It rides `comrak`, the GFM parser the notes' scanner uses, so the ticket
 //! faces read the same dialect the editor highlights: tables,
 //! strikethrough and task lists included. The view model is `PartialEq` on purpose:
 //! it is the tests' subject.
@@ -302,7 +302,7 @@ fn collect<'a>(
                     collect(child, styles, Some(&target.url), runs);
                 }
                 // The alt text is the image: the app loads no remote image, and
-                // pictures belong to the bikeshed editor.
+                // pictures belong to the notes editor.
                 NodeValue::Image(_) => {
                     collect(child, styles, None, runs);
                 }

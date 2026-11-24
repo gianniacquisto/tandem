@@ -1,4 +1,4 @@
-//! Where a run keeps its state: the store, the bikeshed, the lock sidecar.
+//! Where a run keeps its state: the store, the notes, the lock sidecar.
 //!
 //! The rule: a run reads and
 //! writes exactly one home, and every path it derives comes from this value.
@@ -11,6 +11,12 @@ use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+
+/// The notes folder's name inside a home.
+pub const NOTES_FOLDER: &str = "notes";
+
+/// The name releases before the rename gave that folder (ADR 0055).
+pub const LEGACY_NOTES_FOLDER: &str = "bikeshed";
 
 /// The one environment variable that overrides the home.
 pub const ENVIRONMENT: &str = "TANDEM_HOME";
@@ -86,11 +92,33 @@ impl Home {
         self.source
     }
 
+    /// The notes folder this home keeps: `<home>/notes`, the one place the
+    /// name is joined (ADR 0055).
+    pub fn notes_directory(&self) -> PathBuf {
+        self.directory.join(NOTES_FOLDER)
+    }
+
+    /// The notes' sidecar lock: `<home>/notes.lock`, beside the folder.
+    pub fn notes_lock(&self) -> PathBuf {
+        self.directory.join(format!("{NOTES_FOLDER}.lock"))
+    }
+
+    /// The folder an older release kept the notes in. Only the one-time
+    /// migration and the importer's old-archive handling read it.
+    pub fn legacy_notes_directory(&self) -> PathBuf {
+        self.directory.join(LEGACY_NOTES_FOLDER)
+    }
+
+    /// The lock an older release kept beside [`Home::legacy_notes_directory`].
+    pub fn legacy_notes_lock(&self) -> PathBuf {
+        self.directory.join(format!("{LEGACY_NOTES_FOLDER}.lock"))
+    }
+
     /// Create the home if this is the first run to reach it.
     ///
     /// Only a verb that writes calls this: `doctor` is read-only (ADR 0014)
     /// and reports the home it resolved without creating it. Nothing inside
-    /// the directory is written here: the store and the bikeshed own their
+    /// the directory is written here: the store and the notes own their
     /// files. An existing home is left untouched, so a read never changes a
     /// mtime.
     pub fn ensure(&self) -> io::Result<()> {

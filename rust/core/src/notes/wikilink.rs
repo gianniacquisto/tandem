@@ -78,7 +78,7 @@ fn present(text: &str) -> Option<String> {
 /// board's names.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkResolution {
-    /// Exactly one note matches; the path is bikeshed-root-relative.
+    /// Exactly one note matches; the path is notes-root-relative.
     Resolved(String),
     /// `[[project:Name]]` named a board project; carries its canonical name.
     Project(String),
@@ -89,7 +89,7 @@ pub enum LinkResolution {
 }
 
 /// The board's names as a plain value (ADR 0054): the projects and each
-/// project's labels. The bikeshed never opens the store; the one join point
+/// project's labels. The notes never opens the store; the one join point
 /// builds this from the board and passes it in.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BoardNames {

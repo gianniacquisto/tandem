@@ -1,6 +1,6 @@
 //! The domain's aggregates: the board's
-//! tickets, labels, comments, order and dependency edge. The bikeshed is
-//! the vault over files, so it lives beside the domain in [`crate::bikeshed`].
+//! tickets, labels, comments, order and dependency edge. The notes is
+//! the vault over files, so it lives beside the domain in [`crate::notes`].
 //!
 //! The domain is pure over the store adapter: no argv, no JSON, no file I/O. It
 //! reads one [`Contents`], changes it, and hands the difference to

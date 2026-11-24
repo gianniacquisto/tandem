@@ -14,7 +14,7 @@
 //!   domain raises is [`domain::error::DomainError`],
 //!   one shape for the CLI to print.
 //!
-//! - [`bikeshed`]: the notes vault, a plain folder of markdown files
+//! - [`notes`]: the notes vault, a plain folder of markdown files
 //!   rather than rows: the tree, the note operations, the wikilink scanner, the
 //!   derived readers (search, backlinks, health, front page, stats) and the
 //!   capture layer. It carries its own locked-write mechanics and no SQL.
@@ -22,15 +22,15 @@
 //! - [`env`]: the run's environment as one injectable value, so a test names a
 //!   throwaway home and a fixture instead of the process's own.
 //!
-//! - [`diagnostics`]: ADR 0014's report, cut to `home`, `store` and `bikeshed`
+//! - [`diagnostics`]: ADR 0014's report, cut to `home`, `store` and `notes`
 //!   (ADR 0045), a pure assembly over injected facts with one impure gatherer.
 
 pub mod archive;
-pub mod bikeshed;
 pub mod diagnostics;
 pub mod domain;
 pub mod env;
 pub mod mcp;
+pub mod notes;
 pub mod permission;
 pub mod rpc;
 pub mod serve;

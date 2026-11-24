@@ -1,7 +1,7 @@
-//! The bikeshed's locked-write mechanics (`LockedDirectoryTests`): the sidecar
+//! The notes' locked-write mechanics (`LockedDirectoryTests`): the sidecar
 //! `flock` with its bounded retry and in-process queue, the atomic temp +
 //! rename commit, the directory fsync, and the orphan sweep. Moved with
-//! `bikeshed/locked.rs` (CUT-9); the store keeps no sidecar of its own.
+//! `notes/locked.rs` (CUT-9); the store keeps no sidecar of its own.
 
 use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
@@ -22,7 +22,7 @@ impl Sandbox {
     fn new(name: &str) -> Self {
         let serial = NEXT_SANDBOX.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
-            "tandem-bikeshed-locked-{name}-{}-{serial}",
+            "tandem-notes-locked-{name}-{}-{serial}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&root);
@@ -52,11 +52,11 @@ fn aged(path: &Path, seconds: u64) {
     file.set_modified(when).expect("the temp's age is set");
 }
 
-fn storage(sandbox: &Sandbox) -> crate::bikeshed::locked::LockedDirectory {
+fn storage(sandbox: &Sandbox) -> crate::notes::locked::LockedDirectory {
     fs::create_dir_all(sandbox.root()).expect("the root is creatable");
-    crate::bikeshed::locked::LockedDirectory::for_bikeshed(
+    crate::notes::locked::LockedDirectory::for_notes(
         sandbox.root().to_path_buf(),
-        sandbox.root().join("bikeshed.lock"),
+        sandbox.root().join("notes.lock"),
     )
 }
 
@@ -119,7 +119,7 @@ fn orphan_sweep_removes_stale_temps_and_keeps_fresh_ones() {
 fn the_orphan_sweep_walks_subdirectories() {
     let sandbox = Sandbox::new("orphans-nested");
     let storage = storage(&sandbox);
-    let nested = sandbox.root().join("bikeshed").join(".note-old.tmp");
+    let nested = sandbox.root().join("notes").join(".note-old.tmp");
     fs::create_dir_all(nested.parent().unwrap()).unwrap();
     fs::write(&nested, b"stale").unwrap();
     aged(&nested, 120);
@@ -136,7 +136,7 @@ fn the_orphan_sweep_walks_subdirectories() {
 fn lock_holds_the_exclusive_lock_for_the_guard() {
     let sandbox = Sandbox::new("excludes");
     let storage = storage(&sandbox);
-    let lock = sandbox.root().join("bikeshed.lock");
+    let lock = sandbox.root().join("notes.lock");
 
     let guard = storage.lock().expect("the lock is taken");
     let held = OpenOptions::new()
@@ -167,7 +167,7 @@ fn lock_holds_the_exclusive_lock_for_the_guard() {
 fn a_held_lock_times_out_as_locked() {
     let sandbox = Sandbox::new("timeout");
     let storage = storage(&sandbox);
-    let lock = sandbox.root().join("bikeshed.lock");
+    let lock = sandbox.root().join("notes.lock");
     let held = OpenOptions::new()
         .read(true)
         .write(true)
@@ -223,14 +223,14 @@ fn a_nested_acquisition_answers_locked_at_the_window_instead_of_hanging() {
     });
 
     let (locked, elapsed) = waiting
-        .recv_timeout(crate::bikeshed::locked::LOCK_TIMEOUT * 3)
+        .recv_timeout(crate::notes::locked::LOCK_TIMEOUT * 3)
         .expect("a nested acquisition answers at the window, it does not hang");
     assert!(
         locked,
         "a nested acquisition answers Locked, not Ok: it took {elapsed:?}"
     );
     assert!(
-        elapsed >= crate::bikeshed::locked::LOCK_TIMEOUT,
+        elapsed >= crate::notes::locked::LOCK_TIMEOUT,
         "the nested acquisition answered before the window: {elapsed:?}"
     );
 }
@@ -246,19 +246,18 @@ fn two_spellings_of_one_home_share_one_queue() {
 
     let sandbox = Sandbox::new("spellings");
     let root = sandbox.root();
-    let plain = root.join("bikeshed.lock");
-    let dotted = root.join(".").join("bikeshed.lock");
+    let plain = root.join("notes.lock");
+    let dotted = root.join(".").join("notes.lock");
     assert_eq!(
-        crate::bikeshed::locked::queue_key(&plain).expect("the plain spelling canonicalizes"),
-        crate::bikeshed::locked::queue_key(&dotted).expect("the dotted spelling canonicalizes"),
+        crate::notes::locked::queue_key(&plain).expect("the plain spelling canonicalizes"),
+        crate::notes::locked::queue_key(&dotted).expect("the dotted spelling canonicalizes"),
         "two spellings of one lock file must key one queue"
     );
 
     // And they exclude each other: the dotted spelling waits out a holder
     // on the plain one instead of taking a second lock.
-    let holder = crate::bikeshed::locked::LockedDirectory::new(plain, ".note-", root.to_path_buf());
-    let waiter =
-        crate::bikeshed::locked::LockedDirectory::new(dotted, ".note-", root.to_path_buf());
+    let holder = crate::notes::locked::LockedDirectory::new(plain, ".note-", root.to_path_buf());
+    let waiter = crate::notes::locked::LockedDirectory::new(dotted, ".note-", root.to_path_buf());
     let holding = Arc::new(Barrier::new(2));
     let held_for = Duration::from_millis(300);
     // The holder stamps the moment it takes the lock, so the waiter is timed
@@ -301,12 +300,12 @@ fn two_spellings_of_one_home_share_one_queue() {
 fn waiters_are_served_in_arrival_order() {
     let sandbox = Sandbox::new("order");
     let storage = storage(&sandbox);
-    let key = crate::bikeshed::locked::queue_key(&sandbox.root().join("bikeshed.lock"))
+    let key = crate::notes::locked::queue_key(&sandbox.root().join("notes.lock"))
         .expect("the sandbox root canonicalizes");
 
     let held = storage.lock().expect("the holder takes the lock");
     // The holder's own ticket is taken; every later arrival adds one.
-    let holder_ticket = crate::bikeshed::locked::queued(&key);
+    let holder_ticket = crate::notes::locked::queued(&key);
     let (served, order) = std::sync::mpsc::channel();
     let mut waiters = Vec::new();
     for name in ["first", "second"] {
@@ -319,9 +318,9 @@ fn waiters_are_served_in_arrival_order() {
         // Wait until this waiter has taken its ticket: that is its arrival,
         // and it is what the queue orders on. A sleep would assume the
         // thread ran; the count is the synchronization point.
-        let deadline = Instant::now() + crate::bikeshed::locked::LOCK_TIMEOUT;
+        let deadline = Instant::now() + crate::notes::locked::LOCK_TIMEOUT;
         let wanted = holder_ticket + waiters.len() as u64;
-        while crate::bikeshed::locked::queued(&key) < wanted {
+        while crate::notes::locked::queued(&key) < wanted {
             assert!(
                 Instant::now() < deadline,
                 "waiter {} did not take a queue ticket; the queue is bypassed",
@@ -335,7 +334,7 @@ fn waiters_are_served_in_arrival_order() {
     let arrivals: Vec<&str> = (0..2)
         .map(|_| {
             order
-                .recv_timeout(crate::bikeshed::locked::LOCK_TIMEOUT * 3)
+                .recv_timeout(crate::notes::locked::LOCK_TIMEOUT * 3)
                 .expect("both waiters report")
         })
         .collect();
@@ -356,9 +355,9 @@ fn waiters_are_served_in_arrival_order() {
 #[test]
 fn a_directory_that_cannot_canonicalize_is_refused() {
     let sandbox = Sandbox::new("uncanonical");
-    let missing = sandbox.root().join("missing").join("bikeshed.lock");
+    let missing = sandbox.root().join("missing").join("notes.lock");
 
-    let outcome = crate::bikeshed::locked::queue_key(&missing);
+    let outcome = crate::notes::locked::queue_key(&missing);
 
     assert!(
         matches!(&outcome, Err(StoreError::Io(_))),
