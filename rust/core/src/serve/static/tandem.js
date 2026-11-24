@@ -1938,6 +1938,31 @@
     }
   });
 
+  // Enter in a note's title asks for the caret at the start of the body once the
+  // rename swap has run. One-shot: every other path clears it (TAN-869).
+  var enterToBody = false;
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter' || event.isComposing) return;
+    var field = event.target && event.target.closest ? event.target.closest('.page-title') : null;
+    if (field && field.closest('#notes-root') && !field.classList.contains('page-title--static')) {
+      enterToBody = true;
+    }
+  });
+
+  document.addEventListener('htmx:responseError', function () { enterToBody = false; });
+
+  function focusBody() {
+    if (!enterToBody) return;
+    enterToBody = false;
+    var root = document.querySelector('#notes-root [data-live][data-live-ready]');
+    if (!root) return;
+    var instance = null;
+    for (var i = 0; i < lives.length; i += 1) if (lives[i].root === root) instance = lives[i];
+    root.focus();
+    if (instance) instance.select(0, 0);
+  }
+
   function initLive() {
     var roots = document.querySelectorAll('[data-live][data-live-store]');
     for (var i = 0; i < roots.length; i += 1) {
@@ -2176,6 +2201,7 @@
     }
     initLive();
     focusTitle();
+    focusBody();
   }
 
   document.addEventListener('DOMContentLoaded', setUpTree);

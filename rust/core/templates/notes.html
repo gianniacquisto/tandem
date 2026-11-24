@@ -331,7 +331,7 @@
             <textarea class="note-editor" id="note-text" name="text" aria-label="Note markdown" hidden>
 {{ note.text }}</textarea>
           </form>
-          <div class="live live--note" data-live data-live-store="note-text" data-live-path="{{ note.path }}" data-broken-links="{{ broken_links }}">{{ note.html }}</div>
+          <div class="live live--note" data-live data-placeholder="Start writing, or type / for commands" data-live-store="note-text" data-live-path="{{ note.path }}" data-broken-links="{{ broken_links }}">{{ note.html }}</div>
           {% else %}
           {{ note.html }}
           {% endif %}
