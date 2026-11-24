@@ -1816,6 +1816,37 @@ async fn the_sheet_width_rule_is_the_wide_one() {
 }
 
 #[tokio::test]
+async fn a_comment_posts_with_a_field_failure_showing_and_the_failed_field_is_put_back() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-comment-failure");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    let app = router(context(store));
+    let (_, _, script) = get(&app, "/static/tandem.js").await;
+    // A checkout may carry CRLF line endings: match on LF only.
+    let script = script.replace("\r\n", "\n");
+    let confirm_at = script
+        .find("var issue = event.detail.issueRequest;\n    flushSheet(sheet).then(issue);")
+        .expect("the sheet hold issues the request once the saves land, failure or not");
+    let hold = &script[confirm_at.saturating_sub(400)..confirm_at];
+    assert!(
+        !hold.contains("failedFields()"),
+        "a settled failure no longer holds the post: {hold}"
+    );
+    for part in [
+        "addEventListener('htmx:beforeSwap'",
+        "addEventListener('htmx:load'",
+        "showFailure(sheet, field, carry.failures[field])",
+        "control.setAttribute('data-was', kept.was)",
+    ] {
+        assert!(
+            script.contains(part),
+            "the failed fields are carried across the swap: {part}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn post_ticket_comment_appends_as_human_and_refuses_empty_body() {
     let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("sheet-comment");
