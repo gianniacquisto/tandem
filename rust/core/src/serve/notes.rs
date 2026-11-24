@@ -256,20 +256,39 @@ struct NotesView {
     error: Option<String>,
     conflict: Option<ConflictView>,
     focus_url: String,
-    /// The open note's path and name, for the tab strip; empty when no note is open.
-    current_path: String,
-    current_name: String,
-    /// Every note path in the vault, as JSON, so the strip can drop a stored
-    /// tab whose note is gone without asking the focus-narrowed tree.
-    all_notes: String,
-    /// A rename or delete this response answers, so the strip can follow it.
-    tab_from: String,
-    tab_to: String,
-    tab_gone: String,
+    /// The tab strip the server draws (TAN-887); empty draws no strip.
+    tabs: Vec<TabView>,
+    /// The list the response stores in the `tabs` cookie.
+    tabs_state: ui_state::TabsState,
+}
+
+/// One tab of the strip.
+struct TabView {
+    path: String,
+    name: String,
+    /// The folder, only where two tabs share a name.
+    folder: String,
+    selected: bool,
+    /// Whether the tab is a tab stop: the open note's, else the first.
+    stop: bool,
+    href: String,
+    /// The request that closes the tab and lands on its neighbour.
+    close_href: String,
 }
 
 /// The notes view's own URL: the focus, the show-all escape and one note.
 fn notes_href(project: &str, show_all: bool, path: Option<&str>, mode: Option<&str>) -> String {
+    notes_href_closing(project, show_all, path, mode, None)
+}
+
+/// `notes_href`, plus the tab the request closes.
+fn notes_href_closing(
+    project: &str,
+    show_all: bool,
+    path: Option<&str>,
+    mode: Option<&str>,
+    close: Option<&str>,
+) -> String {
     let mut pairs: Vec<(&str, String)> = vec![("project", project.to_string())];
     if show_all {
         pairs.push(("show_all", "1".to_string()));
@@ -279,6 +298,9 @@ fn notes_href(project: &str, show_all: bool, path: Option<&str>, mode: Option<&s
     }
     if let Some(mode) = mode {
         pairs.push(("mode", mode.to_string()));
+    }
+    if let Some(close) = close {
+        pairs.push(("close", close.to_string()));
     }
     match serde_urlencoded::to_string(&pairs) {
         Ok(query) => format!("/notes?{query}"),
@@ -583,6 +605,7 @@ fn render_notes(
     error: Option<String>,
     conflict: Option<ConflictView>,
     fold_state: Option<&ui_state::TreeState>,
+    tabs_cookie: Option<&ui_state::TabsState>,
 ) -> Result<NotesView, String> {
     let project = field(params, "project").trim().to_string();
     let show_all = !matches!(field(params, "show_all"), "" | "0" | "false");
@@ -660,7 +683,6 @@ fn render_notes(
     let tree = vault.tree();
     let mut every_note = Vec::new();
     note_paths(&tree, &mut every_note);
-    let all_notes = serde_json::to_string(&every_note).unwrap_or_else(|_| "[]".to_string());
 
     // The concept page's sections, from the board and the vault together.
     let mut sections: Vec<RelSection> = Vec::new();
@@ -1038,9 +1060,51 @@ fn render_notes(
     let current_path = note
         .as_ref()
         .map_or(String::new(), |pane| pane.path.clone());
-    let current_name = note
-        .as_ref()
-        .map_or(String::new(), |pane| note_name(&pane.path));
+    let change = ui_state::TabChange {
+        current: &current_path,
+        from: field(params, "tab_from"),
+        to: field(params, "tab_to"),
+        gone: field(params, "tab_gone"),
+        close: field(params, "close"),
+    };
+    let stored = tabs_cookie
+        .map(|state| state.open.as_slice())
+        .unwrap_or(&[]);
+    let open = ui_state::sync_tabs(stored, &change, &every_note);
+    let tabs_state = ui_state::fit_tabs(open, &current_path);
+    let focus_stop = tabs_state
+        .open
+        .iter()
+        .position(|path| *path == current_path)
+        .unwrap_or(0);
+    let tabs: Vec<TabView> = ui_state::tab_labels(&tabs_state.open)
+        .into_iter()
+        .enumerate()
+        .map(|(at, label)| {
+            let next = if label.path == current_path {
+                ui_state::close_target(&tabs_state.open, &label.path)
+            } else {
+                current_path.clone()
+            };
+            TabView {
+                href: notes_href(&project, show_all, Some(&label.path), None),
+                close_href: notes_href_closing(
+                    &project,
+                    show_all,
+                    Some(&next)
+                        .filter(|next| !next.is_empty())
+                        .map(String::as_str),
+                    None,
+                    Some(&label.path),
+                ),
+                selected: label.path == current_path,
+                stop: at == focus_stop,
+                path: label.path,
+                name: label.name,
+                folder: label.folder,
+            }
+        })
+        .collect();
 
     Ok(NotesView {
         graph: graph_view.then(|| graph_pane(&project, show_all)),
@@ -1088,12 +1152,8 @@ fn render_notes(
         error: render_error,
         conflict,
         focus_url: notes_href(&project, show_all, path.as_deref(), None),
-        current_path,
-        current_name,
-        all_notes,
-        tab_from: field(params, "tab_from").to_string(),
-        tab_to: field(params, "tab_to").to_string(),
-        tab_gone: field(params, "tab_gone").to_string(),
+        tabs,
+        tabs_state,
     })
 }
 
@@ -1122,7 +1182,17 @@ fn notes_response(
         tracing::warn!(error = ?refusal, "notes refused");
     }
     let tree: Option<ui_state::TreeState> = ui_state::read(headers, &context.ui_cookie(), "tree");
-    let view = match render_notes(context, params, notice, error, conflict, tree.as_ref()) {
+    let stored_tabs: Option<ui_state::TabsState> =
+        ui_state::read(headers, &context.ui_cookie(), "tabs");
+    let view = match render_notes(
+        context,
+        params,
+        notice,
+        error,
+        conflict,
+        tree.as_ref(),
+        stored_tabs.as_ref(),
+    ) {
         Ok(view) => view,
         Err(error) => {
             tracing::error!(error = ?error, "the notes could not be read");
@@ -1143,6 +1213,34 @@ fn notes_response(
                 .into_response();
         }
     };
+    // The server is the tab list's only writer: the cookie goes back whenever
+    // the list or the open note differs from what the browser sent.
+    let tabs_cookie = if stored_tabs.clone().unwrap_or_default() == view.tabs_state {
+        None
+    } else {
+        ui_state::set_cookie(&context.ui_cookie(), "tabs", &view.tabs_state)
+    };
+    let mut response = notes_page_response(context, headers, body);
+    // A close request is spent once answered: the address bar drops `close`,
+    // so a reload never closes the tab again.
+    if !field(params, "close").is_empty() && is_partial(headers) {
+        let url = notes_href(
+            field(params, "project").trim(),
+            !matches!(field(params, "show_all"), "" | "0" | "false"),
+            Some(field(params, "path")).filter(|path| !path.is_empty()),
+            None,
+        );
+        if let Ok(value) = HeaderValue::from_str(&url) {
+            response.headers_mut().insert("hx-replace-url", value);
+        }
+    }
+    if let Some(cookie) = tabs_cookie {
+        response.headers_mut().append(header::SET_COOKIE, cookie);
+    }
+    response
+}
+
+fn notes_page_response(context: &Context, headers: &HeaderMap, body: String) -> Response {
     if is_partial(headers) {
         return html_response(body, StatusCode::OK);
     }

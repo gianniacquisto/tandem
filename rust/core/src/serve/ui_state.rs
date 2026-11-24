@@ -57,7 +57,6 @@ pub(super) fn read<T: for<'de> Deserialize<'de>>(
 /// The `Set-Cookie` line for a server-written state: the attributes the page's
 /// own helper writes (a year, `Path=/`, `SameSite=Lax`), no `Secure` so a
 /// plain-http LAN serve keeps it, no `HttpOnly` so the script can read it.
-#[allow(dead_code)]
 pub(super) fn set_cookie<T: Serialize>(
     prefix: &str,
     state: &str,
@@ -162,6 +161,150 @@ pub(super) fn shut_folders(
     shut
 }
 
+/// The `tabs` state: `{"open":[note paths],"active":"<path>"|""}`. The server
+/// is its only writer (TAN-887): every notes response computes the list from
+/// the request's cookie and the view, and answers the new cookie. `active` is
+/// the note the last notes page opened, or an empty string.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub(super) struct TabsState {
+    #[serde(default)]
+    pub open: Vec<String>,
+    #[serde(default)]
+    pub active: String,
+}
+
+/// What a notes response changes about the list.
+#[derive(Debug, Default, Clone, Copy)]
+pub(super) struct TabChange<'a> {
+    /// The note the page opens, or an empty string.
+    pub current: &'a str,
+    /// A rename this response answers: the old and the new path.
+    pub from: &'a str,
+    pub to: &'a str,
+    /// A delete this response answers: a note, or a folder with its notes.
+    pub gone: &'a str,
+    /// A tab the request closes.
+    pub close: &'a str,
+}
+
+/// The list as a cookie may carry it: distinct, non-empty strings only.
+fn clean(tabs: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for path in tabs {
+        if !path.is_empty() && !out.contains(path) {
+            out.push(path.clone());
+        }
+    }
+    out
+}
+
+fn under_path(path: &str, folder: &str) -> bool {
+    path == folder || path.starts_with(&format!("{folder}/"))
+}
+
+/// The list after a page draw: a rename follows in place, a delete drops the
+/// note (or a folder's notes), a closed tab goes, a note the vault no longer
+/// has is dropped, and the open note gets a tab if it has none. `notes` is
+/// every note path the vault holds.
+pub(super) fn sync_tabs(tabs: &[String], change: &TabChange, notes: &[String]) -> Vec<String> {
+    let mut out = clean(tabs);
+    if !change.from.is_empty() && !change.to.is_empty() {
+        let renamed: Vec<String> = out
+            .iter()
+            .map(|path| {
+                if path == change.from {
+                    change.to.to_string()
+                } else {
+                    path.clone()
+                }
+            })
+            .collect();
+        out = clean(&renamed);
+    }
+    if !change.gone.is_empty() {
+        out.retain(|path| !under_path(path, change.gone));
+    }
+    if !change.close.is_empty() {
+        out.retain(|path| path != change.close);
+    }
+    out.retain(|path| path == change.current || notes.contains(path));
+    if !change.current.is_empty() && !out.iter().any(|path| path == change.current) {
+        out.push(change.current.to_string());
+    }
+    out
+}
+
+/// The tab to land on when `path` closes: the right neighbour, else the left,
+/// else none (an empty string).
+pub(super) fn close_target(tabs: &[String], path: &str) -> String {
+    let Some(at) = tabs.iter().position(|tab| tab == path) else {
+        return String::new();
+    };
+    tabs.get(at + 1)
+        .or_else(|| at.checked_sub(1).and_then(|before| tabs.get(before)))
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// The state to store: the list trimmed from the left, never the active tab,
+/// until its encoded cookie fits the budget (VS Code's editor limit pattern).
+pub(super) fn fit_tabs(mut open: Vec<String>, active: &str) -> TabsState {
+    loop {
+        let state = TabsState {
+            open: open.clone(),
+            active: active.to_string(),
+        };
+        let encoded = serde_json::to_string(&state)
+            .map(|json| percent_encode(&json).len())
+            .unwrap_or(0);
+        if encoded <= MAX_ENCODED {
+            return state;
+        }
+        match open.iter().position(|path| path != active) {
+            Some(at) => {
+                open.remove(at);
+            }
+            None => return state,
+        }
+    }
+}
+
+/// One tab as the strip draws it: the note name, with its folder only where
+/// two tabs share a name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct TabLabel {
+    pub path: String,
+    pub name: String,
+    pub folder: String,
+}
+
+fn name_of(path: &str) -> &str {
+    let name = path.rsplit('/').next().unwrap_or(path);
+    name.strip_suffix(".md").unwrap_or(name)
+}
+
+fn folder_of(path: &str) -> &str {
+    path.rsplit_once('/').map_or("Notes", |(folder, _)| folder)
+}
+
+pub(super) fn tab_labels(tabs: &[String]) -> Vec<TabLabel> {
+    tabs.iter()
+        .map(|path| {
+            let name = name_of(path);
+            let shared = tabs.iter().filter(|other| name_of(other) == name).count() > 1;
+            TabLabel {
+                path: path.clone(),
+                name: name.to_string(),
+                folder: if shared {
+                    folder_of(path).to_string()
+                } else {
+                    String::new()
+                },
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,5 +402,94 @@ mod tests {
         };
         let shut = shut_folders(Some(&same), &folders, Some("a/b/n.md"));
         assert_eq!(shut.len(), 2);
+    }
+
+    fn list(paths: &[&str]) -> Vec<String> {
+        paths.iter().map(|path| path.to_string()).collect()
+    }
+
+    #[test]
+    fn sync_adds_the_open_note_and_drops_what_the_vault_lacks() {
+        let notes = list(&["a.md", "b.md"]);
+        let change = TabChange {
+            current: "b.md",
+            ..TabChange::default()
+        };
+        assert_eq!(
+            sync_tabs(&list(&["a.md", "gone.md", "a.md", ""]), &change, &notes),
+            list(&["a.md", "b.md"])
+        );
+        let change = TabChange::default();
+        assert_eq!(sync_tabs(&[], &change, &notes), Vec::<String>::new());
+    }
+
+    #[test]
+    fn sync_follows_a_rename_in_place_and_a_delete_drops_a_folder() {
+        let notes = list(&["x/new.md", "y.md", "x/b.md"]);
+        let change = TabChange {
+            from: "x/old.md",
+            to: "x/new.md",
+            ..TabChange::default()
+        };
+        assert_eq!(
+            sync_tabs(&list(&["y.md", "x/old.md"]), &change, &notes),
+            list(&["y.md", "x/new.md"])
+        );
+        let change = TabChange {
+            gone: "x",
+            ..TabChange::default()
+        };
+        assert_eq!(
+            sync_tabs(&list(&["x/new.md", "y.md", "x/b.md"]), &change, &notes),
+            list(&["y.md"])
+        );
+        let sibling = TabChange {
+            gone: "x",
+            ..TabChange::default()
+        };
+        assert_eq!(
+            sync_tabs(&list(&["xy/n.md"]), &sibling, &list(&["xy/n.md"])),
+            list(&["xy/n.md"])
+        );
+    }
+
+    #[test]
+    fn a_closed_tab_goes_and_the_close_target_is_a_neighbour() {
+        let tabs = list(&["a.md", "b.md", "c.md"]);
+        assert_eq!(close_target(&tabs, "b.md"), "c.md");
+        assert_eq!(close_target(&tabs, "c.md"), "b.md");
+        assert_eq!(close_target(&list(&["a.md"]), "a.md"), "");
+        assert_eq!(close_target(&tabs, "zzz.md"), "");
+        let change = TabChange {
+            current: "c.md",
+            close: "b.md",
+            ..TabChange::default()
+        };
+        assert_eq!(sync_tabs(&tabs, &change, &tabs), list(&["a.md", "c.md"]));
+    }
+
+    #[test]
+    fn labels_carry_a_folder_only_for_a_shared_name() {
+        let labels = tab_labels(&list(&["a/n.md", "b/n.md", "top.md", "n.md"]));
+        assert_eq!(labels[0].folder, "a");
+        assert_eq!(labels[1].folder, "b");
+        assert_eq!(labels[2].folder, "");
+        assert_eq!(labels[3].folder, "Notes");
+        assert_eq!(labels[2].name, "top");
+    }
+
+    #[test]
+    fn the_budget_drops_the_leftmost_inactive_tabs() {
+        let open: Vec<String> = (0..200)
+            .map(|n| format!("folder/note-number-{n}.md"))
+            .collect();
+        let active = open[0].clone();
+        let state = fit_tabs(open.clone(), &active);
+        assert!(state.open.len() < open.len());
+        assert!(state.open.contains(&active), "the active tab stays");
+        assert_eq!(state.open[0], active);
+        assert!(set_cookie("tandem_1_", "tabs", &state).is_some());
+        let short = fit_tabs(list(&["a.md"]), "a.md");
+        assert_eq!(short.open, list(&["a.md"]));
     }
 }
