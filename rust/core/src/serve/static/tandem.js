@@ -488,7 +488,14 @@
     renderSaveState(sheet);
     var run = function () {
       if (!sheet.isConnected || (!force && !isDirty(control))) return null;
-      return writeField(sheet, control, was !== undefined ? was : control.getAttribute('data-was'), leaving);
+      // A retype after a conflict is Keep mine: the base is the value the
+      // server now holds, not the stale data-was (TAN-891).
+      var failure = sheetFailures[field];
+      var base = was;
+      if (base === undefined) {
+        base = failure && failure.theirs !== undefined ? failure.theirs : control.getAttribute('data-was');
+      }
+      return writeField(sheet, control, base, leaving);
     };
     var done = sheetChain.then(run, run).then(function () {
       sheetOut -= 1;
