@@ -10009,7 +10009,7 @@ async fn no_cookie_and_no_note_draws_no_strip() {
     assert!(!body.contains("data-note-tabs"), "{body}");
     assert!(stored_tabs(&headers).is_none());
 
-    let cookie = tabs_cookie(&["a.md"], "a.md");
+    let cookie = tabs_cookie(&["a.md", "gone.md"], "gone.md");
     let (_, headers, body) = send(&app, notes_get_with_cookie("/notes", &cookie, false)).await;
     assert_eq!(
         strip_paths(&body),
@@ -10211,4 +10211,128 @@ async fn the_tabs_cookie_budget_drops_the_leftmost_inactive_tab() {
             .any(|path| path == "note-with-a-long-name-000.md")
     );
     assert_eq!(strip_paths(&body).len(), open.len());
+}
+
+#[tokio::test]
+async fn a_bare_notes_visit_reopens_the_active_note() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("restore-active");
+    let store = sandbox.store();
+    tabs_vault(&store);
+    let app = router(context(store));
+    let cookie = tabs_cookie(&["a.md", "b.md"], "b.md");
+    let (status, headers, _) = send(&app, notes_get_with_cookie("/notes", &cookie, false)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    let target = location(&headers);
+    assert_eq!(target, "/notes?project=&path=b.md");
+    assert!(headers.get(header::SET_COOKIE).is_none());
+
+    let (status, _, body) = send(&app, notes_get_with_cookie(&target, &cookie, false)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(strip_paths(&body), ["a.md", "b.md"]);
+    assert!(body.contains("aria-selected=\"true\""));
+    assert!(!body.contains("banner--error"), "{body}");
+}
+
+#[tokio::test]
+async fn a_bare_visit_with_nothing_to_reopen_draws_the_empty_page() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("restore-empty");
+    let store = sandbox.store();
+    tabs_vault(&store);
+    let app = router(context(store));
+    let other_port = tabs_cookie(&["a.md"], "a.md").replace("7700", "7701");
+    let cookies = [
+        tabs_cookie(&["a.md"], ""),
+        tabs_cookie(&["a.md"], "b.md"),
+        tabs_cookie(&["gone.md", "a.md"], "gone.md"),
+        "tandem_7700_tabs=%7Bbroken".to_string(),
+        other_port,
+        String::new(),
+    ];
+    for cookie in cookies {
+        let (status, headers, body) =
+            send(&app, notes_get_with_cookie("/notes", &cookie, false)).await;
+        assert_eq!(status, StatusCode::OK, "{cookie}");
+        assert!(body.contains("No note selected"), "{cookie}");
+        assert!(!body.contains("banner--error"), "{cookie}");
+        assert!(headers.get(header::LOCATION).is_none(), "{cookie}");
+        if cookie.contains("gone.md") {
+            let stored = stored_tabs(&headers).expect("the missing path is dropped");
+            assert_eq!(stored["active"], "");
+            assert_eq!(stored["open"], serde_json::json!(["a.md"]));
+        }
+    }
+}
+
+#[tokio::test]
+async fn only_a_bare_notes_visit_restores() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("restore-bare-only");
+    let store = sandbox.store();
+    tabs_vault(&store);
+    let app = router(context(store));
+    let cookie = tabs_cookie(&["a.md", "b.md"], "b.md");
+    let (status, _, body) = send(
+        &app,
+        notes_get_with_cookie("/notes?path=a.md", &cookie, false),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("data-tab-path=\"a.md\""));
+    for uri in ["/notes?project=", "/notes/graph"] {
+        let (status, headers, _) = send(&app, notes_get_with_cookie(uri, &cookie, false)).await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert!(headers.get(header::LOCATION).is_none(), "{uri}");
+    }
+}
+
+#[tokio::test]
+async fn a_hostile_active_path_never_reaches_a_location() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("restore-hostile");
+    let store = sandbox.store();
+    tabs_vault(&store);
+    let app = router(context(store));
+    for evil in ["//evil.example/x", "../x"] {
+        let cookie = tabs_cookie(&[evil], evil);
+        let (status, headers, _) =
+            send(&app, notes_get_with_cookie("/notes", &cookie, false)).await;
+        assert_eq!(status, StatusCode::OK, "{evil}");
+        assert!(!location(&headers).contains("evil"), "{evil}");
+    }
+}
+
+#[tokio::test]
+async fn the_graphs_note_switch_is_bare_without_a_focus() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("restore-switch");
+    let store = sandbox.store();
+    tabs_vault(&store);
+    let app = router(context(store));
+    let (_, _, body) = send(&app, page_get("/notes/graph")).await;
+    assert!(
+        body.contains("data-view=\"note\" href=\"/notes\""),
+        "{body}"
+    );
+    let (_, _, body) = send(&app, page_get("/notes/graph?project=Tandem")).await;
+    assert!(
+        body.contains("data-view=\"note\" href=\"/notes?project=Tandem\""),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn the_graph_keeps_the_active_tab_so_the_note_switch_restores_it() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("restore-graph");
+    let store = sandbox.store();
+    tabs_vault(&store);
+    let app = router(context(store));
+    let cookie = tabs_cookie(&["a.md", "b.md"], "b.md");
+    let (_, headers, _) = send(&app, notes_get_with_cookie("/notes/graph", &cookie, false)).await;
+    assert!(stored_tabs(&headers).is_none(), "the list is unchanged");
+    let (status, headers, _) = send(&app, notes_get_with_cookie("/notes", &cookie, false)).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(location(&headers), "/notes?project=&path=b.md");
 }

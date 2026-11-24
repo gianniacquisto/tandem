@@ -1087,7 +1087,12 @@ fn render_notes(
         .map(|state| state.open.as_slice())
         .unwrap_or(&[]);
     let open = ui_state::sync_tabs(stored, &change, &every_note);
-    let tabs_state = ui_state::fit_tabs(open, &current_path);
+    // The graph draws no note, but it does not forget the open one: leaving it
+    // by the Notes switch reopens the stored active tab (TAN-877).
+    let kept_active = tabs_cookie
+        .filter(|state| graph_view && current_path.is_empty() && open.contains(&state.active))
+        .map_or(current_path.as_str(), |state| state.active.as_str());
+    let tabs_state = ui_state::fit_tabs(open.clone(), kept_active);
     let focus_stop = tabs_state
         .open
         .iter()
@@ -1124,7 +1129,12 @@ fn render_notes(
 
     Ok(NotesView {
         graph: graph_view.then(|| graph_pane(&project, show_all)),
-        note_switch_href: notes_href(&project, show_all, None, None),
+        note_switch_href: if project.is_empty() && !show_all {
+            // Bare, so leaving the graph brings back the open note (TAN-877).
+            "/notes".to_string()
+        } else {
+            notes_href(&project, show_all, None, None)
+        },
         graph_switch_href: graph_href(&project, show_all),
         focus_action: if graph_view { "/notes/graph" } else { "/notes" },
         rows,
@@ -1292,7 +1302,28 @@ pub(super) async fn notes_page(
     Query(params): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
+    if params.is_empty()
+        && let Some(path) = last_open_note(&context, &headers)
+        && let Ok(location) = HeaderValue::from_str(&notes_href("", false, Some(&path), None))
+    {
+        let mut response = StatusCode::SEE_OTHER.into_response();
+        response.headers_mut().insert(header::LOCATION, location);
+        return response;
+    }
     notes_response(&context, &params, None, None, None, &headers)
+}
+
+/// The note a bare `GET /notes` reopens (TAN-877): the tabs cookie's `active`
+/// when it is an open tab and the vault still holds it. The path returned is
+/// the vault's own, never the cookie's string.
+fn last_open_note(context: &Context, headers: &HeaderMap) -> Option<String> {
+    let state: ui_state::TabsState = ui_state::read(headers, &context.ui_cookie(), "tabs")?;
+    if state.active.is_empty() || !state.open.contains(&state.active) {
+        return None;
+    }
+    let mut every_note = Vec::new();
+    note_paths(&context.notes().tree(), &mut every_note);
+    every_note.into_iter().find(|path| *path == state.active)
 }
 
 /// `GET /notes/graph`: the notes face with the graph in the main column. No
