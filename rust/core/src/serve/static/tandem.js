@@ -936,7 +936,10 @@
 
     // Leaving the editor shuts the menu; a click on the menu itself does not
     // blur, its mousedown is held back.
-    root.addEventListener('blur', function () { self.menuClose(); });
+    root.addEventListener('blur', function () {
+      self.escaped = false;
+      self.menuClose();
+    });
 
     // A drag is left alone until the button is up: a re-draw under the pointer
     // would cut the selection short.
@@ -963,6 +966,26 @@
       var meta = event.metaKey || event.ctrlKey;
       var key = event.key.toLowerCase();
       if (meta) root.classList.add('lp--mod');
+      // Escape arms the next key: Tab then leaves the editor instead of
+      // indenting. A bare modifier neither arms nor disarms.
+      var armed = false;
+      var typing = !self.composing && !event.isComposing;
+      if (!/^(Shift|Control|Alt|Meta)$/.test(event.key)) {
+        armed = self.escaped;
+        self.escaped = false;
+      }
+      if (event.key === 'Escape' && typing) {
+        self.escaped = true;
+        return;
+      }
+      if (event.key === 'Tab' && typing && !meta && !event.altKey) {
+        if (!armed) self.tab(event);
+        return;
+      }
+      if (event.key === 'Backspace' && typing && !meta && !event.altKey && !event.shiftKey) {
+        self.backspace(event);
+        return;
+      }
       if (meta && key === 'enter') {
         var at = self.selection();
         var raw = at ? wikilinkAt(self.text, at.end) : null;
@@ -1016,38 +1039,345 @@
   };
 
   // Return starts a new line. In a list it carries the list on, and on an
-  // empty item it ends the list. The editor writes the newline itself rather
-  // than leave it to the browser, so it lands the same way everywhere.
+  // empty item it ends the list (a nested one outdents). The editor writes the
+  // newline itself rather than leave it to the browser, so it lands the same
+  // way everywhere.
   Live.prototype.enter = function (event) {
     var selection = this.selection();
     if (!selection) return;
     event.preventDefault();
     if (selection.start === selection.end) {
-      var bounds = this.lineBounds(selection.start);
-      if (selection.start === bounds.to) {
-        var line = this.text.slice(bounds.from, bounds.to);
-        var m = BULLET.exec(line);
-        var next = null;
-        var body = '';
-        if (m) {
-          body = m[5];
-          next = m[1] + m[2] + m[3] + (m[4] ? '[ ] ' : '');
-        } else if ((m = NUMBER.exec(line))) {
-          body = m[5];
-          next = m[1] + (Number(m[2]) + 1) + m[3] + m[4];
-        }
-        if (next !== null) {
-          if (body.trim() === '') {
-            this.replace(bounds.from, bounds.to, '', bounds.from);
-          } else {
-            this.replace(selection.start, selection.start, '\n' + next);
-          }
-          return;
-        }
+      var result = enterList(this.text, selection.start);
+      if (result) {
+        this.commit(result, selection, false);
+        return;
       }
     }
     this.replace(selection.start, selection.end, '\n');
   };
+
+  // MARK: - List indent
+
+  var BLANK = /^\s*$/;
+  var TAB_WIDTH = 4;
+
+  // One list change as its own undo step, caret kept.
+  Live.prototype.commit = function (result, selection, step) {
+    if (step !== false) this.history[this.position].at = 0;
+    this.set(result.text, { start: result.start, end: result.end, backward: selection.backward });
+    this.history[this.position].at = 0;
+  };
+
+  // Tab and Shift+Tab: indent or outdent, and never leave the editor.
+  Live.prototype.tab = function (event) {
+    var selection = this.selection();
+    if (!selection) return;
+    event.preventDefault();
+    var result = indentKey(this.text, selection.start, selection.end, event.shiftKey ? -1 : 1);
+    if (result) this.commit(result, selection);
+  };
+
+  // Backspace at an item's content column outdents or removes the marker.
+  Live.prototype.backspace = function (event) {
+    var selection = this.selection();
+    if (!selection || selection.start !== selection.end) return;
+    var result = backspaceList(this.text, selection.start);
+    if (!result) return;
+    event.preventDefault();
+    this.commit(result, selection);
+  };
+
+  // The width a run of leading whitespace draws at: a tab runs to the next
+  // multiple of four.
+  function indentWidth(ws) {
+    var width = 0;
+    for (var i = 0; i < ws.length; i += 1) {
+      width = ws.charAt(i) === '\t' ? width + TAB_WIDTH - (width % TAB_WIDTH) : width + 1;
+    }
+    return width;
+  }
+
+  function lineIndent(line) {
+    return indentWidth(/^[ \t]*/.exec(line)[0]);
+  }
+
+  // A list line's parts, or null. `content` is the column its text starts at,
+  // which is where a child begins.
+  function listParts(line) {
+    var m = BULLET.exec(line);
+    if (m) {
+      var bullet = indentWidth(m[1]);
+      return { kind: 'bullet', indent: bullet, lead: m[1].length, content: bullet + m[2].length + m[3].length, body: m[5], box: !!m[4], marker: m[2], gap: m[3] };
+    }
+    m = NUMBER.exec(line);
+    if (m) {
+      var number = indentWidth(m[1]);
+      return { kind: 'number', indent: number, lead: m[1].length, content: number + m[2].length + m[3].length + m[4].length, body: m[5], number: Number(m[2]), digits: m[2].length, sep: m[3], gap: m[4] };
+    }
+    return null;
+  }
+
+  // Which lines sit in a fenced block, fence lines included.
+  function fenceMask(lines) {
+    var mask = [];
+    var open = false;
+    for (var i = 0; i < lines.length; i += 1) {
+      if (FENCE.test(lines[i])) {
+        open = !open;
+        mask.push(true);
+      } else {
+        mask.push(open);
+      }
+    }
+    return mask;
+  }
+
+  // The nearest list line above at the same indent, or -1.
+  function previousSibling(lines, fenced, at, indent) {
+    for (var i = at - 1; i >= 0; i -= 1) {
+      if (fenced[i]) return -1;
+      if (BLANK.test(lines[i])) continue;
+      var here = lineIndent(lines[i]);
+      if (here > indent) continue;
+      return here === indent && listParts(lines[i]) ? i : -1;
+    }
+    return -1;
+  }
+
+  // The nearest list line above at a lesser indent, or -1.
+  function parentLine(lines, fenced, at, indent) {
+    for (var i = at - 1; i >= 0; i -= 1) {
+      if (fenced[i]) return -1;
+      if (BLANK.test(lines[i])) continue;
+      if (lineIndent(lines[i]) < indent) return listParts(lines[i]) ? i : -1;
+    }
+    return -1;
+  }
+
+  // The last line of an item's children: the following lines indented deeper.
+  function childrenEnd(lines, fenced, at) {
+    var base = lineIndent(lines[at]);
+    var j = at + 1;
+    while (j < lines.length && !BLANK.test(lines[j]) && !fenced[j] && lineIndent(lines[j]) > base) j += 1;
+    return j - 1;
+  }
+
+  // A cursor's column on a line whose first `before` characters became `after`.
+  function shiftCursors(cursors, line, before, after) {
+    for (var i = 0; i < cursors.length; i += 1) {
+      if (cursors[i].l !== line) continue;
+      cursors[i].c = cursors[i].c >= before ? cursors[i].c + after - before : Math.min(cursors[i].c, after);
+    }
+  }
+
+  // Lines from..to take `delta` columns of indent (leading whitespace written
+  // as spaces); blank lines stay.
+  function moveLines(ctx, from, to, delta) {
+    for (var i = from; i <= to; i += 1) {
+      if (BLANK.test(ctx.lines[i])) continue;
+      var ws = /^[ \t]*/.exec(ctx.lines[i])[0];
+      var width = Math.max(0, indentWidth(ws) + delta);
+      var pad = '';
+      for (var k = 0; k < width; k += 1) pad += ' ';
+      ctx.lines[i] = pad + ctx.lines[i].slice(ws.length);
+      shiftCursors(ctx.cursors, i, ws.length, pad.length);
+    }
+  }
+
+  // The consecutive numbered siblings at one indent around a line, children
+  // between them allowed, renumbered from the first item's number (1 when the
+  // first item is one the edit just moved).
+  function renumberRun(ctx, at, fresh) {
+    var lines = ctx.lines;
+    var item = listParts(lines[at]);
+    if (!item || item.kind !== 'number' || ctx.fenced[at]) return;
+    var run = [at];
+    var i;
+    for (i = at - 1; i >= 0; i -= 1) {
+      if (BLANK.test(lines[i]) || ctx.fenced[i]) break;
+      var above = lineIndent(lines[i]);
+      if (above > item.indent) continue;
+      var up = listParts(lines[i]);
+      if (above < item.indent || !up || up.kind !== 'number') break;
+      run.unshift(i);
+    }
+    for (i = at + 1; i < lines.length; i += 1) {
+      if (BLANK.test(lines[i]) || ctx.fenced[i]) break;
+      var below = lineIndent(lines[i]);
+      if (below > item.indent) continue;
+      var down = listParts(lines[i]);
+      if (below < item.indent || !down || down.kind !== 'number') break;
+      run.push(i);
+    }
+    var first = listParts(lines[run[0]]);
+    var next = fresh[run[0]] ? 1 : first.number;
+    for (i = 0; i < run.length; i += 1) {
+      var part = listParts(lines[run[i]]);
+      var digits = String(next + i);
+      if (part.number !== next + i || part.digits !== digits.length) {
+        var lead = lines[run[i]].slice(0, part.lead);
+        lines[run[i]] = lead + digits + lines[run[i]].slice(part.lead + part.digits);
+        shiftCursors(ctx.cursors, run[i], part.lead + part.digits, part.lead + digits.length);
+      }
+    }
+  }
+
+  // Runs `change` over the lines of a text with the selection as line and
+  // column pairs, renumbers what it names, and answers the new text and
+  // selection, or null when nothing moved.
+  function listEdit(text, start, end, change) {
+    var lines = text.split('\n');
+    var starts = [];
+    var offset = 0;
+    for (var i = 0; i < lines.length; i += 1) {
+      starts.push(offset);
+      offset += lines[i].length + 1;
+    }
+    function at(off) {
+      var l = lines.length - 1;
+      while (starts[l] > off) l -= 1;
+      return { l: l, c: off - starts[l] };
+    }
+    var ctx = { lines: lines, fenced: fenceMask(lines), cursors: [at(start), at(end)] };
+    ctx.a = ctx.cursors[0].l;
+    ctx.b = ctx.cursors[1].l;
+    if (ctx.b > ctx.a && ctx.cursors[1].c === 0) ctx.b -= 1;
+    var plan = change(ctx);
+    if (!plan) return null;
+    for (var k = 0; k < plan.anchors.length; k += 1) {
+      var anchor = plan.anchors[k];
+      if (anchor >= 0 && anchor < ctx.lines.length) renumberRun(ctx, anchor, plan.fresh || {});
+    }
+    var out = ctx.lines.join('\n');
+    if (out === text) return null;
+    var base = [];
+    var sum = 0;
+    for (var j = 0; j < ctx.lines.length; j += 1) {
+      base.push(sum);
+      sum += ctx.lines[j].length + 1;
+    }
+    return {
+      text: out,
+      start: base[ctx.cursors[0].l] + ctx.cursors[0].c,
+      end: base[ctx.cursors[1].l] + ctx.cursors[1].c
+    };
+  }
+
+  // Tab (direction 1) or Shift+Tab (-1) over the selection. A list item moves
+  // to its previous sibling's content column, or to its parent's indent, with
+  // its children; anything else, and anything in a fence, moves four spaces.
+  function indentKey(text, start, end, direction) {
+    return listEdit(text, start, end, function (ctx) {
+      var lines = ctx.lines;
+      var item = ctx.fenced[ctx.a] ? null : listParts(lines[ctx.a]);
+      var i;
+      if (item) {
+        var delta;
+        if (direction > 0) {
+          var sibling = previousSibling(lines, ctx.fenced, ctx.a, item.indent);
+          if (sibling < 0) return null;
+          delta = listParts(lines[sibling]).content - item.indent;
+        } else {
+          if (item.indent === 0) return null;
+          var parent = parentLine(lines, ctx.fenced, ctx.a, item.indent);
+          delta = parent < 0 ? -item.indent : lineIndent(lines[parent]) - item.indent;
+        }
+        var last = childrenEnd(lines, ctx.fenced, ctx.b);
+        var fresh = {};
+        for (i = ctx.a; i <= ctx.b; i += 1) fresh[i] = true;
+        var after = last + 1;
+        while (after < lines.length && BLANK.test(lines[after])) after += 1;
+        moveLines(ctx, ctx.a, last, delta);
+        var anchors = [after, ctx.a - 1];
+        for (i = ctx.a; i <= ctx.b; i += 1) anchors.push(i);
+        return { anchors: anchors, fresh: fresh };
+      }
+      if (ctx.a === ctx.b && direction > 0) {
+        var row = lines[ctx.a];
+        var from = ctx.cursors[0];
+        var to = ctx.cursors[1];
+        var head = row.slice(0, from.c) + '    ';
+        lines[ctx.a] = head + row.slice(to.c);
+        ctx.cursors[0] = { l: ctx.a, c: head.length };
+        ctx.cursors[1] = { l: ctx.a, c: head.length };
+        return { anchors: [] };
+      }
+      for (i = ctx.a; i <= ctx.b; i += 1) {
+        if (BLANK.test(lines[i])) continue;
+        if (direction > 0) {
+          lines[i] = '    ' + lines[i];
+          shiftCursors(ctx.cursors, i, 0, 4);
+        } else {
+          var cut = lines[i].charAt(0) === '\t' ? 1 : Math.min(4, /^ */.exec(lines[i])[0].length);
+          lines[i] = lines[i].slice(cut);
+          shiftCursors(ctx.cursors, i, cut, 0);
+        }
+      }
+      return { anchors: [] };
+    });
+  }
+
+  // Return at the end of a list item: carry the list on, or end it. Null when
+  // the line is not a list item (or sits in a fence).
+  function enterList(text, caret) {
+    return listEdit(text, caret, caret, function (ctx) {
+      var line = ctx.lines[ctx.a];
+      var item = ctx.fenced[ctx.a] ? null : listParts(line);
+      if (!item || ctx.cursors[0].c !== line.length) return null;
+      if (item.body.trim() === '') {
+        if (item.indent > 0) return null;
+        ctx.lines[ctx.a] = '';
+        ctx.cursors[0] = { l: ctx.a, c: 0 };
+        ctx.cursors[1] = { l: ctx.a, c: 0 };
+        return { anchors: [] };
+      }
+      var lead = line.slice(0, item.lead);
+      var made = item.kind === 'bullet'
+        ? lead + item.marker + item.gap + (item.box ? '[ ] ' : '')
+        : lead + (item.number + 1) + item.sep + item.gap;
+      ctx.lines.splice(ctx.a + 1, 0, made);
+      ctx.fenced.splice(ctx.a + 1, 0, false);
+      ctx.cursors[0] = { l: ctx.a + 1, c: made.length };
+      ctx.cursors[1] = { l: ctx.a + 1, c: made.length };
+      return { anchors: [ctx.a + 1] };
+    }) || enterOutdent(text, caret);
+  }
+
+  // True when the line holding the caret sits in a fenced block.
+  function caretFenced(text, caret) {
+    var row = text.slice(0, caret).split('\n').length - 1;
+    return fenceMask(text.split('\n'))[row] === true;
+  }
+
+  // Return on an empty nested item moves it out a level.
+  function enterOutdent(text, caret) {
+    if (caretFenced(text, caret)) return null;
+    var from = text.lastIndexOf('\n', caret - 1) + 1;
+    var to = text.indexOf('\n', caret);
+    var line = text.slice(from, to === -1 ? text.length : to);
+    var item = listParts(line);
+    if (!item || item.indent === 0 || item.body.trim() !== '' || caret !== from + line.length) return null;
+    return indentKey(text, caret, caret, -1);
+  }
+
+  // Backspace with the caret just after an item's marker: nested, it outdents;
+  // at the top level it removes the marker and the task box, keeping the text.
+  function backspaceList(text, caret) {
+    if (caretFenced(text, caret)) return null;
+    var from = text.lastIndexOf('\n', caret - 1) + 1;
+    var to = text.indexOf('\n', caret);
+    var line = text.slice(from, to === -1 ? text.length : to);
+    var item = listParts(line);
+    if (!item || caret !== from + line.length - item.body.length) return null;
+    if (item.indent > 0) return indentKey(text, caret, caret, -1);
+    return listEdit(text, caret, caret, function (ctx) {
+      if (ctx.fenced[ctx.a]) return null;
+      ctx.lines[ctx.a] = item.body;
+      ctx.cursors[0] = { l: ctx.a, c: 0 };
+      ctx.cursors[1] = { l: ctx.a, c: 0 };
+      return { anchors: [ctx.a + 1] };
+    });
+  }
 
   // MARK: - The slash menu
   //
@@ -1580,6 +1910,7 @@
       desc.textContent = SLASH_DESCRIPTION;
       root.parentNode.insertBefore(desc, root);
       root.setAttribute('aria-describedby', desc.id);
+      root.setAttribute('aria-description', 'Tab indents. Press Escape, then Tab, to leave the editor.');
       root.setAttribute('data-slash-hint', SLASH_HINT);
       lives.push(new Live(root, store));
     }
