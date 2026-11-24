@@ -865,7 +865,14 @@ fn the_sheet_select_draws_no_native_arrow() {
 #[test]
 fn the_sheet_status_dot_and_the_board_column_share_one_status_map() {
     let rules = app_rules();
-    for status in ["backlog", "on-hold", "ready", "in-progress", "in-review", "done"] {
+    for status in [
+        "backlog",
+        "on-hold",
+        "ready",
+        "in-progress",
+        "in-review",
+        "done",
+    ] {
         assert!(
             rules.iter().any(|(sel, body)| {
                 sel.contains(".board__column")
