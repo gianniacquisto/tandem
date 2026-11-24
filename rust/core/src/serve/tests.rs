@@ -923,6 +923,9 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
         }
         if path == "/static/tandem.js" {
             for key in [
+                "MARK: - Popover menus",
+                "details.menu, details.row-menu",
+                "document.addEventListener('pointerdown'",
                 "tandem.collapsed",
                 "tandem.collapsedSet",
                 "tandem.relations.open",
