@@ -929,6 +929,11 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 "SLASH_HINT",
                 "--depth",
                 "data-label",
+                "indentKey",
+                "enterList",
+                "backspaceList",
+                "renumberRun",
+                "Tab indents. Press Escape, then Tab, to leave the editor.",
             ] {
                 assert!(body.contains(key), "tandem.js carries {key}");
             }
