@@ -102,6 +102,8 @@ struct TreeRowView {
     level: usize,
     indent: usize,
     folder: bool,
+    /// The folder draws at least one child, so it gets a chevron and a fold.
+    has_children: bool,
     selected: bool,
     /// A folder drawn open (its twisty down, `aria-expanded` true).
     expanded: bool,
@@ -436,7 +438,7 @@ fn fold_rows(rows: &mut [TreeRowView], state: Option<&ui_state::TreeState>) {
     let shut = ui_state::shut_folders(state, &folders, open);
     let mut hide_below: Option<usize> = None;
     for row in rows.iter_mut() {
-        if row.folder {
+        if row.folder && row.has_children {
             row.expanded = !shut.contains(&row.path);
         }
         if let Some(level) = hide_below {
@@ -446,7 +448,7 @@ fn fold_rows(rows: &mut [TreeRowView], state: Option<&ui_state::TreeState>) {
             }
             hide_below = None;
         }
-        if row.folder && !row.expanded {
+        if row.folder && row.has_children && !row.expanded {
             hide_below = Some(row.level);
         }
     }
@@ -473,6 +475,7 @@ fn flatten_tree(
             level: depth + 1,
             indent: 8 + depth * 14,
             folder,
+            has_children: !node.children.is_empty(),
             selected: false,
             expanded: true,
             hidden: false,

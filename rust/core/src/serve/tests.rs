@@ -9798,14 +9798,14 @@ async fn the_tree_cookie_draws_the_folds_on_the_first_paint() {
     assert_eq!(status, StatusCode::OK);
     let a = tree_item(&body, "a");
     assert!(
-        a.contains("aria-expanded=\"true\"") && a.contains("\u{25be}"),
+        a.contains("aria-expanded=\"true\"") && a.contains("tree__twisty"),
         "{a}"
     );
     assert!(!a.contains("<li role=\"none\" hidden"), "{a}");
     assert!(!tree_item(&body, "a/x.md").starts_with("<li role=\"none\" hidden"));
     let ab = tree_item(&body, "a/b");
     assert!(
-        ab.contains("aria-expanded=\"false\"") && ab.contains("\u{25b8}"),
+        ab.contains("aria-expanded=\"false\"") && ab.contains("tree__twisty"),
         "{ab}"
     );
     assert!(
@@ -9816,6 +9816,42 @@ async fn the_tree_cookie_draws_the_folds_on_the_first_paint() {
     assert!(d.contains("aria-expanded=\"false\""), "{d}");
     assert!(tree_item(&body, "d/e.md").starts_with("<li role=\"none\" hidden"));
     assert!(!tree_item(&body, "top.md").starts_with("<li role=\"none\" hidden"));
+}
+
+#[tokio::test]
+async fn a_folder_with_children_draws_an_svg_chevron_and_an_empty_one_a_spacer() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("ui-tree-chevron");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    tree_vault(&store);
+    vault(&store)
+        .create_folder("empty")
+        .expect("the folder is created");
+    let app = router(context(store));
+    let (_, _, body) = send(&app, page_get("/notes")).await;
+    let tree = &body[body.find("<ul class=\"tree\"").expect("the tree")..];
+    assert!(
+        !tree.contains('\u{25b8}') && !tree.contains('\u{25be}'),
+        "no glyph"
+    );
+    let full = tree_item(&body, "a");
+    assert!(
+        full.contains("<svg class=\"tree__twisty\"") && full.contains("aria-expanded"),
+        "{full}"
+    );
+    let empty = tree_item(&body, "empty");
+    assert!(
+        empty.contains("<span class=\"tree__twisty\" aria-hidden=\"true\"></span>")
+            && !empty.contains("<svg class=\"tree__twisty\"")
+            && !empty.contains("aria-expanded"),
+        "{empty}"
+    );
+    let (_, _, css) = get(&app, "/static/app.css").await;
+    assert_eq!(css.matches("\n.tree__twisty {").count(), 1);
+    assert!(css.contains(".tree__row[aria-expanded=\"true\"] .tree__twisty"));
+    let (_, _, script) = get(&app, "/static/tandem.js").await;
+    assert!(!script.contains("u25b8") && !script.contains("u25be"));
 }
 
 #[tokio::test]

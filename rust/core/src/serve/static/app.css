@@ -1523,9 +1523,18 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 }
 
 .tree__twisty {
-  width: 10px;
-  color: var(--ink-dim);
-  font-size: 10px;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--ink-dim);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tree__row[aria-expanded="true"] .tree__twisty {
+  transform: rotate(90deg);
 }
 
 .tree__name {
@@ -3584,10 +3593,6 @@ a.menu__option {
 .tree__row[aria-selected="true"] .tree__label {
   background: transparent;
   font-weight: 600;
-}
-
-.tree__twisty {
-  width: 12px;
 }
 
 .notes__breadcrumb {
