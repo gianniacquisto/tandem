@@ -459,7 +459,9 @@
   // The hidden textarea in the form stays the one source of truth: each edit
   // writes the text into it and fires its `input`, so the autosave above needs
   // no change. The text is never anything but the file's own characters.
-  var live = null;
+  var lives = [];
+  // The root being drawn, so a link's broken tint reads that root's own list.
+  var drawing = null;
 
   function esc(text) {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -520,7 +522,7 @@
 
   // The targets the server found broken when the page loaded, lowercased.
   function brokenLinks() {
-    var root = document.querySelector('[data-live]');
+    var root = drawing;
     try {
       return JSON.parse((root && root.getAttribute('data-broken-links')) || '[]');
     } catch (error) {
@@ -646,6 +648,7 @@
     var caret = selection ? (selection.backward ? selection.start : selection.end) : null;
     this.activeLine = caret === null ? -1 : this.lineIndex(caret);
     var fenced = false;
+    drawing = this.root;
     // The box a run of `> ` lines belongs to, from its opener on.
     var box = '';
     var html = '';
@@ -677,6 +680,8 @@
       html += '<span class="' + classes + '">' + body + '\n</span>';
     }
     this.root.innerHTML = html;
+    // The root's data-placeholder shows through CSS while the text is empty.
+    this.root.classList.toggle('lp--empty', this.text === '');
     if (selection) this.select(selection.start, selection.end, selection.backward);
   };
 
@@ -733,8 +738,15 @@
     }
   };
 
+  // Following a link is the page's call: the root announces it, the surface
+  // that hosts the editor decides how a link opens.
+  Live.prototype.requestFollow = function (raw) {
+    this.root.dispatchEvent(new CustomEvent('live:follow', { bubbles: true, detail: { link: raw } }));
+  };
+
   Live.prototype.sync = function () {
-    this.store.value = this.text + '\n';
+    var tail = this.root.getAttribute('data-live-final-newline') === 'none' ? '' : '\n';
+    this.store.value = this.text + tail;
     this.store.dispatchEvent(new Event('input', { bubbles: true }));
   };
 
@@ -836,7 +848,7 @@
         var wiki = event.target.closest ? event.target.closest('.lp__wiki--follow') : null;
         if (wiki && self.root.contains(wiki)) {
           event.preventDefault();
-          followWikilink(wiki.getAttribute('data-link') || '');
+          self.requestFollow(wiki.getAttribute('data-link') || '');
           return;
         }
       }
@@ -858,7 +870,7 @@
         var raw = at ? wikilinkAt(self.text, at.end) : null;
         if (raw !== null) {
           event.preventDefault();
-          followWikilink(raw);
+          self.requestFollow(raw);
         }
         return;
       }
@@ -1130,9 +1142,7 @@
 
   // The path of the note being edited, so the link menu can leave it out.
   Live.prototype.notePath = function () {
-    var form = this.store.form;
-    var input = form ? form.querySelector('input[name="path"]') : null;
-    return input ? input.value : '';
+    return this.root.getAttribute('data-live-path') || '';
   };
 
   Live.prototype.menuDraw = function () {
@@ -1416,37 +1426,58 @@
 
   // One listener for the page, aimed at the editor now showing: a listener per
   // editor would outlive each swap and keep its detached root alive.
+  function activeLive() {
+    var at = document.activeElement;
+    for (var i = 0; i < lives.length; i += 1) {
+      if (lives[i].root === at || lives[i].root.contains(at)) return lives[i];
+    }
+    return null;
+  }
+
   document.addEventListener('selectionchange', function () {
+    var live = activeLive();
     if (live) {
       live.follow();
       live.menuCheck();
     }
   });
   document.addEventListener('mouseup', function () {
-    if (live && live.dragging) {
-      live.dragging = false;
-      live.follow();
+    for (var i = 0; i < lives.length; i += 1) {
+      if (lives[i].dragging) {
+        lives[i].dragging = false;
+        lives[i].follow();
+      }
+    }
+  });
+
+  // The notes face opens a followed link in its own pane.
+  document.addEventListener('live:follow', function (event) {
+    if (event.target.closest && event.target.closest('#notes-root')) {
+      followWikilink(event.detail.link);
     }
   });
 
   function initLive() {
-    var root = document.querySelector('[data-live]');
-    var store = document.querySelector('#note-form .note-editor');
-    if (!root || !store || root.hasAttribute('data-live-ready')) return;
-    root.setAttribute('data-live-ready', '');
-    root.contentEditable = 'plaintext-only';
-    // A browser without plaintext editing gets the plain textarea instead.
-    if (root.contentEditable !== 'plaintext-only') {
-      root.hidden = true;
-      store.hidden = false;
-      return;
+    var roots = document.querySelectorAll('[data-live][data-live-store]');
+    for (var i = 0; i < roots.length; i += 1) {
+      var root = roots[i];
+      var store = document.getElementById(root.getAttribute('data-live-store'));
+      if (!store || root.hasAttribute('data-live-ready')) continue;
+      root.setAttribute('data-live-ready', '');
+      root.contentEditable = 'plaintext-only';
+      // A browser without plaintext editing gets the plain textarea instead.
+      if (root.contentEditable !== 'plaintext-only') {
+        root.hidden = true;
+        store.hidden = false;
+        continue;
+      }
+      root.classList.add('lp');
+      root.setAttribute('spellcheck', 'true');
+      root.setAttribute('role', 'textbox');
+      root.setAttribute('aria-multiline', 'true');
+      root.setAttribute('aria-label', root.getAttribute('aria-label') || 'Note');
+      lives.push(new Live(root, store));
     }
-    root.classList.add('lp');
-    root.setAttribute('spellcheck', 'true');
-    root.setAttribute('role', 'textbox');
-    root.setAttribute('aria-multiline', 'true');
-    root.setAttribute('aria-label', 'Note');
-    live = new Live(root, store);
   }
 
   // A page of its own (a note just created, a rename) names the title field to
@@ -1613,14 +1644,16 @@
   function setUpNote() {
     // An editor of a note the page has left saves the text it holds and goes.
     if (pendingForm && !document.contains(pendingForm)) flushNote();
-    if (live && !document.contains(live.root)) {
-      live.menuClose();
-      live = null;
-    }
+    lives = lives.filter(function (instance) {
+      if (document.contains(instance.root)) return true;
+      instance.menuClose();
+      return false;
+    });
     // A menu left by an editor the swap took away.
     var stray = document.querySelectorAll('.slash');
     for (var i = 0; i < stray.length; i += 1) {
-      if (!live || !live.menu || live.menu.el !== stray[i]) stray[i].remove();
+      var owned = lives.some(function (instance) { return instance.menu && instance.menu.el === stray[i]; });
+      if (!owned) stray[i].remove();
     }
     initLive();
     focusTitle();
