@@ -2099,10 +2099,8 @@
       var level = Number(row.getAttribute('aria-level'));
       var folder = row.getAttribute('data-kind') === 'folder';
       var closed = folder && shut.indexOf(row.getAttribute('data-path')) >= 0;
-      if (folder) {
+      if (row.hasAttribute('aria-expanded')) {
         row.setAttribute('aria-expanded', closed ? 'false' : 'true');
-        var twisty = row.querySelector('.tree__twisty');
-        if (twisty) twisty.textContent = closed ? '\u25b8' : '\u25be';
       }
       if (hideBelow !== null) {
         if (level > hideBelow) {
@@ -2133,7 +2131,7 @@
     }
     if (closest(event.target, '.row-menu')) return;
     var row = closest(event.target, '.tree__row[data-kind="folder"]');
-    if (!row) return;
+    if (!row || !row.hasAttribute('aria-expanded')) return;
     var path = row.getAttribute('data-path');
     var shut = currentShut();
     var at = shut.indexOf(path);

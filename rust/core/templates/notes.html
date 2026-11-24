@@ -127,11 +127,11 @@
         <li role="none"{% if row.hidden %} hidden{% endif %}>
           <div class="tree__row" role="treeitem" data-kind="{{ row.kind }}" data-path="{{ row.path }}"
                draggable="true" aria-level="{{ row.level }}"
-               {% if row.folder %}aria-expanded="{% if row.expanded %}true{% else %}false{% endif %}"{% endif %}
+               {% if row.folder && row.has_children %}aria-expanded="{% if row.expanded %}true{% else %}false{% endif %}"{% endif %}
                aria-selected="{% if row.selected %}true{% else %}false{% endif %}">
             {% if row.folder %}
             <span class="tree__label" style="padding-left: {{ row.indent }}px">
-              <span class="tree__twisty" aria-hidden="true">{% if row.expanded %}▾{% else %}▸{% endif %}</span>
+              {% if row.has_children %}<svg class="tree__twisty" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg>{% else %}<span class="tree__twisty" aria-hidden="true"></span>{% endif %}
               <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 4.5h4.5l1.5 1.5h7v7.5h-13z"/></svg>
               <span class="tree__name">{{ row.name }}</span>
               {% if !row.tag.is_empty() %}<span class="tree__tag{% if row.tag_warn %} tree__tag--warn{% endif %}">{{ row.tag }}</span>{% endif %}
