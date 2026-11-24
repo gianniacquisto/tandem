@@ -10734,3 +10734,41 @@ async fn the_new_form_starts_on_the_label_only_when_one_named_label_is_checked()
         "two labels leave the New form on No label: {two}"
     );
 }
+
+#[tokio::test]
+async fn a_retype_after_a_conflict_posts_with_theirs_as_was() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-retype-after-conflict");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let id = ticket.id.to_string();
+    let app = router(context(store));
+    board
+        .set(
+            &id,
+            SetFields {
+                assignee: Edit::Set(Some("theirs")),
+                ..SetFields::default()
+            },
+        )
+        .expect("the field is written elsewhere");
+
+    let (_, stale) = save_field(&app, &id, &field_body("assignee", "mine", "builder")).await;
+    assert!(stale.contains("data-state=\"conflict\""), "{stale}");
+    // The retype posts the conflicting value as was, as Keep mine does.
+    let (_, retyped) = save_field(&app, &id, &field_body("assignee", "mine2", "theirs")).await;
+    assert!(retyped.contains("data-state=\"saved\""), "{retyped}");
+    assert_eq!(
+        board.ticket(&id).expect("reads").assignee.as_deref(),
+        Some("mine2")
+    );
+    // The page script uses the failure's theirs as the base of the next save.
+    let (_, _, script) = get(&app, "/static/tandem.js").await;
+    assert!(
+        script.contains(
+            "failure.theirs !== undefined ? failure.theirs : control.getAttribute('data-was')"
+        ),
+        "saveField bases a retype on theirs"
+    );
+}
