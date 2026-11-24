@@ -1,6 +1,6 @@
 # Contributing to Tandem
 
-Thanks for stopping by. Tandem is an MIT-licensed board for you and your
+Thanks for stopping by. Tandem is an AGPL-3.0-licensed board for you and your
 AI coding agents that ships as one standalone binary (`tandem serve` plus the
 CLI), and contributions are welcome.
 This file is the on-ramp: what
@@ -153,6 +153,6 @@ maintainer's account do not need to tick it, and any other co-maintainer does.
 
 ## License
 
-Tandem is MIT licensed (copyright 2026 Gianni Acquisto); see
-[LICENSE](LICENSE). The third-party notices are in
+The core is AGPL-3.0-only, see [LICENSE](LICENSE); `examples/` is MIT, see
+[examples/LICENSE](examples/LICENSE). Releases up to v2.9.1 stay MIT. The third-party notices are in
 [NOTICE.txt](NOTICE.txt).

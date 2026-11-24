@@ -165,8 +165,16 @@ jobs:
           mkdir -p "$staging" dist
           cp "$bindir/tandem" "$staging/tandem"
           chmod +x "$staging/tandem"
-          tar -czf "dist/$archive" -C "$staging" tandem
-          tar -tzf "dist/$archive"
+          cp LICENSE NOTICE.txt "$staging/"
+          tar -czf "dist/$archive" -C "$staging" tandem LICENSE NOTICE.txt
+          listing="$(tar -tzf "dist/$archive")"
+          echo "$listing"
+          for member in tandem LICENSE NOTICE.txt; do
+            if ! echo "$listing" | grep -qx "$member"; then
+              echo "::error::the archive lacks $member"
+              exit 1
+            fi
+          done
 
       - name: Package the archive (zip)
         if: needs.changes.outputs.code != 'false' && matrix.ext == 'zip'
@@ -175,8 +183,20 @@ jobs:
           $archive = "tandem-$env:version-${{ matrix.target }}.zip"
           New-Item -ItemType Directory -Force -Path dist, "$env:RUNNER_TEMP\package" | Out-Null
           Copy-Item "$env:bindir\tandem.exe" "$env:RUNNER_TEMP\package\tandem.exe"
-          Compress-Archive -Path "$env:RUNNER_TEMP\package\tandem.exe" -DestinationPath "dist\$archive"
+          Copy-Item LICENSE, NOTICE.txt "$env:RUNNER_TEMP\package\"
+          Compress-Archive -Path "$env:RUNNER_TEMP\package\tandem.exe", "$env:RUNNER_TEMP\package\LICENSE", "$env:RUNNER_TEMP\package\NOTICE.txt" -DestinationPath "dist\$archive"
           Get-ChildItem dist
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path "dist\$archive"))
+          $names = $zip.Entries | ForEach-Object { $_.FullName }
+          $zip.Dispose()
+          $names
+          foreach ($member in "tandem.exe", "LICENSE", "NOTICE.txt") {
+            if ($names -notcontains $member) {
+              Write-Output "::error::the archive lacks $member"
+              exit 1
+            }
+          }
 
       - name: "Smoke: the extracted tar.gz archive serves the board"
         if: needs.changes.outputs.code != 'false' && matrix.ext == 'tar.gz'
