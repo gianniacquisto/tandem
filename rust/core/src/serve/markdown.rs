@@ -385,6 +385,10 @@ mod tests {
     #[test]
     fn a_four_space_child_under_a_two_column_marker_still_nests() {
         let html = document(&TicketMarkdown::blocks(Some("- a\n    - b")));
-        assert_eq!(html.matches("<ul class=\"markdown__list\"").count(), 2, "{html}");
+        assert_eq!(
+            html.matches("<ul class=\"markdown__list\"").count(),
+            2,
+            "{html}"
+        );
     }
 }
