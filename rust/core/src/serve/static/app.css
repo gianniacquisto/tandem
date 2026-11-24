@@ -3777,6 +3777,9 @@ a.menu__option {
 .live--note,
 .live--note.lp {
   min-height: calc(100vh - 300px);
+  /* The gap under the title belongs to the editor (its 16px title margin and
+   * 24px head margin), so a click there focuses it. */
+  padding-top: 40px;
   padding-bottom: 160px;
   font-size: 16px;
   line-height: 1.65;
@@ -4182,6 +4185,14 @@ a.menu__option {
   line-height: 1.2;
   letter-spacing: -0.01em;
   outline: none;
+}
+
+.page-head:has(+ #note-panel .live--note) {
+  margin-bottom: 0;
+}
+
+.page-head:has(+ #note-panel .live--note) .page-title {
+  margin-bottom: 0;
 }
 
 .page-title:hover,

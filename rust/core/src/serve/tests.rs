@@ -935,6 +935,8 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 "live:follow",
                 "data-live-final-newline",
                 "data-placeholder",
+                "enterToBody",
+                "'.page-title'",
                 "lp__line--hint",
                 "SLASH_HINT",
                 "--depth",
@@ -1799,6 +1801,7 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
         "Café alpha",
         "data-live",
         "data-live-store=\"note-text\"",
+        "data-placeholder=\"Start writing, or type / for commands\"",
         "id=\"note-text\"",
         "aria-label=\"Tree\"",
         "data-tree-action=\"expand\"",
@@ -1816,6 +1819,10 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
     assert!(
         !read.contains("data-live"),
         "mode=read draws the page without the editor: {read}"
+    );
+    assert!(
+        !read.contains("Start writing, or type"),
+        "mode=read carries no placeholder: {read}"
     );
 
     let (_, _, focused) = send(&app, page_get("/notes?project=tandem&path=Index.md")).await;
