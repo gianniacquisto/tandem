@@ -1343,8 +1343,15 @@
     }) || enterOutdent(text, caret);
   }
 
+  // True when the line holding the caret sits in a fenced block.
+  function caretFenced(text, caret) {
+    var row = text.slice(0, caret).split('\n').length - 1;
+    return fenceMask(text.split('\n'))[row] === true;
+  }
+
   // Return on an empty nested item moves it out a level.
   function enterOutdent(text, caret) {
+    if (caretFenced(text, caret)) return null;
     var from = text.lastIndexOf('\n', caret - 1) + 1;
     var to = text.indexOf('\n', caret);
     var line = text.slice(from, to === -1 ? text.length : to);
@@ -1356,6 +1363,7 @@
   // Backspace with the caret just after an item's marker: nested, it outdents;
   // at the top level it removes the marker and the task box, keeping the text.
   function backspaceList(text, caret) {
+    if (caretFenced(text, caret)) return null;
     var from = text.lastIndexOf('\n', caret - 1) + 1;
     var to = text.indexOf('\n', caret);
     var line = text.slice(from, to === -1 ? text.length : to);
