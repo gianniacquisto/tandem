@@ -7,7 +7,7 @@ A starter for your own global agent instructions. Copy it, edit it, drop what yo
 Memory is the notes (in `~/.tandem/bikeshed/`, markdown with `[[wikilinks]]`) and the board. The ticket comment log is the work record: no session records, captures or consolidation pass exist.
 
 - **Orient**: `ticket_list` for the open work, and `Index.md` only when the task needs background. Read a note only for the part the task touches: find it with `note_search` (and `note_backlinks` for what links to it), and change one passage with `note_edit` (`oldText` must match once; an empty `oldText` appends) instead of rewriting the note. A note is a hint: where it disagrees with the code or the board, the code and the board win.
-- **Record**: write a note with `note_write` only for a decision, gotcha or fact that would cost real effort to re-derive and is not already in a ticket, an ADR or the code. Edit the existing note in place; do not add one beside it. Never copy board state into a note.
+- **Record**: first ask whether this project has its own docs that the fact belongs in; if so it goes there, through the project's process, and otherwise a note ([ADR 0056](https://github.com/gianniacquisto/tandem/blob/main/docs/adr/0056-project-docs-and-notes.md)). Write a note with `note_write` only for a decision, gotcha or fact that would cost real effort to re-derive and is not already in a ticket, an ADR or the code. Edit the existing note in place; do not add one beside it. Never copy board state into a note.
 
 ## Tickets
 
