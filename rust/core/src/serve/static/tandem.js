@@ -731,12 +731,30 @@
       closeSheet(sheet);
       return;
     }
-    // Posting a comment is the one explicit write left on the sheet.
-    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === 'Enter') {
-      event.preventDefault();
-      var form = sheet.querySelector('.sheet__discussion form');
-      if (form) htmxPost(form, '#board-root');
-    }
+  });
+
+  // Posting a comment is the one explicit write left on the sheet: Enter in the
+  // comment box posts, Shift+Enter keeps the newline. The post goes through the
+  // form, so the htmx:confirm hold above waits for the saves in flight first.
+  var commentRefocus = false;
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter' || event.shiftKey || event.altKey) return;
+    if (event.isComposing || event.keyCode === 229) return;
+    var field = closest(event.target, '.sheet__addition-field');
+    if (!field) return;
+    event.preventDefault();
+    if (field.value.trim() === '') return;
+    var form = closest(field, 'form');
+    commentRefocus = true;
+    if (form) htmxPost(form, '#board-root');
+  });
+
+  document.addEventListener('htmx:afterSwap', function () {
+    if (!commentRefocus) return;
+    commentRefocus = false;
+    var field = document.querySelector('.sheet__addition-field');
+    if (field) field.focus();
   });
 
   // The description reads rendered; Edit swaps to the box. Without this script
