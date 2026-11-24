@@ -1922,13 +1922,6 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   gap: 5px;
 }
 
-/* Which write the control makes, in the human's words: two save semantics in
- * one row would otherwise surprise whoever changes all three and presses Save. */
-.sheet__meta-write {
-  color: var(--ink-dim);
-  font-size: var(--text-ui);
-}
-
 .sheet__fact-label {
   color: var(--ink-dim);
   font-size: var(--text-ui);
@@ -1946,21 +1939,6 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   font-size: var(--text-ui);
 }
 
-.sheet__save {
-  height: 26px;
-  margin-left: auto;
-  padding: 0 14px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--parchment);
-  color: var(--ink);
-  font: inherit;
-  font-size: var(--text-ui);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.sheet__save:hover,
 .sheet__button:hover {
   background: var(--sand);
 }
@@ -2404,6 +2382,49 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 .sheet__hint {
   color: var(--ink-dim);
   font-size: var(--text-ui);
+}
+
+/* Autosave: the header's save line, a failed field's outline, and the one-line
+ * reason or conflict under it. The note spans the whole field, never the label
+ * column. */
+.sheet__save-state {
+  margin-left: auto;
+  color: var(--ink-dim);
+  font-size: var(--text-ui);
+}
+
+.sheet__save-state.is-failing {
+  color: var(--ember-deep);
+}
+
+.sheet__save-state ~ .sheet__close {
+  margin-left: 0;
+}
+
+.sheet__title.is-failed,
+.sheet__select.is-failed,
+.sheet__description-field.is-failed {
+  border-color: var(--ember);
+}
+
+.sheet__field-note {
+  margin: 0;
+  color: var(--ember-deep);
+  font-size: var(--text-ui);
+}
+
+.sheet__field-note[hidden] {
+  display: none;
+}
+
+.sheet__note-action {
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 /* The sheet's markdown: the core parses, this draws. One block per paragraph,
@@ -3249,8 +3270,7 @@ a.menu__option {
 }
 
 .sheet__meta-field > .sheet__select,
-.sheet__meta-field > .sheet__status-row,
-.sheet__meta-field > .sheet__label-move {
+.sheet__meta-field > .sheet__status-row {
   margin-left: -8px;
 }
 

@@ -949,6 +949,8 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 "backspaceList",
                 "renumberRun",
                 "Tab indents. Press Escape, then Tab, to leave the editor.",
+                "data-autosave",
+                "/field'",
             ] {
                 assert!(body.contains(key), "tandem.js carries {key}");
             }
@@ -1417,7 +1419,7 @@ async fn the_board_and_the_sheet_say_label_and_never_lane() {
     let (status, _, sheet) = send(&app, sheet_get(&format!("/tickets/{}", ticket.id))).await;
     assert_eq!(status, StatusCode::OK, "the sheet answers: {sheet}");
     assert!(
-        sheet.contains("data-sheet-label"),
+        sheet.contains("data-autosave=\"label\""),
         "the sheet's select is the label select"
     );
     assert!(
@@ -1520,6 +1522,17 @@ async fn a_sheet_without_a_description_draws_the_box_and_no_rendered_block() {
     );
 }
 
+/// One field save: the body the sheet's script posts.
+fn field_body(field: &str, value: &str, was: &str) -> String {
+    let encode = |text: &str| super::sheet::encode_component(text);
+    format!("field={field}&value={}&was={}", encode(value), encode(was))
+}
+
+async fn save_field(app: &Router, id: &str, body: &str) -> (StatusCode, String) {
+    let (status, _, answer) = send(app, form_request(&format!("/tickets/{id}/field"), body)).await;
+    (status, answer)
+}
+
 #[tokio::test]
 async fn a_title_line_break_saves_as_a_space() {
     let _serial = ONE_AT_A_TIME.lock().await;
@@ -1528,15 +1541,263 @@ async fn a_title_line_break_saves_as_a_space() {
     let board = setup_board(&store);
     let ticket = by_title(&board, "Café alpha");
     let id = ticket.id.to_string();
-    let revision = store.revision().expect("the revision reads");
     let app = router(context(store));
-    let body = format!(
-        "title=One%0ATwo%0D%0AThree&status={}&assignee=&expected_revision={revision}",
-        ticket.status.as_str()
-    );
-    let (status, _, answer) = send(&app, form_request(&format!("/tickets/{id}"), &body)).await;
+    let (status, answer) = save_field(
+        &app,
+        &id,
+        &field_body("title", "One\nTwo\r\nThree", "Café alpha"),
+    )
+    .await;
     assert_eq!(status, StatusCode::OK, "{answer}");
+    assert!(answer.contains("data-state=\"saved\""), "{answer}");
     assert_eq!(board.ticket(&id).expect("reads").title, "One Two Three");
+}
+
+#[tokio::test]
+async fn a_field_save_writes_only_that_field() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-field-only");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let id = ticket.id.to_string();
+    board
+        .set(
+            &id,
+            SetFields {
+                description: Edit::Set(Some("Body")),
+                ..SetFields::default()
+            },
+        )
+        .expect("the description is set");
+    let app = router(context(store));
+
+    let cases: [(&str, &str, &str); 5] = [
+        ("title", "Renamed", "Café alpha"),
+        ("status", "in-review", "ready"),
+        ("assignee", "reviewer", "builder"),
+        ("description", "Rewritten", "Body"),
+        ("label", "shared", "alpha"),
+    ];
+    for (field, value, was) in cases {
+        let before = board.ticket(&id).expect("reads");
+        let (status, answer) = save_field(&app, &id, &field_body(field, value, was)).await;
+        assert_eq!(status, StatusCode::OK, "{field}: {answer}");
+        assert!(answer.contains("data-state=\"saved\""), "{field}: {answer}");
+        let after = board.ticket(&id).expect("reads");
+        let changed = [
+            ("title", before.title != after.title),
+            ("status", before.status != after.status),
+            ("assignee", before.assignee != after.assignee),
+            ("description", before.description != after.description),
+            ("label", before.label != after.label),
+        ];
+        for (name, did) in changed {
+            assert_eq!(did, name == field, "saving {field} changed {name}");
+        }
+    }
+    let saved = board.ticket(&id).expect("reads");
+    assert_eq!(saved.title, "Renamed");
+    assert_eq!(saved.status, Status::InReview);
+    assert_eq!(saved.assignee.as_deref(), Some("reviewer"));
+    assert_eq!(saved.description.as_deref(), Some("Rewritten"));
+    assert_eq!(saved.label.as_deref(), Some("shared"));
+
+    let (_, answer) = save_field(&app, &id, &field_body("label", "", "shared")).await;
+    assert!(answer.contains("data-state=\"saved\""), "{answer}");
+    assert_eq!(board.ticket(&id).expect("reads").label, None);
+}
+
+#[tokio::test]
+async fn a_field_save_ignores_writes_to_other_fields_and_tickets() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-field-others");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let other = by_title(&board, "Beta one");
+    let id = ticket.id.to_string();
+    let app = router(context(store));
+
+    board
+        .set(
+            &other.id.to_string(),
+            SetFields {
+                title: Edit::Set("Elsewhere"),
+                ..SetFields::default()
+            },
+        )
+        .expect("the other ticket is written");
+    board
+        .set(
+            &id,
+            SetFields {
+                assignee: Edit::Set(Some("agent")),
+                ..SetFields::default()
+            },
+        )
+        .expect("another field is written");
+    let (_, answer) = save_field(&app, &id, &field_body("title", "Mine", "Café alpha")).await;
+    assert!(answer.contains("data-state=\"saved\""), "{answer}");
+    let saved = board.ticket(&id).expect("reads");
+    assert_eq!(saved.title, "Mine");
+    assert_eq!(
+        saved.assignee.as_deref(),
+        Some("agent"),
+        "the other field stays"
+    );
+}
+
+#[tokio::test]
+async fn a_field_save_with_a_stale_was_answers_conflict_and_writes_nothing() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-field-conflict");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let id = ticket.id.to_string();
+    let app = router(context(store.clone()));
+    board
+        .set(
+            &id,
+            SetFields {
+                assignee: Edit::Set(Some("agent \"x\" <b>")),
+                ..SetFields::default()
+            },
+        )
+        .expect("the field is written elsewhere");
+    let revision = store.revision().expect("the revision reads");
+
+    let (status, answer) = save_field(&app, &id, &field_body("assignee", "mine", "builder")).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert!(answer.contains("data-state=\"conflict\""), "{answer}");
+    assert!(
+        answer.contains("data-theirs=\"agent &#34;x&#34; &#60;b&#62;\""),
+        "theirs rides the answer, escaped: {answer}"
+    );
+    assert!(!answer.contains("<b>"), "{answer}");
+    assert_eq!(
+        board.ticket(&id).expect("reads").assignee.as_deref(),
+        Some("agent \"x\" <b>")
+    );
+    assert_eq!(
+        store.revision().expect("the revision reads"),
+        revision,
+        "a conflict writes nothing"
+    );
+}
+
+#[tokio::test]
+async fn keep_mine_after_a_conflict_writes_with_theirs_as_was() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-keep-mine");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let id = ticket.id.to_string();
+    let app = router(context(store));
+    board
+        .set(
+            &id,
+            SetFields {
+                assignee: Edit::Set(Some("agent")),
+                ..SetFields::default()
+            },
+        )
+        .expect("the field is written elsewhere");
+
+    let (_, answer) = save_field(&app, &id, &field_body("assignee", "mine", "agent")).await;
+    assert!(answer.contains("data-state=\"saved\""), "{answer}");
+    assert!(answer.contains("data-was=\"mine\""), "{answer}");
+    assert_eq!(
+        board.ticket(&id).expect("reads").assignee.as_deref(),
+        Some("mine")
+    );
+}
+
+#[tokio::test]
+async fn an_empty_title_field_save_is_refused_with_the_domain_message() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-field-empty-title");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let id = ticket.id.to_string();
+    let app = router(context(store));
+    let (status, answer) = save_field(&app, &id, &field_body("title", "  \n ", "Café alpha")).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert!(answer.contains("data-state=\"refused\""), "{answer}");
+    assert!(
+        answer.contains(&format!(
+            "data-reason=\"{}\"",
+            crate::domain::DomainError::EmptyTitle.message()
+        )),
+        "{answer}"
+    );
+    assert_eq!(board.ticket(&id).expect("reads").title, "Café alpha");
+}
+
+#[tokio::test]
+async fn an_unknown_field_is_a_bad_request() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-field-unknown");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let id = by_title(&board, "Café alpha").id.to_string();
+    let app = router(context(store));
+    let (status, _) = save_field(&app, &id, &field_body("origin", "x", "human")).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn the_field_answer_is_a_fragment_not_the_board_root() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-field-fragment");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let id = by_title(&board, "Café alpha").id.to_string();
+    let app = router(context(store));
+    let (_, answer) = save_field(&app, &id, &field_body("status", "done", "ready")).await;
+    assert!(answer.contains("data-field-result"), "{answer}");
+    assert!(answer.contains("data-field=\"status\""), "{answer}");
+    assert!(!answer.contains("id=\"board-root\""), "{answer}");
+}
+
+#[tokio::test]
+async fn the_sheet_draws_no_save_button_and_no_save_key() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-no-save");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let id = by_title(&board, "Café alpha").id.to_string();
+    let app = router(context(store));
+    let (_, _, page) = send(&app, sheet_get(&format!("/tickets/{id}"))).await;
+    // The board's own forms stay behind the sheet; only the sheet is judged.
+    let sheet = &page[page
+        .find("class=\"sheet-backdrop\"")
+        .expect("the sheet draws")..];
+    for gone in [
+        "sheet__save\"",
+        "sheet-save",
+        "expected_revision",
+        "Saves with Save",
+        "Moves at once",
+    ] {
+        assert!(!sheet.contains(gone), "the sheet has no {gone}: {sheet}");
+    }
+    assert!(
+        sheet.contains("Changes save as you go"),
+        "the footer hint says so: {sheet}"
+    );
+    assert!(!sheet.contains("Cmd/Ctrl+Enter saves"), "{sheet}");
+    for field in ["title", "status", "assignee", "label", "description"] {
+        assert!(
+            sheet.contains(&format!("data-autosave=\"{field}\"")),
+            "{field} autosaves: {sheet}"
+        );
+    }
+    assert!(sheet.contains(&format!("data-ticket=\"{id}\"")), "{sheet}");
+    assert!(sheet.contains("data-save-state"), "{sheet}");
 }
 
 #[tokio::test]
@@ -1551,92 +1812,6 @@ async fn the_sheet_width_rule_is_the_wide_one() {
             && !css
                 .contains(".sheet {\n  display: flex;\n  flex-direction: column;\n  width: 580px"),
         "no narrow sheet width is left"
-    );
-}
-
-#[tokio::test]
-async fn post_ticket_sheet_saves_changes_and_refuses_stale_revision() {
-    let _serial = ONE_AT_A_TIME.lock().await;
-    let sandbox = Sandbox::new("sheet-save");
-    let store = sandbox.store();
-    let board = setup_board(&store);
-    let ticket = by_title(&board, "Café alpha");
-    let id = ticket.id.to_string();
-    let revision = store.revision().expect("the revision reads");
-    let app = router(context(store));
-
-    let body =
-        format!("title=Renamed&status=in-review&assignee=reviewer&expected_revision={revision}");
-    let (status, _, answer) = send(&app, form_request(&format!("/tickets/{id}"), &body)).await;
-    assert_eq!(status, StatusCode::OK, "the save answers: {answer}");
-    let saved = board.ticket(&id).expect("the ticket reads");
-    assert_eq!(saved.title, "Renamed");
-    assert_eq!(saved.status, Status::InReview);
-    assert_eq!(saved.assignee.as_deref(), Some("reviewer"));
-    assert!(
-        answer.contains("Renamed"),
-        "the sheet redraws the save: {answer}"
-    );
-
-    let stale =
-        format!("title=Overwritten&status=done&assignee=human&expected_revision={revision}");
-    let (status, _, answer) = send(&app, form_request(&format!("/tickets/{id}"), &stale)).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(
-        answer.contains("sheet__notice"),
-        "a stale save draws a notice: {answer}"
-    );
-    assert_eq!(
-        board.ticket(&id).expect("the ticket reads").title,
-        "Renamed",
-        "a stale save overwrites nothing"
-    );
-}
-
-#[tokio::test]
-async fn saving_the_sheet_replaces_the_description_with_the_edited_box() {
-    let _serial = ONE_AT_A_TIME.lock().await;
-    let sandbox = Sandbox::new("sheet-description");
-    let store = sandbox.store();
-    let board = setup_board(&store);
-    let ticket = by_title(&board, "Café alpha");
-    let id = ticket.id.to_string();
-    board
-        .set(
-            &id,
-            SetFields {
-                description: Edit::Set(Some("First")),
-                ..SetFields::default()
-            },
-        )
-        .expect("the description is set");
-    let app = router(context(store));
-
-    let revision = board.store().revision().expect("the revision reads");
-    let (status, _, answer) = send(
-        &app,
-        form_request(
-            &format!("/tickets/{id}"),
-            &format!(
-                "title=Caf%C3%A9+alpha&status={}&assignee=&description=Rewritten+body&expected_revision={revision}",
-                ticket.status.as_str()
-            ),
-        ),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "the save answers: {answer}");
-    assert_eq!(
-        board
-            .ticket(&id)
-            .expect("the ticket reads")
-            .description
-            .as_deref(),
-        Some("Rewritten body"),
-        "the box replaces the stored body"
-    );
-    assert!(
-        answer.contains("sheet__description-field"),
-        "the sheet draws the description as one editable box: {answer}"
     );
 }
 
@@ -1696,15 +1871,7 @@ async fn post_ticket_label_moves_immediately_and_label_add_and_rename_update_cho
     let id = ticket.id.to_string();
     let app = router(context(store));
 
-    let revision = board.store().revision().expect("the revision reads");
-    let (status, _, answer) = send(
-        &app,
-        form_request(
-            &format!("/tickets/{id}/label"),
-            &format!("label=shared&expected_revision={revision}"),
-        ),
-    )
-    .await;
+    let (status, answer) = save_field(&app, &id, &field_body("label", "shared", "alpha")).await;
     assert_eq!(status, StatusCode::OK, "the label move answers: {answer}");
     assert_eq!(
         board
@@ -2392,105 +2559,6 @@ async fn get_ticket_sheet_keeps_the_board_filters_behind_it() {
     assert!(
         !body.contains("Beta one"),
         "the board behind the sheet is the filtered one: {body}"
-    );
-}
-
-/// A write from the sheet answers with the board it was opened over: the
-/// filters the form carried come back, so a save never silently clears them.
-#[tokio::test]
-async fn a_sheet_write_keeps_the_filters_its_form_carried() {
-    let _serial = ONE_AT_A_TIME.lock().await;
-    let sandbox = Sandbox::new("sheet-write-filters");
-    let store = sandbox.store();
-    let board = setup_board(&store);
-    let ticket = by_title(&board, "Café alpha");
-    let revision = store.revision().expect("the revision reads");
-    let app = router(context(store));
-
-    let body = format!(
-        "title=Caf%C3%A9+alpha&status={}&assignee=&description=A+line&expected_revision={revision}&board_project=Alpha&board_show_all=&board_label=alpha&board_assignee=builder&board_text=Caf",
-        ticket.status.as_str()
-    );
-    let (status, _, page) = send(
-        &app,
-        form_request(&format!("/tickets/{}", ticket.id), &body),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "the save answers: {page}");
-    assert!(page.contains("A line"), "the description landed: {page}");
-    assert!(
-        page.contains("<option value=\"Alpha\" selected>Alpha</option>"),
-        "the project filter survives a sheet write: {page}"
-    );
-    assert!(
-        page.contains("href=\"/board?project=Alpha"),
-        "the close link still lands on the filtered board: {page}"
-    );
-}
-
-/// A write form carries the board's filter under `board_` names and the
-/// ticket's own fields under theirs, and the server keeps them apart. A save
-/// reads its `assignee` as the ticket's, and the board behind comes back
-/// unfiltered; before the split both lived under `assignee`, the last value won
-/// and closing the sheet landed on the board filtered to that ticket's owner.
-#[tokio::test]
-async fn a_sheet_write_reads_the_board_filter_from_its_own_fields_not_the_tickets() {
-    let _serial = ONE_AT_A_TIME.lock().await;
-    let sandbox = Sandbox::new("sheet-write-filter-names");
-    let store = sandbox.store();
-    let board = setup_board(&store);
-    let ticket = by_title(&board, "Café alpha");
-    let id = ticket.id.to_string();
-    let revision = store.revision().expect("the revision reads");
-    let app = router(context(store));
-
-    // The browser encodes a form in document order: the filter's hidden fields
-    // first, then the ticket's title, revision, status and assignee.
-    let body = format!(
-        "board_project=&board_show_all=&board_label=&board_assignee=&board_text=\
-         &title=Café alpha&expected_revision={revision}&status=backlog&assignee=builder"
-    );
-    let (status, _, page) = send(&app, form_request(&format!("/tickets/{id}"), &body)).await;
-    assert_eq!(status, StatusCode::OK, "the save answers: {page}");
-    assert_eq!(
-        board
-            .ticket(&id)
-            .expect("the ticket reads")
-            .assignee
-            .as_deref(),
-        Some("builder"),
-        "the save still sets the ticket's assignee"
-    );
-    assert!(
-        page.contains("href=\"/board?project=&#38;show_all=&#38;assignee=&#38;text=\""),
-        "the board behind keeps the filter the form carried, empty: {page}"
-    );
-    assert!(
-        !page.contains("<option value=\"builder\" selected>builder</option>"),
-        "the ticket's assignee is not the board's filter: {page}"
-    );
-
-    // The label form's way round: its select is the ticket's label, its hidden
-    // field the board's filter.
-    let revision = board.store().revision().expect("the revision reads");
-    let body = format!(
-        "expected_revision={revision}&board_project=&board_show_all=&board_label=\
-         &board_assignee=&board_text=&label=shared"
-    );
-    let (status, _, page) = send(&app, form_request(&format!("/tickets/{id}/label"), &body)).await;
-    assert_eq!(status, StatusCode::OK, "the label move answers: {page}");
-    assert_eq!(
-        board
-            .ticket(&id)
-            .expect("the ticket reads")
-            .label
-            .as_deref(),
-        Some("shared"),
-        "the label still moves"
-    );
-    assert!(
-        page.contains("href=\"/board?project=&#38;show_all=&#38;assignee=&#38;text=\""),
-        "the moved label is not the board's label filter: {page}"
     );
 }
 
@@ -4976,7 +5044,7 @@ async fn every_route_and_refusal_carries_the_security_headers() {
         "/tickets/x",
         "/tickets/x/status",
         "/tickets/x/comments",
-        "/tickets/x/label",
+        "/tickets/x/field",
         "/labels",
         "/labels/x/rename",
         "/notes/preview",
@@ -5619,10 +5687,9 @@ const ROUTE_TABLE: &[(&str, &str, &str)] = &[
     ("GET", "/static/{*path}", "/static/tandem.css"),
     ("POST", "/tickets", "/tickets"),
     ("GET", "/tickets/{id}", "/tickets/abc"),
-    ("POST", "/tickets/{id}", "/tickets/abc"),
     ("POST", "/tickets/{id}/status", "/tickets/abc/status"),
     ("POST", "/tickets/{id}/comments", "/tickets/abc/comments"),
-    ("POST", "/tickets/{id}/label", "/tickets/abc/label"),
+    ("POST", "/tickets/{id}/field", "/tickets/abc/field"),
     ("POST", "/labels", "/labels"),
     ("POST", "/labels/{name}/rename", "/labels/x/rename"),
     ("GET", "/tokens", "/tokens"),
@@ -10533,7 +10600,7 @@ async fn a_checked_label_outside_the_focused_project_stays_listed_and_checked() 
 }
 
 #[tokio::test]
-async fn a_card_move_and_a_sheet_write_keep_every_checked_label() {
+async fn a_card_move_and_a_sheet_open_keep_every_checked_label() {
     let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("board-label-carry");
     let store = sandbox.store();
@@ -10560,33 +10627,6 @@ async fn a_card_move_and_a_sheet_write_keep_every_checked_label() {
     assert!(
         page.contains("hx-get=\"/board?project=&#38;show_all=&#38;label=alpha&#38;label=beta&#38;"),
         "the refresh URL carries both: {page}"
-    );
-
-    let revision = store.revision().expect("the revision reads");
-    let body = format!(
-        "title=Caf%C3%A9+alpha&status={}&assignee=&description=Line&expected_revision={revision}&board_project=&board_show_all=&board_label=alpha&board_label=beta&board_assignee=&board_text=",
-        alpha.status.as_str()
-    );
-    let (status, _, page) =
-        send(&app, form_request(&format!("/tickets/{}", alpha.id), &body)).await;
-    assert_eq!(status, StatusCode::OK, "the save answers: {page}");
-    assert_eq!(
-        drawn(&page, &LABELLED),
-        [true, false, true, false],
-        "{page}"
-    );
-    assert!(
-        page.contains("label=alpha&#38;label=beta"),
-        "the close link carries both: {page}"
-    );
-    assert_eq!(
-        page.matches("name=\"board_label\"").count() % 2,
-        0,
-        "every sheet form carries one hidden input per label: {page}"
-    );
-    assert!(
-        page.contains("name=\"board_label\" value=\"beta\""),
-        "{page}"
     );
 
     let (_, _, sheet) = send(

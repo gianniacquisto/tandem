@@ -1,5 +1,5 @@
 //! The ticket sheet: one ticket drawn over the board it was opened from, the
-//! writes its forms send, and the label rows a board write redraws.
+//! per-field autosave write it posts, and the comment form.
 
 use super::board::{FiltersView, LabelOption, board_with_sheet};
 use super::*;
@@ -31,7 +31,6 @@ struct EdgeView {
 #[derive(Template)]
 #[template(path = "sheet.html")]
 struct SheetView {
-    revision: i64,
     id: String,
     /// The filters the board behind the sheet was drawn with, as a query
     /// string: every write form carries them, so an answer redraws that board
@@ -46,6 +45,8 @@ struct SheetView {
     title: String,
     status: &'static str,
     assignee: String,
+    /// The ticket's label, or empty: the baseline its select was drawn from.
+    label: String,
     status_options: Vec<SheetStatusOption>,
     label_options: Vec<LabelOption>,
     description: String,
@@ -154,7 +155,7 @@ fn render_sheet(
     comment_refusal: Option<String>,
 ) -> Result<SheetView, String> {
     let board = context.board();
-    let (ticket, revision) = board.ticket_snapshot(id).map_err(|error| error.message())?;
+    let (ticket, _) = board.ticket_snapshot(id).map_err(|error| error.message())?;
     let (comments, _) = board
         .comments_snapshot(id)
         .map_err(|error| error.message())?;
@@ -197,7 +198,6 @@ fn render_sheet(
         .collect();
 
     Ok(SheetView {
-        revision,
         id: ticket.id.to_string(),
         board_query: filters.query(),
         filters: FiltersView {
@@ -213,6 +213,7 @@ fn render_sheet(
         title: ticket.title.clone(),
         status: ticket.status.as_str(),
         assignee: ticket.assignee.clone().unwrap_or_default(),
+        label: ticket.label.clone().unwrap_or_default(),
         status_options,
         label_options: sheet_label_options(&ticket, &labels),
         description,
@@ -288,94 +289,208 @@ pub(super) async fn ticket_page(
     sheet_response(&context, &id, &filters, None, None, &headers)
 }
 
-pub(super) async fn save_ticket(
+// MARK: - The field autosave
+
+/// The fields the sheet saves one at a time.
+#[derive(Clone, Copy)]
+enum SheetField {
+    Title,
+    Status,
+    Assignee,
+    Label,
+    Description,
+}
+
+impl SheetField {
+    fn parse(raw: &str) -> Option<Self> {
+        match raw {
+            "title" => Some(Self::Title),
+            "status" => Some(Self::Status),
+            "assignee" => Some(Self::Assignee),
+            "label" => Some(Self::Label),
+            "description" => Some(Self::Description),
+            _ => None,
+        }
+    }
+
+    /// The value as the write would store it, so a `was` and the stored value
+    /// compare equal when the write would have changed nothing between them.
+    fn normalise(self, raw: &str) -> String {
+        match self {
+            Self::Title => raw
+                .replace("\r\n", " ")
+                .replace(['\r', '\n'], " ")
+                .trim()
+                .to_string(),
+            Self::Status => Status::parse(raw)
+                .map(|status| status.as_str().to_string())
+                .unwrap_or_else(|_| raw.trim().to_string()),
+            Self::Assignee => {
+                crate::domain::board::normalize_assignee(Some(raw)).unwrap_or_default()
+            }
+            Self::Label => raw.trim().to_string(),
+            Self::Description => raw.replace("\r\n", "\n").trim().to_string(),
+        }
+    }
+
+    /// What the ticket holds for this field, normalised.
+    fn stored(self, ticket: &Ticket) -> String {
+        match self {
+            Self::Title => self.normalise(&ticket.title),
+            Self::Status => ticket.status.as_str().to_string(),
+            Self::Assignee => self.normalise(ticket.assignee.as_deref().unwrap_or_default()),
+            Self::Label => self.normalise(ticket.label.as_deref().unwrap_or_default()),
+            Self::Description => self.normalise(ticket.description.as_deref().unwrap_or_default()),
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Title => "title",
+            Self::Status => "status",
+            Self::Assignee => "assignee",
+            Self::Label => "label",
+            Self::Description => "description",
+        }
+    }
+}
+
+/// The answer to one field write: a single element the script reads, never the
+/// board, so nothing is swapped under the caret.
+#[derive(Template)]
+#[template(path = "field_result.html")]
+struct FieldResult {
+    field: &'static str,
+    state: &'static str,
+    was: String,
+    theirs: Option<String>,
+    reason: Option<String>,
+}
+
+fn field_answer(result: FieldResult) -> Response {
+    match result.render() {
+        Ok(html) => Html(html).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("the answer could not be drawn: {error}\n"),
+        )
+            .into_response(),
+    }
+}
+
+/// One field of one ticket, written if the field still holds what the sheet
+/// last showed (`was`). The compare is per field: a write to another field or
+/// another ticket never makes this one conflict.
+pub(super) async fn save_field(
     context: Context,
     Path(id): Path<String>,
-    headers: HeaderMap,
     form: Result<Form<Pairs>, FormRejection>,
 ) -> Response {
     let Ok(Form(pairs)) = form else {
         return bad_request("the form could not be read");
     };
     let params = pairs_map(&pairs);
-    let filters = Filters::parse_board_fields(&pairs);
-    let expected = match expected_revision(&params) {
-        Ok(revision) => revision,
-        Err(message) => return bad_request(&message),
+    let Some(kind) = SheetField::parse(field(&params, "field")) else {
+        return bad_request("the field is not one the sheet saves");
     };
-    if expected != context.revision() {
-        return sheet_response(
-            &context,
-            &id,
-            &filters,
-            Some(CONFLICT_NOTICE.to_string()),
-            None,
-            &headers,
+    let Some(was) = params.get("was") else {
+        return bad_request("was is missing");
+    };
+    let value = field(&params, "value");
+    let board = context.board();
+    let ticket = match board.ticket_snapshot(&id) {
+        Ok((ticket, _)) => ticket,
+        Err(error) => return bad_request(&error.message()),
+    };
+    let stored = kind.stored(&ticket);
+    if kind.normalise(was) != stored {
+        tracing::info!(
+            actor = ?context.actor.as_str(),
+            id = ?id,
+            field = kind.name(),
+            revision = context.revision(),
+            "field save conflicted"
         );
+        return field_answer(FieldResult {
+            field: kind.name(),
+            state: "conflict",
+            was: was.clone(),
+            theirs: Some(stored),
+            reason: None,
+        });
     }
-    // A title is one line: a pasted line break becomes a space.
-    let title = field(&params, "title")
-        .replace("\r\n", " ")
-        .replace(['\r', '\n'], " ");
-    if title.trim().is_empty() {
-        return sheet_response(
-            &context,
-            &id,
-            &filters,
-            Some(crate::domain::DomainError::EmptyTitle.message()),
-            None,
-            &headers,
-        );
-    }
-    let status = match Status::parse(field(&params, "status")) {
-        Ok(status) => status,
-        Err(error) => {
-            return sheet_response(
-                &context,
+    let outcome = match kind {
+        SheetField::Title => {
+            let title = kind.normalise(value);
+            board.set(
                 &id,
-                &filters,
-                Some(error.message()),
-                None,
-                &headers,
-            );
+                SetFields {
+                    title: Edit::Set(&title),
+                    ..SetFields::default()
+                },
+            )
+        }
+        SheetField::Status => Status::parse(value).and_then(|status| {
+            board.set(
+                &id,
+                SetFields {
+                    status: Edit::Set(status),
+                    ..SetFields::default()
+                },
+            )
+        }),
+        SheetField::Assignee => board.set(
+            &id,
+            SetFields {
+                assignee: Edit::Set(Some(value)),
+                ..SetFields::default()
+            },
+        ),
+        SheetField::Description => board.set(
+            &id,
+            SetFields {
+                description: Edit::Set(Some(value)),
+                ..SetFields::default()
+            },
+        ),
+        SheetField::Label => {
+            let label = kind.normalise(value);
+            let label = (!label.is_empty()).then_some(label);
+            board.move_ticket(&id, label.as_deref(), usize::MAX)
         }
     };
-    let assignee = field(&params, "assignee");
-    let to = status.as_str();
-    let description = if params.contains_key("description") {
-        Edit::Set(Some(field(&params, "description")))
-    } else {
-        Edit::Unchanged
-    };
-    let outcome = context.board().set(
-        &id,
-        SetFields {
-            title: Edit::Set(&title),
-            status: Edit::Set(status),
-            assignee: Edit::Set(Some(assignee)),
-            description,
-            ..SetFields::default()
-        },
-    );
     match outcome {
-        Ok(_) => {
+        Ok(saved) => {
             tracing::info!(
                 actor = ?context.actor.as_str(),
                 id = ?id,
-                to,
+                field = kind.name(),
                 revision = context.revision(),
-                "ticket saved"
+                "field saved"
             );
-            sheet_response(&context, &id, &filters, None, None, &headers)
+            field_answer(FieldResult {
+                field: kind.name(),
+                state: "saved",
+                was: kind.stored(&saved),
+                theirs: None,
+                reason: None,
+            })
         }
-        Err(error) => sheet_response(
-            &context,
-            &id,
-            &filters,
-            Some(error.message()),
-            None,
-            &headers,
-        ),
+        Err(error) => {
+            tracing::warn!(
+                actor = ?context.actor.as_str(),
+                id = ?id,
+                field = kind.name(),
+                "field save refused"
+            );
+            field_answer(FieldResult {
+                field: kind.name(),
+                state: "refused",
+                was: was.clone(),
+                theirs: None,
+                reason: Some(error.message()),
+            })
+        }
     }
 }
 
@@ -408,62 +523,6 @@ pub(super) async fn add_comment(
                 id = ?id,
                 revision = context.revision(),
                 "comment added"
-            );
-            sheet_response(&context, &id, &filters, None, None, &headers)
-        }
-        Err(error) => sheet_response(
-            &context,
-            &id,
-            &filters,
-            Some(error.message()),
-            None,
-            &headers,
-        ),
-    }
-}
-
-pub(super) async fn move_to_label(
-    context: Context,
-    Path(id): Path<String>,
-    headers: HeaderMap,
-    form: Result<Form<Pairs>, FormRejection>,
-) -> Response {
-    let Ok(Form(pairs)) = form else {
-        return bad_request("the form could not be read");
-    };
-    let params = pairs_map(&pairs);
-    let filters = Filters::parse_board_fields(&pairs);
-    let expected = match expected_revision(&params) {
-        Ok(revision) => revision,
-        Err(message) => return bad_request(&message),
-    };
-    if expected != context.revision() {
-        return sheet_response(
-            &context,
-            &id,
-            &filters,
-            Some(CONFLICT_NOTICE.to_string()),
-            None,
-            &headers,
-        );
-    }
-    let label = field(&params, "label");
-    let label = if label.trim().is_empty() {
-        None
-    } else {
-        Some(label.to_string())
-    };
-    match context
-        .board()
-        .move_ticket(&id, label.as_deref(), usize::MAX)
-    {
-        Ok(_) => {
-            tracing::info!(
-                actor = ?context.actor.as_str(),
-                id = ?id,
-                label = ?label,
-                revision = context.revision(),
-                "ticket moved to label"
             );
             sheet_response(&context, &id, &filters, None, None, &headers)
         }

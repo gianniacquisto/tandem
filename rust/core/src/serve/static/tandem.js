@@ -300,30 +300,345 @@
 
   // MARK: - The ticket sheet
 
-  // The label is the one metadata control that moves at once: its own form.
+  // Every field of the sheet saves itself: `POST /tickets/{id}/field` with the
+  // field, its value and `was`, the value it showed when last drawn or saved.
+  // The answer is one small element, never the board, so nothing is swapped
+  // under the caret. Typed fields save a second after the last key and on
+  // blur; the selects save on change. One write is out at a time, through one
+  // promise chain, and a write reads the control when its turn comes, so a
+  // field edited while its save is in flight is saved again from what it shows
+  // by then. A failed or conflicting field keeps the human's text, shows its
+  // reason under it, and counts in the header line. Esc and the close link
+  // flush first and stay open on a failure; the second press closes anyway.
+  var sheetChain = Promise.resolve();
+  var sheetTimers = {};
+  var sheetFailures = {};
+  var sheetOut = 0;
+  var sheetEverSaved = false;
+  var sheetArmed = false;
+  var sheetSeen = null;
+
+  function sheetRoot() {
+    var sheet = document.querySelector('.sheet');
+    // A different sheet drawn (another ticket, a reopened one) starts clean.
+    if (sheet !== sheetSeen) {
+      sheetSeen = sheet;
+      sheetTimers = {};
+      sheetFailures = {};
+      sheetEverSaved = false;
+      sheetArmed = false;
+    }
+    return sheet;
+  }
+
+  function sheetControl(sheet, field) {
+    return sheet.querySelector('[data-autosave="' + field + '"]');
+  }
+
+  // The value the store is known to hold for the control: what it last
+  // posted and landed, else what it was drawn with.
+  function landed(control) {
+    return control.__landed !== undefined ? control.__landed : control.getAttribute('data-was');
+  }
+
+  function isDirty(control) {
+    return control.value !== landed(control);
+  }
+
+  function failedFields() {
+    return Object.keys(sheetFailures);
+  }
+
+  function renderSaveState(sheet) {
+    var line = sheet.querySelector('[data-save-state]');
+    if (!line) return;
+    var failed = failedFields().length;
+    var busy = sheetOut > 0 || Object.keys(sheetTimers).length > 0;
+    line.classList.toggle('is-failing', failed > 0 && !busy);
+    if (busy) {
+      line.textContent = 'Saving…';
+    } else if (failed > 0) {
+      line.textContent = failed === 1 ? '1 change not saved' : failed + ' changes not saved';
+    } else if (sheetEverSaved) {
+      line.textContent = 'All changes saved';
+    } else {
+      line.textContent = '';
+    }
+    if (failed === 0) sheetArmed = false;
+  }
+
+  function shorten(text) {
+    text = text.replace(/\s+/g, ' ').trim();
+    return text.length > 80 ? text.slice(0, 80) + '…' : text;
+  }
+
+  function noteButton(label, action) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'sheet__note-action';
+    button.setAttribute(action, '');
+    button.textContent = label;
+    return button;
+  }
+
+  function showFailure(sheet, field, failure) {
+    var control = sheetControl(sheet, field);
+    var note = sheet.querySelector('[data-field-note="' + field + '"]');
+    sheetFailures[field] = failure;
+    if (control) control.classList.add('is-failed');
+    if (note) {
+      note.textContent = '';
+      if (failure.theirs !== undefined) {
+        note.appendChild(document.createTextNode('Changed elsewhere to "' + shorten(failure.theirs) + '". '));
+        note.appendChild(noteButton('Keep mine', 'data-field-keep'));
+        note.appendChild(document.createTextNode('/'));
+        note.appendChild(noteButton('Use theirs', 'data-field-theirs'));
+      } else {
+        note.appendChild(document.createTextNode('Not saved: ' + failure.reason + '. '));
+        note.appendChild(noteButton('Retry', 'data-field-retry'));
+      }
+      note.hidden = false;
+    }
+  }
+
+  function clearFailure(sheet, field) {
+    delete sheetFailures[field];
+    var control = sheetControl(sheet, field);
+    var note = sheet.querySelector('[data-field-note="' + field + '"]');
+    if (control) control.classList.remove('is-failed');
+    if (note) {
+      note.textContent = '';
+      note.hidden = true;
+    }
+  }
+
+  // One write. Resolves once the answer is applied; never rejects.
+  function writeField(sheet, control, was, leaving) {
+    var field = control.getAttribute('data-autosave');
+    var value = control.value;
+    var body = new URLSearchParams({ field: field, value: value, was: was }).toString();
+    var failed = function (reason) { return { state: 'failed', reason: reason }; };
+    return fetch('/tickets/' + encodeURIComponent(sheet.getAttribute('data-ticket')) + '/field', {
+      method: 'POST',
+      // The keepalive body is capped at 64 KB: past 60 KB, a plain fetch.
+      keepalive: !!leaving && body.length < 60000,
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'HX-Request': 'true'
+      },
+      body: body
+    })
+      .then(function (response) {
+        if (response.status === 401) {
+          signedOut();
+          return failed('you are signed out');
+        }
+        if (!response.ok) return failed('the server did not answer');
+        signedIn();
+        return response.text().then(function (html) {
+          var parsed = new DOMParser().parseFromString(html, 'text/html');
+          var result = parsed.querySelector('[data-field-result]');
+          if (!result) return failed('the server did not answer');
+          return {
+            state: result.getAttribute('data-state'),
+            was: result.getAttribute('data-was'),
+            theirs: result.getAttribute('data-theirs'),
+            reason: result.getAttribute('data-reason')
+          };
+        });
+      }, function () {
+        return failed('the server did not answer');
+      })
+      .then(function (answer) {
+        if (!sheet.isConnected) return;
+        if (answer.state === 'saved') {
+          control.setAttribute('data-was', answer.was);
+          control.__landed = value;
+          sheetEverSaved = true;
+          clearFailure(sheet, field);
+        } else if (answer.state === 'conflict') {
+          showFailure(sheet, field, { theirs: answer.theirs });
+        } else {
+          showFailure(sheet, field, { reason: answer.reason || 'the server did not answer' });
+        }
+      });
+  }
+
+  // Queue a save of the control as it reads when its turn comes. `force`
+  // writes even when the control looks clean (Retry, Keep mine).
+  function saveField(control, force, was, leaving) {
+    var sheet = sheetRoot();
+    var field = control.getAttribute('data-autosave');
+    if (sheetTimers[field]) {
+      window.clearTimeout(sheetTimers[field]);
+      delete sheetTimers[field];
+    }
+    sheetOut += 1;
+    renderSaveState(sheet);
+    var run = function () {
+      if (!sheet.isConnected || (!force && !isDirty(control))) return null;
+      return writeField(sheet, control, was !== undefined ? was : control.getAttribute('data-was'), leaving);
+    };
+    var done = sheetChain.then(run, run).then(function () {
+      sheetOut -= 1;
+      if (sheet.isConnected) renderSaveState(sheet);
+    });
+    sheetChain = done;
+    return done;
+  }
+
+  function scheduleField(control) {
+    var sheet = sheetRoot();
+    var field = control.getAttribute('data-autosave');
+    if (sheetTimers[field]) window.clearTimeout(sheetTimers[field]);
+    sheetTimers[field] = window.setTimeout(function () {
+      delete sheetTimers[field];
+      saveField(control, false);
+    }, 1000);
+    renderSaveState(sheet);
+  }
+
+  // Write now what the debounce holds, then wait for every write in flight.
+  function flushSheet(sheet) {
+    Object.keys(sheetTimers).forEach(function (field) {
+      var control = sheetControl(sheet, field);
+      if (control) saveField(control, false);
+    });
+    sheetTimers = {};
+    return sheetChain;
+  }
+
+  function sheetHref(sheet) {
+    var close = sheet.querySelector('.sheet__close');
+    return close ? close.getAttribute('href') : '/board';
+  }
+
+  function focusFirstFailed(sheet) {
+    var first = failedFields()[0];
+    var control = first && sheetControl(sheet, first);
+    if (control) control.focus();
+  }
+
+  // Close where the sheet was opened from, filters and all, once everything
+  // has landed. With a failure showing the sheet stays open and the failed
+  // field is focused; the second try closes anyway and drops that change.
+  function closeSheet(sheet) {
+    var armed = sheetArmed;
+    flushSheet(sheet).then(function () {
+      if (failedFields().length > 0 && !armed) {
+        sheetArmed = true;
+        focusFirstFailed(sheet);
+        return;
+      }
+      window.location.href = sheetHref(sheet);
+    });
+  }
+
+  document.addEventListener('input', function (event) {
+    var control = closest(event.target, '[data-autosave]');
+    if (!control || control.tagName === 'SELECT') return;
+    scheduleField(control);
+  });
+
+  document.addEventListener('focusout', function (event) {
+    var control = closest(event.target, '[data-autosave]');
+    if (!control || control.tagName === 'SELECT') return;
+    var field = control.getAttribute('data-autosave');
+    if (sheetTimers[field]) saveField(control, false);
+  });
+
   document.addEventListener('change', function (event) {
-    var select = closest(event.target, '[data-sheet-label]');
-    if (select && select.form) htmxPost(select.form, '#board-root');
+    var control = closest(event.target, 'select[data-autosave]');
+    if (!control) return;
+    if (control.getAttribute('data-autosave') === 'status') {
+      control.setAttribute('data-status', control.value);
+      var dot = control.parentElement && control.parentElement.querySelector('.sheet__status-dot');
+      if (dot) dot.setAttribute('data-status', control.value);
+    }
+    saveField(control, false);
+  });
+
+  document.addEventListener('click', function (event) {
+    var sheet = sheetRoot();
+    if (!sheet) return;
+    var close = closest(event.target, '.sheet__close');
+    if (close && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && event.button === 0) {
+      event.preventDefault();
+      closeSheet(sheet);
+      return;
+    }
+    var note = closest(event.target, '[data-field-note]');
+    if (!note) return;
+    var field = note.getAttribute('data-field-note');
+    var control = sheetControl(sheet, field);
+    if (!control) return;
+    var failure = sheetFailures[field] || {};
+    if (closest(event.target, '[data-field-retry]')) {
+      saveField(control, true);
+    } else if (closest(event.target, '[data-field-keep]')) {
+      saveField(control, true, failure.theirs);
+    } else if (closest(event.target, '[data-field-theirs]')) {
+      control.value = failure.theirs;
+      if (control.value !== failure.theirs) {
+        var option = document.createElement('option');
+        option.value = failure.theirs;
+        option.textContent = failure.theirs;
+        control.appendChild(option);
+        control.value = failure.theirs;
+      }
+      control.setAttribute('data-was', failure.theirs);
+      control.__landed = failure.theirs;
+      if (field === 'status') control.dispatchEvent(new Event('change', { bubbles: true }));
+      clearFailure(sheet, field);
+      renderSaveState(sheet);
+      growField(control);
+      control.focus();
+    }
+  });
+
+  // A request that would redraw the sheet (posting a comment, following a
+  // dependency) waits for the saves, so typing in flight is never wiped. A
+  // failure still showing keeps the page where it is.
+  document.addEventListener('htmx:confirm', function (event) {
+    var sheet = sheetRoot();
+    if (!sheet || !sheet.contains(event.detail.elt)) return;
+    if (Object.keys(sheetTimers).length === 0 && sheetOut === 0 && failedFields().length === 0) return;
+    event.preventDefault();
+    var issue = event.detail.issueRequest;
+    flushSheet(sheet).then(function () {
+      if (failedFields().length === 0) issue();
+      else focusFirstFailed(sheet);
+    });
+  });
+
+  // Closing the tab inside the debounce: send what is held, past the unload.
+  function flushSheetOnLeave() {
+    var sheet = document.querySelector('.sheet');
+    if (!sheet || sheet !== sheetSeen) return;
+    Object.keys(sheetTimers).forEach(function (field) {
+      var control = sheetControl(sheet, field);
+      if (control) saveField(control, false, undefined, true);
+    });
+    sheetTimers = {};
+  }
+
+  window.addEventListener('pagehide', flushSheetOnLeave);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') flushSheetOnLeave();
   });
 
   document.addEventListener('keydown', function (event) {
-    var sheet = document.querySelector('.sheet');
+    var sheet = sheetRoot();
     if (!sheet) return;
     if (event.key === 'Escape') {
       event.preventDefault();
-      // Close where the sheet was opened from, filters and all.
-      var close = sheet.querySelector('.sheet__close');
-      window.location.href = close ? close.getAttribute('href') : '/board';
+      closeSheet(sheet);
       return;
     }
-    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+    // Posting a comment is the one explicit write left on the sheet.
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === 'Enter') {
       event.preventDefault();
-      var form;
-      if (event.shiftKey) {
-        form = sheet.querySelector('.sheet__discussion form');
-      } else {
-        form = document.getElementById('sheet-save');
-      }
+      var form = sheet.querySelector('.sheet__discussion form');
       if (form) htmxPost(form, '#board-root');
     }
   });
@@ -362,13 +677,13 @@
     }
   });
 
-  // Enter in the title saves; a title is one line.
+  // Enter in the title saves it at once; a title is one line.
   document.addEventListener('keydown', function (event) {
     if (event.key !== 'Enter' || event.isComposing) return;
-    if (!closest(event.target, '.sheet__title')) return;
+    var title = closest(event.target, '.sheet__title');
+    if (!title) return;
     event.preventDefault();
-    var form = document.getElementById('sheet-save');
-    if (form) htmxPost(form, '#board-root');
+    saveField(title, false);
   });
 
   document.addEventListener('DOMContentLoaded', setUpSheet);

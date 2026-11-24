@@ -365,13 +365,10 @@ fn routes() -> Router<Arc<SessionContext>> {
         .route("/mcp", post(mcp::mcp_post))
         .route("/static/{*path}", get(assets::static_asset))
         .route("/tickets", post(board::add_ticket))
-        .route(
-            "/tickets/{id}",
-            get(sheet::ticket_page).post(sheet::save_ticket),
-        )
+        .route("/tickets/{id}", get(sheet::ticket_page))
+        .route("/tickets/{id}/field", post(sheet::save_field))
         .route("/tickets/{id}/status", post(board::move_ticket))
         .route("/tickets/{id}/comments", post(sheet::add_comment))
-        .route("/tickets/{id}/label", post(sheet::move_to_label))
         .route("/tokens", get(tokens::list).post(tokens::create))
         .route(
             "/tokens/{id}/revoke",
