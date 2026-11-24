@@ -14,6 +14,7 @@ A refine pass shapes tickets and builds nothing. It dispatches the `refiner` (`a
 5. **Relay** each refiner's one-line report, its ticket named by the Naming tickets rule in `AGENTS.md`.
 
 Done when every ticket the pass took carries the brief shape at the status it earns (`ready`, or `on-hold` with its reason), and no question the human has not answered remains open.
+6. **Scribe** each refined ticket as `skills/tandem-scribe/` says, and relay its `SCRIBE:` line beside the refiner's.
 
 ## Refine tiers
 
