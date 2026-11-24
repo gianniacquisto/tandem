@@ -15,7 +15,7 @@ fn the_status_words_in_workflow_order() {
             "On hold",
             "Ready",
             "In progress",
-            "In Review",
+            "In review",
             "Done"
         ]
     );

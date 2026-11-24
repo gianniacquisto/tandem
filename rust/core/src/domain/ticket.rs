@@ -84,7 +84,7 @@ impl Status {
             Self::OnHold => "On hold",
             Self::Ready => "Ready",
             Self::InProgress => "In progress",
-            Self::InReview => "In Review",
+            Self::InReview => "In review",
             Self::Done => "Done",
         }
     }
