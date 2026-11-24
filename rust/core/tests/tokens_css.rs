@@ -459,7 +459,7 @@ const CATPPUCCIN_DARK: [(&str, &str); 34] = [
     ("--tone-sky", "#89B4FA"),
 ];
 /// The geometry, motion and layout scale, in the file's order.
-const SCALE: [&str; 15] = [
+const SCALE: [&str; 17] = [
     "--hairline",
     "--radius-checkbox",
     "--radius-control",
@@ -475,6 +475,8 @@ const SCALE: [&str; 15] = [
     "--window-floor",
     "--font-body",
     "--font-mono",
+    "--text-ui",
+    "--text-body",
 ];
 
 /// The declaration block a palette's selector opens.
@@ -798,4 +800,64 @@ fn style_registration_agrees_across_theme_js_shell_and_tokens() {
             palette(&selector);
         }
     }
+}
+
+/// Every `(selector, body)` rule in the shipped `app.css`.
+fn app_rules() -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut rest = APP;
+    while let Some(open) = rest.find('{') {
+        let Some(close) = rest[open..].find('}') else {
+            break;
+        };
+        let head = rest[..open].rsplit("*/").next().unwrap_or("").trim();
+        out.push((head.to_string(), rest[open + 1..open + close].to_string()));
+        rest = &rest[open + close + 1..];
+    }
+    out
+}
+
+fn sheet_rules() -> Vec<(String, String)> {
+    app_rules()
+        .into_iter()
+        .filter(|(sel, _)| sel.contains(".sheet"))
+        .collect()
+}
+
+#[test]
+fn the_sheet_names_only_the_two_type_tokens() {
+    for (sel, body) in sheet_rules() {
+        if sel == ".sheet__title" || sel == ".sheet__close" {
+            continue;
+        }
+        for decl in body.split(';') {
+            if let Some(v) = decl.trim().strip_prefix("font-size:") {
+                let v = v.trim();
+                assert!(
+                    v == "var(--text-ui)" || v == "var(--text-body)",
+                    "{sel} sets font-size: {v}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn the_sheet_box_includes_its_border() {
+    assert!(
+        sheet_rules()
+            .iter()
+            .any(|(sel, body)| sel == ".sheet" && body.contains("box-sizing: border-box")),
+        ".sheet declares box-sizing: border-box"
+    );
+}
+
+#[test]
+fn the_sheet_select_draws_no_native_arrow() {
+    assert!(
+        sheet_rules()
+            .iter()
+            .any(|(sel, body)| sel == ".sheet__select" && body.contains("appearance: none")),
+        ".sheet__select declares appearance: none"
+    );
 }
