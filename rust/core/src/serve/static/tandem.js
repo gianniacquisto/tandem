@@ -609,17 +609,66 @@
 
   // A request that would redraw the sheet (posting a comment, following a
   // dependency) waits for the saves, so typing in flight is never wiped. A
-  // failure still showing keeps the page where it is.
+  // failure already settled holds nothing in flight: the request goes out, and
+  // the failed fields are put back after the swap (below).
   document.addEventListener('htmx:confirm', function (event) {
     var sheet = sheetRoot();
     if (!sheet || !sheet.contains(event.detail.elt)) return;
-    if (Object.keys(sheetTimers).length === 0 && sheetOut === 0 && failedFields().length === 0) return;
+    if (Object.keys(sheetTimers).length === 0 && sheetOut === 0) return;
     event.preventDefault();
     var issue = event.detail.issueRequest;
-    flushSheet(sheet).then(function () {
-      if (failedFields().length === 0) issue();
-      else focusFirstFailed(sheet);
+    flushSheet(sheet).then(issue);
+  });
+
+  // The redraw replaces the fields, so a failed one would come back with the
+  // stored text and no note. Before the swap each failed field's text, base
+  // and failure are taken; when the new sheet is drawn they are put back, so
+  // Retry, Keep mine and Use theirs still work.
+  var sheetCarry = null;
+
+  document.addEventListener('htmx:beforeSwap', function () {
+    var sheet = document.querySelector('.sheet');
+    if (!sheet || sheet !== sheetSeen || failedFields().length === 0) return;
+    sheetCarry = { failures: sheetFailures, saved: sheetEverSaved, armed: sheetArmed, fields: {} };
+    failedFields().forEach(function (field) {
+      var control = sheetControl(sheet, field);
+      if (!control) return;
+      sheetCarry.fields[field] = {
+        value: control.value,
+        was: control.getAttribute('data-was'),
+        landed: control.__landed
+      };
     });
+  });
+
+  document.addEventListener('htmx:load', function () {
+    var carry = sheetCarry;
+    var sheet = document.querySelector('.sheet');
+    if (!carry || !sheet || sheet === sheetSeen) return;
+    sheetCarry = null;
+    sheetSeen = sheet;
+    sheetTimers = {};
+    sheetFailures = {};
+    sheetEverSaved = carry.saved;
+    sheetArmed = carry.armed;
+    Object.keys(carry.fields).forEach(function (field) {
+      var control = sheetControl(sheet, field);
+      var kept = carry.fields[field];
+      if (!control) return;
+      control.value = kept.value;
+      if (control.value !== kept.value) {
+        var option = document.createElement('option');
+        option.value = kept.value;
+        option.textContent = kept.value;
+        control.appendChild(option);
+        control.value = kept.value;
+      }
+      control.setAttribute('data-was', kept.was);
+      if (kept.landed !== undefined) control.__landed = kept.landed;
+      showFailure(sheet, field, carry.failures[field]);
+      growField(control);
+    });
+    renderSaveState(sheet);
   });
 
   // Closing the tab inside the debounce: send what is held, past the unload.
