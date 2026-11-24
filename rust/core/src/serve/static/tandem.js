@@ -296,7 +296,7 @@
     if (form) syncNewLabels(form);
   }
   document.addEventListener('DOMContentLoaded', setUpNewForm);
-  document.addEventListener('htmx:afterSettle', setUpNewForm);
+  document.addEventListener('htmx:afterSwap', setUpNewForm);
 
   // MARK: - The ticket sheet
 
@@ -372,7 +372,7 @@
   });
 
   document.addEventListener('DOMContentLoaded', setUpSheet);
-  document.addEventListener('htmx:afterSettle', setUpSheet);
+  document.addEventListener('htmx:afterSwap', setUpSheet);
 
   // MARK: - The notes editor
 
@@ -2183,7 +2183,7 @@
   document.addEventListener('DOMContentLoaded', setUpTree);
   document.addEventListener('htmx:afterSwap', setUpTree);
   document.addEventListener('DOMContentLoaded', setUpNote);
-  document.addEventListener('htmx:afterSettle', setUpNote);
+  document.addEventListener('htmx:afterSwap', setUpNote);
 })();
 
 // MARK: - The Relations pane beside a note
@@ -2601,7 +2601,7 @@
   });
 
   document.addEventListener('DOMContentLoaded', setUpTabs);
-  document.addEventListener('htmx:afterSettle', setUpTabs);
+  document.addEventListener('htmx:afterSwap', setUpTabs);
 })();
 
 /*
