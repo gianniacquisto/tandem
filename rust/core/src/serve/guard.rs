@@ -425,7 +425,7 @@ pub(super) const ROUTE_NEEDS: &[(&str, Need)] = &[
     ("/tickets/{id}", Need::Permit(Permission::Board)),
     ("/tickets/{id}/status", Need::Permit(Permission::Board)),
     ("/tickets/{id}/comments", Need::Permit(Permission::Board)),
-    ("/tickets/{id}/label", Need::Permit(Permission::Board)),
+    ("/tickets/{id}/field", Need::Permit(Permission::Board)),
     ("/tokens", Need::Permit(Permission::ManageOwnTokens)),
     (
         "/tokens/{id}/revoke",

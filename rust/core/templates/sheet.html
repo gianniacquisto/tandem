@@ -1,11 +1,12 @@
 <div class="sheet-backdrop" data-sheet>
-  <div class="sheet" role="dialog" aria-modal="true" aria-label="{{ handle }}" tabindex="-1">
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="{{ handle }}" tabindex="-1" data-ticket="{{ id }}">
     <header class="sheet__header">
       <span class="sheet__handle">{{ handle }}</span>
       <span class="sheet__origin">{% if origin == "human" %}you filed{% else %}@{{ origin }} filed{% endif %}</span>
       {% if let Some(link) = link %}
       <span class="sheet__link" title="{{ link }}">{{ link }}</span>
       {% endif %}
+      <span class="sheet__save-state" aria-live="polite" data-save-state></span>
       <a class="sheet__close" aria-label="Close the ticket" href="/board?{{ board_query }}">×</a>
     </header>
 
@@ -17,67 +18,51 @@
     {% endif %}
 
     <div class="sheet__body">
-      <form id="sheet-save" method="post" action="/tickets/{{ id }}"
-            hx-post="/tickets/{{ id }}" hx-target="#board-root" hx-swap="outerHTML">
-        <input type="hidden" name="board_project" value="{{ filters.project }}">
-        <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
-        {% for label in filters.labels %}<input type="hidden" name="board_label" value="{{ label }}">{% endfor %}
-        <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
-        <input type="hidden" name="board_text" value="{{ filters.text }}">
-      </form>
-
       <div class="sheet__sticky">
         <div class="sheet__title-row">
-          <textarea class="sheet__title" form="sheet-save" name="title" aria-label="Title"
-                    rows="1" required>{{ title }}</textarea>
-          <input type="hidden" form="sheet-save" name="expected_revision" value="{{ revision }}">
-          <button class="sheet__save" form="sheet-save" type="submit">Save</button>
+          <textarea class="sheet__title" data-autosave="title" data-was="{{ title }}"
+                    aria-label="Title" rows="1" required>{{ title }}</textarea>
         </div>
+        <p class="sheet__field-note" data-field-note="title" hidden></p>
 
         <div class="sheet__meta" role="group" aria-label="Ticket metadata">
           <label class="sheet__meta-field">
-            <span class="sheet__meta-label" title="Saves with Save">
+            <span class="sheet__meta-label">
               <span class="sheet__fact-label">Status</span>
             </span>
             <span class="sheet__status-row">
               <span class="sheet__status-dot" data-status="{{ status }}" aria-hidden="true"></span>
-              <select class="sheet__select" data-status="{{ status }}" form="sheet-save"
-                      name="status" aria-label="Status">
+              <select class="sheet__select" data-status="{{ status }}" data-autosave="status"
+                      data-was="{{ status }}" aria-label="Status">
                 {% for option in status_options %}
                 <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
                 {% endfor %}
               </select>
             </span>
           </label>
+          <p class="sheet__field-note" data-field-note="status" hidden></p>
 
           <label class="sheet__meta-field">
-            <span class="sheet__meta-label" title="Saves with Save">
+            <span class="sheet__meta-label">
               <span class="sheet__fact-label">Assignee</span>
             </span>
-            <input class="sheet__select" form="sheet-save" name="assignee" aria-label="Assignee"
-                   value="{{ assignee }}" placeholder="human or an agent name">
+            <input class="sheet__select" data-autosave="assignee" data-was="{{ assignee }}"
+                   aria-label="Assignee" value="{{ assignee }}" placeholder="human or an agent name">
           </label>
+          <p class="sheet__field-note" data-field-note="assignee" hidden></p>
 
-          <div class="sheet__meta-field">
-            <span class="sheet__meta-label" title="Moves at once">
+          <label class="sheet__meta-field">
+            <span class="sheet__meta-label">
               <span class="sheet__fact-label">Label</span>
             </span>
-            <form class="sheet__label-move" method="post" action="/tickets/{{ id }}/label"
-                  hx-post="/tickets/{{ id }}/label" hx-target="#board-root" hx-swap="outerHTML">
-              <input type="hidden" name="expected_revision" value="{{ revision }}">
-              <input type="hidden" name="board_project" value="{{ filters.project }}">
-              <input type="hidden" name="board_show_all" value="{% if filters.show_all %}1{% endif %}">
-              {% for label in filters.labels %}<input type="hidden" name="board_label" value="{{ label }}">{% endfor %}
-              <input type="hidden" name="board_assignee" value="{{ filters.assignee }}">
-              <input type="hidden" name="board_text" value="{{ filters.text }}">
-              <select class="sheet__select" name="label" aria-label="Label" data-sheet-label>
-                {% for option in label_options %}
-                <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
-                {% endfor %}
-              </select>
-              <noscript><button class="sheet__button" type="submit">Move</button></noscript>
-            </form>
-          </div>
+            <select class="sheet__select" data-autosave="label" data-was="{{ label }}"
+                    aria-label="Label">
+              {% for option in label_options %}
+              <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <p class="sheet__field-note" data-field-note="label" hidden></p>
         </div>
       </div>
 
@@ -127,10 +112,11 @@
         {% if let Some(html) = description_html %}
         <div class="sheet__description-view" data-description-view>{{ html }}</div>
         {% endif %}
-        <textarea class="sheet__description-field" form="sheet-save" name="description"
-                  aria-label="Description" rows="6"
+        <textarea class="sheet__description-field" data-autosave="description"
+                  data-was="{{ description }}" aria-label="Description" rows="6"
                   placeholder="Add a more detailed description…">
 {{ description }}</textarea>
+        <p class="sheet__field-note" data-field-note="description" hidden></p>
       </section>
 
       <section class="sheet__discussion" aria-label="Comments">
@@ -173,7 +159,7 @@
       </section>
 
       <footer class="sheet__footer">
-        <span class="sheet__hint">Cmd/Ctrl+Enter saves · Cmd/Ctrl+Shift+Enter posts · Esc closes</span>
+        <span class="sheet__hint">Changes save as you go · Cmd/Ctrl+Shift+Enter posts · Esc closes</span>
       </footer>
     </div>
   </div>

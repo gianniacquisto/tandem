@@ -843,18 +843,15 @@ fn a_serve_session_drives_the_sheet_and_notes_faces() {
     assert!(sheet.body.contains("sheet-backdrop"), "the sheet is drawn");
     assert!(sheet.body.contains("Sheet"), "the ticket title is drawn");
 
-    let revision = revision_of(server.port);
     let answer = form(
         server.port,
-        &format!("/tickets/{id}"),
-        &format!(
-            "title=Sheet&status=ready&assignee=&description=More&expected_revision={revision}"
-        ),
+        &format!("/tickets/{id}/field"),
+        "field=description&value=More&was=",
     );
     assert_eq!(answer.status, 200);
     assert!(
-        answer.body.contains("More"),
-        "the description save is redrawn: {}",
+        answer.body.contains("data-state=\"saved\"") && answer.body.contains("data-was=\"More\""),
+        "the description save is answered: {}",
         answer.body
     );
 
