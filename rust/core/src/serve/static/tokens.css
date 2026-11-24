@@ -33,6 +33,8 @@
   --window-floor: 760px;
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --text-ui: 13px;
+  --text-body: 14px;
 }
 
 html[data-theme="dark"] {
