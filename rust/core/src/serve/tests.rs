@@ -911,6 +911,10 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 "tandem.relations.sections",
                 "data-tree-action",
                 "revealedPath === undefined",
+                "data-live-store",
+                "live:follow",
+                "data-live-final-newline",
+                "data-placeholder",
             ] {
                 assert!(body.contains(key), "tandem.js carries {key}");
             }
@@ -1765,6 +1769,8 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
         "Tickets",
         "Café alpha",
         "data-live",
+        "data-live-store=\"note-text\"",
+        "id=\"note-text\"",
         "aria-label=\"Tree\"",
         "data-tree-action=\"expand\"",
         "data-tree-action=\"collapse\"",

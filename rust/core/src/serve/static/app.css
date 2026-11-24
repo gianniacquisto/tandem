@@ -3730,14 +3730,24 @@ a.menu__option {
 .live,
 .lp {
   position: relative;
-  min-height: calc(100vh - 300px);
-  padding-bottom: 160px;
-  font-size: 16px;
-  line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   outline: none;
   caret-color: var(--ink);
+}
+
+.live--note,
+.live--note.lp {
+  min-height: calc(100vh - 300px);
+  padding-bottom: 160px;
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.lp--empty::before {
+  content: attr(data-placeholder);
+  color: var(--ink-dim);
+  pointer-events: none;
 }
 
 .lp__m {
