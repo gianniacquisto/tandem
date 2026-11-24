@@ -541,7 +541,7 @@ async fn a_card_move_keeps_the_filters_the_board_was_drawn_with() {
         "the project filter survives the drop: {page}"
     );
     assert!(
-        page.contains("<option value=\"beta\" selected>beta</option>"),
+        page.contains("name=\"label\" value=\"beta\" checked"),
         "the label filter survives the drop: {page}"
     );
     assert!(
@@ -2462,7 +2462,7 @@ async fn a_sheet_write_reads_the_board_filter_from_its_own_fields_not_the_ticket
         "the save still sets the ticket's assignee"
     );
     assert!(
-        page.contains("href=\"/board?project=&#38;show_all=&#38;label=&#38;assignee=&#38;text=\""),
+        page.contains("href=\"/board?project=&#38;show_all=&#38;assignee=&#38;text=\""),
         "the board behind keeps the filter the form carried, empty: {page}"
     );
     assert!(
@@ -2489,7 +2489,7 @@ async fn a_sheet_write_reads_the_board_filter_from_its_own_fields_not_the_ticket
         "the label still moves"
     );
     assert!(
-        page.contains("href=\"/board?project=&#38;show_all=&#38;label=&#38;assignee=&#38;text=\""),
+        page.contains("href=\"/board?project=&#38;show_all=&#38;assignee=&#38;text=\""),
         "the moved label is not the board's label filter: {page}"
     );
 }
@@ -10413,4 +10413,253 @@ async fn the_graph_keeps_the_active_tab_so_the_note_switch_restores_it() {
     let (status, headers, _) = send(&app, notes_get_with_cookie("/notes", &cookie, false)).await;
     assert_eq!(status, StatusCode::SEE_OTHER);
     assert_eq!(location(&headers), "/notes?project=&path=b.md");
+}
+
+// MARK: - The label filter takes several labels (TAN-867)
+
+/// The ticket titles a board page draws on a card, in the order given.
+fn drawn(page: &str, titles: &[&str]) -> Vec<bool> {
+    titles.iter().map(|title| page.contains(*title)).collect()
+}
+
+const LABELLED: [&str; 4] = ["Café alpha", "Shared alpha", "Beta one", "Loose"];
+
+#[tokio::test]
+async fn several_checked_labels_draw_the_tickets_that_carry_any_of_them() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-label-union");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store));
+
+    let (_, _, two) = get(&app, "/?label=alpha&label=beta").await;
+    assert_eq!(
+        drawn(&two, &LABELLED),
+        [true, false, true, false],
+        "two labels draw both and hide the third label and the unlabelled: {two}"
+    );
+
+    let (_, _, mixed) = get(&app, "/?label=%20&label=beta").await;
+    assert_eq!(
+        drawn(&mixed, &LABELLED),
+        [false, false, true, true],
+        "No label joins the union: {mixed}"
+    );
+
+    let (_, _, one) = get(&app, "/?label=beta").await;
+    assert_eq!(drawn(&one, &LABELLED), [false, false, true, false]);
+    let (_, _, none) = get(&app, "/?label=%20").await;
+    assert_eq!(drawn(&none, &LABELLED), [false, false, false, true]);
+
+    let (_, _, old) = get(&app, "/?label=&assignee=").await;
+    assert_eq!(
+        drawn(&old, &LABELLED),
+        [true, true, true, true],
+        "an empty label= means none: {old}"
+    );
+}
+
+#[tokio::test]
+async fn the_label_filter_draws_a_checkbox_per_label_and_one_chip() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-label-boxes");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store));
+
+    let (_, _, page) = get(&app, "/?label=%20&label=beta&label=alpha").await;
+    assert!(
+        !page.contains("aria-label=\"Label\">"),
+        "no Label select is drawn: {page}"
+    );
+    assert!(
+        page.contains("<legend class=\"menu__title\">Label</legend>"),
+        "the group is titled Label: {page}"
+    );
+    for (value, checked) in [
+        (" ", true),
+        ("alpha", true),
+        ("shared", false),
+        ("beta", true),
+    ] {
+        let want = format!(
+            "<input type=\"checkbox\" name=\"label\" value=\"{value}\"{}>",
+            if checked { " checked" } else { "" }
+        );
+        assert!(page.contains(&want), "{want} is drawn: {page}");
+    }
+    assert!(!page.contains("All labels"), "All labels is gone: {page}");
+    assert_eq!(
+        page.matches("data-clear=\"label\"").count(),
+        1,
+        "one chip names the whole filter: {page}"
+    );
+    assert!(
+        page.contains("Label: No label, alpha, beta"),
+        "the chip lists No label first, then the list order: {page}"
+    );
+    assert!(
+        page.contains("aria-label=\"Remove label filter No label, alpha, beta\""),
+        "the chip's aria-label names every label: {page}"
+    );
+    assert!(
+        page.contains("<input type=\"hidden\" name=\"label\" value=\"beta\">"),
+        "the write forms carry one hidden input per label: {page}"
+    );
+}
+
+#[tokio::test]
+async fn a_checked_label_outside_the_focused_project_stays_listed_and_checked() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-label-outside-focus");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store));
+
+    let (_, _, page) = get(&app, "/?project=Alpha&label=beta").await;
+    assert!(
+        page.contains("<input type=\"checkbox\" name=\"label\" value=\"beta\" checked>"),
+        "beta stays listed and checked under the Alpha focus: {page}"
+    );
+    assert!(
+        page.contains("name=\"label\" value=\"alpha\">"),
+        "the focused project's own labels are offered: {page}"
+    );
+    let (_, _, unchecked) = get(&app, "/?project=Alpha").await;
+    assert!(
+        !unchecked.contains("name=\"label\" value=\"beta\""),
+        "an unchecked outside label is not offered: {unchecked}"
+    );
+}
+
+#[tokio::test]
+async fn a_card_move_and_a_sheet_write_keep_every_checked_label() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-label-carry");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let app = router(context(store.clone()));
+    let beta = by_title(&board, "Beta one");
+    let alpha = by_title(&board, "Café alpha");
+    let revision = store.revision().expect("the revision reads");
+
+    let body = format!(
+        "status=in-progress&expected_revision={revision}&project=&show_all=&label=alpha&label=beta&assignee=&text="
+    );
+    let (status, _, page) = send(
+        &app,
+        form_request(&format!("/tickets/{}/status", beta.id), &body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the move answers: {page}");
+    assert_eq!(
+        drawn(&page, &LABELLED),
+        [true, false, true, false],
+        "{page}"
+    );
+    assert!(
+        page.contains("hx-get=\"/board?project=&#38;show_all=&#38;label=alpha&#38;label=beta&#38;"),
+        "the refresh URL carries both: {page}"
+    );
+
+    let revision = store.revision().expect("the revision reads");
+    let body = format!(
+        "title=Caf%C3%A9+alpha&status={}&assignee=&description=Line&expected_revision={revision}&board_project=&board_show_all=&board_label=alpha&board_label=beta&board_assignee=&board_text=",
+        alpha.status.as_str()
+    );
+    let (status, _, page) =
+        send(&app, form_request(&format!("/tickets/{}", alpha.id), &body)).await;
+    assert_eq!(status, StatusCode::OK, "the save answers: {page}");
+    assert_eq!(
+        drawn(&page, &LABELLED),
+        [true, false, true, false],
+        "{page}"
+    );
+    assert!(
+        page.contains("label=alpha&#38;label=beta"),
+        "the close link carries both: {page}"
+    );
+    assert_eq!(
+        page.matches("name=\"board_label\"").count() % 2,
+        0,
+        "every sheet form carries one hidden input per label: {page}"
+    );
+    assert!(
+        page.contains("name=\"board_label\" value=\"beta\""),
+        "{page}"
+    );
+
+    let (_, _, sheet) = send(
+        &app,
+        sheet_get(&format!("/tickets/{}?label=alpha&label=beta", alpha.id)),
+    )
+    .await;
+    assert!(
+        sheet.contains("name=\"board_label\" value=\"alpha\"")
+            && sheet.contains("name=\"board_label\" value=\"beta\""),
+        "the sheet opened over two labels carries both: {sheet}"
+    );
+}
+
+#[tokio::test]
+async fn renaming_a_checked_label_keeps_it_checked_under_its_new_name() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-label-rename-filter");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store));
+
+    let (status, _, page) = send(
+        &app,
+        form_request(
+            "/labels/beta/rename",
+            "to=gamma&project=&label=alpha&label=beta",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "the rename answers: {page}");
+    assert!(
+        page.contains("<input type=\"checkbox\" name=\"label\" value=\"gamma\" checked>"),
+        "gamma is checked: {page}"
+    );
+    assert!(
+        page.contains("<input type=\"checkbox\" name=\"label\" value=\"alpha\" checked>"),
+        "alpha stays checked: {page}"
+    );
+    assert!(page.contains("Label: alpha, gamma"), "{page}");
+}
+
+#[tokio::test]
+async fn a_two_label_filter_that_matches_nothing_draws_the_empty_state() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-label-empty");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store));
+
+    let (_, _, page) = get(&app, "/?project=Alpha&label=beta&label=gamma").await;
+    assert!(
+        page.contains("No tickets match these filters"),
+        "the empty state names the filters: {page}"
+    );
+}
+
+#[tokio::test]
+async fn the_new_form_starts_on_the_label_only_when_one_named_label_is_checked() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-label-new-preset");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store));
+
+    let (_, _, one) = get(&app, "/?project=Alpha&label=alpha").await;
+    assert!(
+        one.contains("<option value=\"alpha\" data-project=\"Alpha\" selected"),
+        "one named label presets the New form: {one}"
+    );
+    let (_, _, two) = get(&app, "/?project=Alpha&label=alpha&label=shared").await;
+    assert!(
+        !two.contains("data-project=\"Alpha\" selected"),
+        "two labels leave the New form on No label: {two}"
+    );
 }

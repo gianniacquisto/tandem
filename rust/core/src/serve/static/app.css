@@ -2676,6 +2676,7 @@ body {
   left: 0;
   gap: 8px;
   min-width: 230px;
+  max-width: min(320px, calc(100vw - 2 * var(--space-gutter)));
 }
 
 .menu__title {
@@ -2706,6 +2707,31 @@ body {
   padding: 0 6px;
   color: var(--ink);
   font-size: 13px;
+}
+
+.menu__group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.menu__list {
+  display: flex;
+  max-height: 168px;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.menu__list .menu__check {
+  min-height: var(--space-control);
+}
+
+.menu__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .menu__option {

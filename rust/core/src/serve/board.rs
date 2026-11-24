@@ -19,7 +19,6 @@ fn visible<'a>(
             .find(|project| project.name == filters.project)
             .map(|project| project.name.as_str())
     };
-    let label = filters.label_axis();
     let assignee = filters.assignee_axis();
     let needle = filters.text.trim();
     Some(
@@ -34,18 +33,8 @@ fn visible<'a>(
                 {
                     return false;
                 }
-                match &label {
-                    LabelAxis::Any => {}
-                    LabelAxis::Unnamed => {
-                        if ticket.label.is_some() {
-                            return false;
-                        }
-                    }
-                    LabelAxis::Named(name) => {
-                        if ticket.label.as_deref() != Some(name.as_str()) {
-                            return false;
-                        }
-                    }
+                if !filters.label_matches(ticket.label.as_deref()) {
+                    return false;
                 }
                 match &assignee {
                     AssigneeAxis::Any => {}
@@ -80,6 +69,7 @@ struct BoardView {
     form: FiltersView,
     project_options: Vec<ProjectOption>,
     label_options: Vec<LabelOption>,
+    label_chip: Option<LabelChip>,
     assignee_options: Vec<AssigneeOption>,
     label_rows: Vec<LabelRow>,
     /// The New form's Project select: every project, the focused one chosen.
@@ -108,7 +98,7 @@ struct LabelRow {
 pub(super) struct FiltersView {
     pub(super) project: String,
     pub(super) show_all: bool,
-    pub(super) label: String,
+    pub(super) labels: Vec<String>,
     pub(super) assignee: String,
     pub(super) text: String,
 }
@@ -117,6 +107,12 @@ pub(super) struct ProjectOption {
     pub(super) value: String,
     pub(super) label: String,
     pub(super) selected: bool,
+}
+
+/// The one chip the checked labels draw.
+struct LabelChip {
+    text: String,
+    aria: String,
 }
 
 pub(super) struct LabelOption {
@@ -247,7 +243,7 @@ fn empty_view(
             hero: false,
         });
     }
-    if !filters.label.is_empty() || !filters.assignee.is_empty() {
+    if !filters.labels.is_empty() || !filters.assignee.is_empty() {
         return Some(EmptyView {
             title: "No tickets match these filters".to_string(),
             subtitle: "Clear a filter to see more.".to_string(),
@@ -320,21 +316,17 @@ fn render_board(
     };
 
     let label_options = {
-        let mut options = vec![
-            LabelOption {
-                value: String::new(),
-                label: "All labels".to_string(),
-                selected: filters.label.is_empty(),
-            },
-            LabelOption {
-                value: " ".to_string(),
-                label: "No label".to_string(),
-                selected: filters.label == " ",
-            },
-        ];
+        let mut options = vec![LabelOption {
+            value: " ".to_string(),
+            label: "No label".to_string(),
+            selected: filters.labels.iter().any(|checked| checked == " "),
+        }];
         for label in &labels {
-            // With a project in focus the filter offers that project's labels.
-            if !filters.show_all
+            let checked = filters.labels.contains(label);
+            // With a project in focus the filter offers that project's labels,
+            // and a checked label from outside it stays listed to be unchecked.
+            if !checked
+                && !filters.show_all
                 && let Some(focused) = projects
                     .iter()
                     .find(|project| project.name == filters.project)
@@ -345,10 +337,39 @@ fn render_board(
             options.push(LabelOption {
                 value: label.clone(),
                 label: label.clone(),
-                selected: filters.label == *label,
+                selected: checked,
             });
         }
+        // A checked name the board no longer holds (an old link) is never an
+        // invisible filter.
+        for checked in &filters.labels {
+            if checked != " " && !labels.contains(checked) {
+                options.push(LabelOption {
+                    value: checked.clone(),
+                    label: checked.clone(),
+                    selected: true,
+                });
+            }
+        }
         options
+    };
+    // One chip for the whole label filter: No label first, then the labels in
+    // list order.
+    let label_chip = {
+        let names: Vec<&str> = label_options
+            .iter()
+            .filter(|option| option.selected)
+            .map(|option| option.label.as_str())
+            .collect();
+        if names.is_empty() {
+            None
+        } else {
+            let joined = names.join(", ");
+            Some(LabelChip {
+                text: format!("Label: {joined}"),
+                aria: format!("Remove label filter {joined}"),
+            })
+        }
     };
 
     // The New form files into its own Project and Label selects. The Project
@@ -370,13 +391,23 @@ fn render_board(
             selected: Some(project.name.as_str()) == preset,
         })
         .collect();
+    // The New form's Label starts on the filter's label only when exactly one
+    // named label is checked.
+    let single_label: Option<&str> = {
+        let mut named = filters.labels.iter().filter(|label| label.as_str() != " ");
+        match (named.next(), named.next()) {
+            (Some(label), None) => Some(label.as_str()),
+            _ => None,
+        }
+    };
     let new_labels: Vec<NewLabelOption> = projects
         .iter()
         .flat_map(|project| {
             project.labels.iter().map(|label| NewLabelOption {
                 name: label.clone(),
                 project: project.name.clone(),
-                selected: Some(project.name.as_str()) == preset && filters.label == *label,
+                selected: Some(project.name.as_str()) == preset
+                    && single_label == Some(label.as_str()),
                 hidden: Some(project.name.as_str()) != preset,
             })
         })
@@ -475,12 +506,13 @@ fn render_board(
         form: FiltersView {
             project: filters.project.clone(),
             show_all: filters.show_all,
-            label: filters.label.clone(),
+            labels: filters.labels.clone(),
             assignee: filters.assignee.clone(),
             text: filters.text.clone(),
         },
         project_options,
         label_options,
+        label_chip,
         assignee_options,
         new_projects,
         new_labels,
@@ -611,21 +643,22 @@ fn render_response(
 }
 pub(super) async fn board_page(
     context: Context,
-    Query(params): Query<HashMap<String, String>>,
+    Query(pairs): Query<Pairs>,
     headers: HeaderMap,
 ) -> Response {
-    let filters = Filters::parse(&params);
+    let filters = Filters::parse(&pairs);
     render_response(&context, &filters, None, &headers, StatusCode::OK)
 }
 pub(super) async fn add_ticket(
     context: Context,
     headers: HeaderMap,
-    form: Result<Form<HashMap<String, String>>, FormRejection>,
+    form: Result<Form<Pairs>, FormRejection>,
 ) -> Response {
-    let Ok(Form(params)) = form else {
+    let Ok(Form(pairs)) = form else {
         return bad_request("the form could not be read");
     };
-    let filters = Filters::parse(&params);
+    let params = pairs_map(&pairs);
+    let filters = Filters::parse(&pairs);
     let expected = match expected_revision(&params) {
         Ok(revision) => revision,
         Err(message) => return bad_request(&message),
@@ -690,12 +723,13 @@ pub(super) async fn move_ticket(
     context: Context,
     Path(id): Path<String>,
     headers: HeaderMap,
-    form: Result<Form<HashMap<String, String>>, FormRejection>,
+    form: Result<Form<Pairs>, FormRejection>,
 ) -> Response {
-    let Ok(Form(params)) = form else {
+    let Ok(Form(pairs)) = form else {
         return bad_request("the form could not be read");
     };
-    let filters = Filters::parse(&params);
+    let params = pairs_map(&pairs);
+    let filters = Filters::parse(&pairs);
     let expected = match expected_revision(&params) {
         Ok(revision) => revision,
         Err(message) => return bad_request(&message),
@@ -748,12 +782,13 @@ pub(super) async fn move_ticket(
 pub(super) async fn add_label(
     context: Context,
     headers: HeaderMap,
-    form: Result<Form<HashMap<String, String>>, FormRejection>,
+    form: Result<Form<Pairs>, FormRejection>,
 ) -> Response {
-    let Ok(Form(params)) = form else {
+    let Ok(Form(pairs)) = form else {
         return bad_request("the form could not be read");
     };
-    let filters = Filters::parse(&params);
+    let params = pairs_map(&pairs);
+    let filters = Filters::parse(&pairs);
     // A label lives in a project: the board's project focus names it, and with
     // no focus the refusal lists the projects.
     let project = Some(filters.project.as_str()).filter(|name| !name.is_empty());
@@ -779,12 +814,13 @@ pub(super) async fn rename_label(
     context: Context,
     Path(name): Path<String>,
     headers: HeaderMap,
-    form: Result<Form<HashMap<String, String>>, FormRejection>,
+    form: Result<Form<Pairs>, FormRejection>,
 ) -> Response {
-    let Ok(Form(params)) = form else {
+    let Ok(Form(pairs)) = form else {
         return bad_request("the form could not be read");
     };
-    let mut filters = Filters::parse(&params);
+    let params = pairs_map(&pairs);
+    let mut filters = Filters::parse(&pairs);
     let to = field(&params, "to");
     let before = crate::rpc::vault::names(&context.board());
     let outcome = context.board().rename_label(&name, to, None);
@@ -800,8 +836,16 @@ pub(super) async fn rename_label(
             "label renamed"
         );
     }
-    if outcome.is_ok() && filters.label == name {
-        filters.label = to.trim().to_string();
+    if outcome.is_ok() && filters.labels.contains(&name) {
+        let renamed = to.trim().to_string();
+        let mut labels: Vec<String> = Vec::new();
+        for label in &filters.labels {
+            let label = if *label == name { &renamed } else { label };
+            if !labels.contains(label) {
+                labels.push(label.clone());
+            }
+        }
+        filters.labels = labels;
     }
     let notice = outcome.err().map(|error| error.message()).or(vault_note);
     render_response(&context, &filters, notice, &headers, StatusCode::OK)

@@ -2349,11 +2349,38 @@
     var chip = event.target.closest ? event.target.closest('.chip[data-clear]') : null;
     if (!chip) return;
     var form = chip.closest('form');
-    var field = form && form.elements[chip.getAttribute('data-clear')];
-    if (!field) return;
-    if (field.type === 'checkbox') field.checked = false;
-    else field.value = '';
-    field.dispatchEvent(new Event('change', { bubbles: true }));
+    var named = form && form.elements[chip.getAttribute('data-clear')];
+    if (!named) return;
+    // A checkbox group answers with every box of that name, and one chip clears
+    // them all with one redraw.
+    var fields = named.length !== undefined && !named.tagName ? Array.prototype.slice.call(named) : [named];
+    fields.forEach(function (field) {
+      if (field.type === 'checkbox') field.checked = false;
+      else field.value = '';
+    });
+    fields[0].dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  // A redraw replaces #board-root and with it the open Filter popover. After a
+  // label box changes, the popover opens again and focus returns to the same
+  // box (found by its value), so several labels can be checked in a row.
+  var keepFilter = null;
+  document.addEventListener('change', function (event) {
+    var box = event.target;
+    var menu = box.closest ? box.closest('.filter-menu') : null;
+    keepFilter = menu && menu.open && box.name === 'label' ? box.value : null;
+  }, true);
+  document.addEventListener('htmx:afterSwap', function () {
+    if (keepFilter === null) return;
+    var value = keepFilter;
+    keepFilter = null;
+    var menu = document.querySelector('.filter-menu');
+    if (!menu) return;
+    menu.open = true;
+    var boxes = menu.querySelectorAll('input[name="label"]');
+    for (var i = 0; i < boxes.length; i += 1) {
+      if (boxes[i].value === value) { boxes[i].focus(); break; }
+    }
   });
 
   // Opening New puts the cursor in the title, or in the Project select when no
