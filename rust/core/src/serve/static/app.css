@@ -4185,11 +4185,7 @@ a.menu__option {
   background: var(--parchment);
 }
 
-.note-tabs[hidden] {
-  display: none;
-}
-
-.notes__document:has(.note-tabs:not([hidden])) .notes__breadcrumb {
+.notes__document:has(.note-tabs) .notes__breadcrumb {
   top: 36px;
 }
 
@@ -4255,7 +4251,10 @@ a.menu__option {
 }
 
 .note-tabs__close {
+  display: block;
   flex: none;
+  text-align: center;
+  text-decoration: none;
   width: 20px;
   height: 20px;
   margin-right: var(--space-chip);

@@ -179,12 +179,23 @@
     </aside>
 
     <div class="notes__document">
-      <div class="note-tabs" data-note-tabs hidden
-           data-current="{{ current_path }}" data-current-name="{{ current_name }}"
-           data-notes="{{ all_notes }}" data-from="{{ tab_from }}" data-to="{{ tab_to }}"
-           data-gone="{{ tab_gone }}">
-        <div class="note-tabs__list" role="tablist" aria-label="Open notes"></div>
+      {% if !tabs.is_empty() %}
+      <div class="note-tabs" data-note-tabs>
+        <div class="note-tabs__list" role="tablist" aria-label="Open notes">
+          {% for tab in tabs %}
+          <div class="note-tabs__item" data-tab-path="{{ tab.path }}">
+            <a class="note-tabs__tab" role="tab" aria-selected="{% if tab.selected %}true{% else %}false{% endif %}"
+               tabindex="{% if tab.stop %}0{% else %}-1{% endif %}" title="{{ tab.path }}"
+               href="{{ tab.href }}" hx-get="{{ tab.href }}" hx-target="#notes-root" hx-swap="outerHTML"
+               hx-replace-url="true"><span class="note-tabs__name">{{ tab.name }}</span>{% if !tab.folder.is_empty() %}<span class="note-tabs__folder">{{ tab.folder }}</span>{% endif %}</a>
+            <a class="note-tabs__close" tabindex="-1" aria-label="Close {{ tab.name }}"
+               href="{{ tab.close_href }}" hx-get="{{ tab.close_href }}" hx-target="#notes-root" hx-swap="outerHTML"
+               hx-replace-url="true">×</a>
+          </div>
+          {% endfor %}
+        </div>
       </div>
+      {% endif %}
       <header class="notes__breadcrumb">
         <div class="notes__breadcrumb-inner">
           <nav class="notes__crumbs" aria-label="Breadcrumb">

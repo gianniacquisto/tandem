@@ -559,8 +559,8 @@ async fn a_card_move_keeps_the_filters_the_board_was_drawn_with() {
         "the drop posts the filter bar it was drawn with"
     );
     assert!(
-        script.contains("tandem.noteTabs") && script.contains("data-note-tabs"),
-        "the script carries the note tabs"
+        script.contains("note-tabs__close") && !script.contains("tandem.noteTabs = "),
+        "the script keeps the tab keys and no list"
     );
     let (_, _, css) = get(&app, "/static/app.css").await;
     assert!(
@@ -2079,8 +2079,8 @@ async fn post_notes_rename_and_delete_manage_a_note_and_the_open_page_follows() 
         "the deleted page closes: {body}"
     );
     assert!(
-        body.contains("data-gone=\"projects/tandem/Final.md\""),
-        "the delete names the path for the tab strip: {body}"
+        !body.contains("data-note-tabs"),
+        "the deleted note leaves no strip: {body}"
     );
 }
 
@@ -2167,65 +2167,6 @@ async fn deleting_a_note_offers_an_undo_and_posting_it_restores_and_reopens_the_
     assert!(
         body.contains("banner"),
         "a crafted restore is refused on the page: {body}"
-    );
-}
-
-#[tokio::test]
-async fn the_notes_page_carries_the_tab_strip_hooks_and_rename_names_both_paths() {
-    let _serial = ONE_AT_A_TIME.lock().await;
-    let sandbox = Sandbox::new("notes-tabs");
-    let store = sandbox.store();
-    let app = router(context(store));
-
-    send(
-        &app,
-        form_request(
-            "/notes/create",
-            "path=projects/tandem/Draft.md&project=tandem",
-        ),
-    )
-    .await;
-    send(
-        &app,
-        form_request("/notes/create", "path=Other.md&project=tandem"),
-    )
-    .await;
-
-    let (status, _, page) = get(&app, "/notes?path=projects/tandem/Draft.md&project=tandem").await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(page.contains("data-note-tabs"), "the strip mounts: {page}");
-    assert!(
-        page.contains("role=\"tablist\""),
-        "the strip is a tablist: {page}"
-    );
-    assert!(
-        page.contains("data-current=\"projects/tandem/Draft.md\"")
-            && page.contains("data-current-name=\"Draft\""),
-        "the open note's path and name are hooks: {page}"
-    );
-    assert!(
-        page.contains("Other.md") && page.contains("data-notes="),
-        "every note is listed for pruning, whatever the focus: {page}"
-    );
-
-    let (_, _, empty) = get(&app, "/notes?project=tandem").await;
-    assert!(
-        empty.contains("data-note-tabs") && empty.contains("data-current=\"\""),
-        "the strip mounts with no note open: {empty}"
-    );
-
-    let (_, _, renamed) = send(
-        &app,
-        form_request(
-            "/notes/rename",
-            "path=projects/tandem/Draft.md&name=Final&open=Other.md&project=tandem&mode=edit",
-        ),
-    )
-    .await;
-    assert!(
-        renamed.contains("data-from=\"projects/tandem/Draft.md\"")
-            && renamed.contains("data-to=\"projects/tandem/Final.md\""),
-        "a rename of another row still names both paths: {renamed}"
     );
 }
 
@@ -9894,4 +9835,332 @@ async fn an_htmx_note_swap_draws_the_same_folds() {
     assert!(tree_item(&body, "a").contains("aria-expanded=\"true\""));
     assert!(tree_item(&body, "d").contains("aria-expanded=\"false\""));
     assert!(tree_item(&body, "d/e.md").starts_with("<li role=\"none\" hidden"));
+}
+
+fn tabs_cookie(open: &[&str], active: &str) -> String {
+    let json = serde_json::json!({ "open": open, "active": active }).to_string();
+    let encoded: String = json
+        .bytes()
+        .map(|byte| {
+            if byte.is_ascii_alphanumeric() || b"-_.".contains(&byte) {
+                (byte as char).to_string()
+            } else {
+                format!("%{byte:02X}")
+            }
+        })
+        .collect();
+    format!("tandem_7700_tabs={encoded}")
+}
+
+/// The tab paths the strip draws, in order.
+fn strip_paths(body: &str) -> Vec<String> {
+    body.split("data-tab-path=\"")
+        .skip(1)
+        .filter_map(|rest| rest.split('"').next())
+        .map(str::to_string)
+        .collect()
+}
+
+/// The `tabs` state the response stores, decoded.
+fn stored_tabs(headers: &HeaderMap) -> Option<serde_json::Value> {
+    let line = headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .find(|line| line.starts_with("tandem_7700_tabs="))?;
+    let encoded = line.split(';').next()?.split_once('=')?.1;
+    let mut bytes = Vec::new();
+    let raw = encoded.as_bytes();
+    let mut at = 0;
+    while at < raw.len() {
+        if raw[at] == b'%' {
+            bytes.push(u8::from_str_radix(&encoded[at + 1..at + 3], 16).ok()?);
+            at += 3;
+        } else {
+            bytes.push(raw[at]);
+            at += 1;
+        }
+    }
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn tabs_vault(store: &Store) {
+    let notes = vault(store);
+    for path in ["a.md", "b.md", "c.md", "x/n.md", "y/n.md"] {
+        notes.create(path).expect("the note is created");
+    }
+}
+
+fn tabs_post(uri: &str, body: &str, cookie: &str) -> Request<Body> {
+    Request::builder()
+        .method("POST")
+        .uri(uri)
+        .header(header::HOST, "127.0.0.1:7700")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header(header::COOKIE, cookie)
+        .body(Body::from(body.to_string()))
+        .expect("the request builds")
+}
+
+#[tokio::test]
+async fn a_tabs_cookie_draws_the_strip_in_order_and_the_server_answers_the_list() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("tabs-draw");
+    let store = sandbox.store();
+    tabs_vault(&store);
+    let app = router(context(store));
+    let cookie = tabs_cookie(&["c.md", "a.md"], "a.md");
+
+    let (status, headers, body) = send(
+        &app,
+        notes_get_with_cookie("/notes?path=b.md", &cookie, false),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(strip_paths(&body), ["c.md", "a.md", "b.md"]);
+    assert!(
+        body.contains("role=\"tablist\"") && !body.contains("note-tabs\" data-note-tabs hidden")
+    );
+    let selected = body.split("aria-selected=\"true\"").count() - 1;
+    assert!(body.contains("aria-selected=\"true\"") && selected >= 1);
+    let tab_b = body.split("data-tab-path=\"b.md\"").nth(1).unwrap();
+    assert!(
+        tab_b.contains("aria-selected=\"true\""),
+        "the open note's tab is selected: {tab_b}"
+    );
+    let stored = stored_tabs(&headers).expect("the list is answered");
+    assert_eq!(stored["open"], serde_json::json!(["c.md", "a.md", "b.md"]));
+    assert_eq!(stored["active"], "b.md");
+
+    // The htmx swap draws the same strip.
+    let (_, _, partial) = send(
+        &app,
+        notes_get_with_cookie("/notes?path=b.md", &cookie, true),
+    )
+    .await;
+    assert_eq!(strip_paths(&partial), ["c.md", "a.md", "b.md"]);
+
+    // An unchanged list answers no cookie.
+    let again = tabs_cookie(&["c.md", "a.md", "b.md"], "b.md");
+    let (_, headers, _) = send(
+        &app,
+        notes_get_with_cookie("/notes?path=b.md", &again, false),
+    )
+    .await;
+    assert!(stored_tabs(&headers).is_none());
+}
+
+#[tokio::test]
+async fn no_cookie_and_no_note_draws_no_strip() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("tabs-none");
+    let store = sandbox.store();
+    tabs_vault(&store);
+    let app = router(context(store));
+    let (_, headers, body) = send(&app, page_get("/notes")).await;
+    assert!(!body.contains("data-note-tabs"), "{body}");
+    assert!(stored_tabs(&headers).is_none());
+
+    let cookie = tabs_cookie(&["a.md"], "a.md");
+    let (_, headers, body) = send(&app, notes_get_with_cookie("/notes", &cookie, false)).await;
+    assert_eq!(
+        strip_paths(&body),
+        ["a.md"],
+        "the empty page keeps the strip"
+    );
+    assert_eq!(stored_tabs(&headers).unwrap()["active"], "");
+}
+
+#[tokio::test]
+async fn a_path_the_vault_lacks_is_dropped_silently() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("tabs-lacks");
+    let store = sandbox.store();
+    tabs_vault(&store);
+    let app = router(context(store));
+    let cookie = tabs_cookie(&["gone.md", "../../etc/passwd", "a.md"], "gone.md");
+    let (status, headers, body) = send(
+        &app,
+        notes_get_with_cookie("/notes?path=b.md", &cookie, false),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(strip_paths(&body), ["a.md", "b.md"]);
+    assert!(!body.contains("passwd"));
+    assert_eq!(
+        stored_tabs(&headers).unwrap()["open"],
+        serde_json::json!(["a.md", "b.md"])
+    );
+}
+
+#[tokio::test]
+async fn a_rename_follows_the_tab_and_a_delete_drops_it_or_a_folders_notes() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("tabs-rename-delete");
+    let store = sandbox.store();
+    tabs_vault(&store);
+    let app = router(context(store));
+    let cookie = tabs_cookie(&["a.md", "b.md", "x/n.md"], "c.md");
+    let later = tabs_cookie(&["a.md", "Renamed.md", "x/n.md"], "c.md");
+
+    let (_, headers, body) = send(
+        &app,
+        tabs_post(
+            "/notes/rename",
+            "path=b.md&name=Renamed&open=c.md&project=",
+            &cookie,
+        ),
+    )
+    .await;
+    assert_eq!(strip_paths(&body), ["a.md", "Renamed.md", "x/n.md", "c.md"]);
+    assert_eq!(
+        stored_tabs(&headers).unwrap()["open"],
+        serde_json::json!(["a.md", "Renamed.md", "x/n.md", "c.md"])
+    );
+
+    let (_, _, body) = send(
+        &app,
+        tabs_post("/notes/delete", "path=a.md&open=c.md&project=", &later),
+    )
+    .await;
+    assert_eq!(strip_paths(&body), ["Renamed.md", "x/n.md", "c.md"]);
+
+    let (_, headers, body) = send(
+        &app,
+        tabs_post("/notes/delete", "path=x&open=c.md&project=", &later),
+    )
+    .await;
+    assert_eq!(strip_paths(&body), ["Renamed.md", "c.md"]);
+    assert_eq!(stored_tabs(&headers).unwrap()["active"], "c.md");
+}
+
+#[tokio::test]
+async fn closing_a_tab_lands_on_the_right_neighbour_else_the_left_else_the_empty_page() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("tabs-close");
+    let store = sandbox.store();
+    tabs_vault(&store);
+    let app = router(context(store));
+    let cookie = tabs_cookie(&["a.md", "b.md", "c.md"], "b.md");
+
+    let (_, _, body) = send(
+        &app,
+        notes_get_with_cookie("/notes?path=b.md", &cookie, false),
+    )
+    .await;
+    let close_of = |path: &str| -> String {
+        let item = body
+            .split(&format!("data-tab-path=\"{path}\""))
+            .nth(1)
+            .unwrap();
+        let rest = item.split("note-tabs__close").nth(1).unwrap();
+        let href = rest
+            .split("href=\"")
+            .nth(1)
+            .unwrap()
+            .split('"')
+            .next()
+            .unwrap();
+        href.replace("&#38;", "&")
+    };
+    assert_eq!(close_of("b.md"), "/notes?project=&path=c.md&close=b.md");
+    assert_eq!(close_of("a.md"), "/notes?project=&path=b.md&close=a.md");
+
+    let (_, headers, body) = send(
+        &app,
+        notes_get_with_cookie("/notes?project=&path=c.md&close=b.md", &cookie, true),
+    )
+    .await;
+    assert_eq!(strip_paths(&body), ["a.md", "c.md"]);
+    assert_eq!(stored_tabs(&headers).unwrap()["active"], "c.md");
+    assert_eq!(
+        headers
+            .get("hx-replace-url")
+            .and_then(|value| value.to_str().ok()),
+        Some("/notes?project=&path=c.md"),
+        "the address bar drops the spent close"
+    );
+
+    // The last tab closes to the left neighbour, a lone one to the empty page.
+    let last = tabs_cookie(&["a.md", "c.md"], "c.md");
+    let (_, _, body) = send(
+        &app,
+        notes_get_with_cookie("/notes?path=c.md", &last, false),
+    )
+    .await;
+    let item = body.split("data-tab-path=\"c.md\"").nth(1).unwrap();
+    assert!(item.contains("path=a.md&#38;close=c.md"), "{item}");
+    let lone = tabs_cookie(&["a.md"], "a.md");
+    let (_, _, body) = send(
+        &app,
+        notes_get_with_cookie("/notes?path=a.md", &lone, false),
+    )
+    .await;
+    let item = body.split("data-tab-path=\"a.md\"").nth(1).unwrap();
+    assert!(
+        item.contains("href=\"/notes?project=&#38;close=a.md\""),
+        "{item}"
+    );
+}
+
+#[tokio::test]
+async fn two_tabs_with_one_name_show_their_folders() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("tabs-labels");
+    let store = sandbox.store();
+    tabs_vault(&store);
+    let app = router(context(store));
+    let cookie = tabs_cookie(&["x/n.md", "y/n.md", "a.md"], "a.md");
+    let (_, _, body) = send(
+        &app,
+        notes_get_with_cookie("/notes?path=a.md", &cookie, false),
+    )
+    .await;
+    assert!(
+        body.contains("<span class=\"note-tabs__folder\">x</span>"),
+        "{body}"
+    );
+    assert!(
+        body.contains("<span class=\"note-tabs__folder\">y</span>"),
+        "{body}"
+    );
+    assert_eq!(body.matches("note-tabs__folder\"").count(), 2);
+}
+
+#[tokio::test]
+async fn the_tabs_cookie_budget_drops_the_leftmost_inactive_tab() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("tabs-budget");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    let many: Vec<String> = (0..130)
+        .map(|n| format!("note-with-a-long-name-{n:03}.md"))
+        .collect();
+    for path in &many {
+        notes.create(path).expect("the note is created");
+    }
+    let app = router(context(store));
+    let refs: Vec<&str> = many.iter().map(String::as_str).collect();
+    // 101 tabs just fit a request; the open note's tab pushes the answer past
+    // the budget, so the leftmost inactive tab goes.
+    let near = tabs_cookie(&refs[..101], "");
+    let (_, headers, body) = send(
+        &app,
+        notes_get_with_cookie("/notes?path=note-with-a-long-name-129.md", &near, false),
+    )
+    .await;
+    let stored = stored_tabs(&headers).expect("the list is answered");
+    let open = stored["open"].as_array().unwrap();
+    assert!(
+        open.len() < 102 && open.len() > 95,
+        "trimmed: {}",
+        open.len()
+    );
+    assert_eq!(open.last().unwrap(), "note-with-a-long-name-129.md");
+    assert!(
+        !open
+            .iter()
+            .any(|path| path == "note-with-a-long-name-000.md")
+    );
+    assert_eq!(strip_paths(&body).len(), open.len());
 }
