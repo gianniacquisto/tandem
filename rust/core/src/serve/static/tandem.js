@@ -412,16 +412,27 @@
     }
   }
 
+  // A keepalive body is capped at 64 KB by the browser: past this size a write
+  // sent as the page closes is a plain fetch, which the close may cancel.
+  var KEEPALIVE_MAX = 60000;
+
+  function fieldBody(control, was) {
+    return new URLSearchParams({
+      field: control.getAttribute('data-autosave'),
+      value: control.value,
+      was: was
+    }).toString();
+  }
+
   // One write. Resolves once the answer is applied; never rejects.
   function writeField(sheet, control, was, leaving) {
     var field = control.getAttribute('data-autosave');
     var value = control.value;
-    var body = new URLSearchParams({ field: field, value: value, was: was }).toString();
+    var body = fieldBody(control, was);
     var failed = function (reason) { return { state: 'failed', reason: reason }; };
     return fetch('/tickets/' + encodeURIComponent(sheet.getAttribute('data-ticket')) + '/field', {
       method: 'POST',
-      // The keepalive body is capped at 64 KB: past 60 KB, a plain fetch.
-      keepalive: !!leaving && body.length < 60000,
+      keepalive: !!leaving && body.length < KEEPALIVE_MAX,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'HX-Request': 'true'
@@ -622,6 +633,25 @@
     sheetTimers = {};
   }
 
+  // What a close cannot carry: a change a failure still holds (signed out, a
+  // conflict), or a held one too large for keepalive. The browser asks before
+  // it leaves; the second close the sheet's own button allows has been warned.
+  function leaveHoldsChange(sheet) {
+    if (failedFields().length > 0) return true;
+    return Object.keys(sheetTimers).some(function (field) {
+      var control = sheetControl(sheet, field);
+      return control && fieldBody(control, control.getAttribute('data-was')).length >= KEEPALIVE_MAX;
+    });
+  }
+
+  window.addEventListener('beforeunload', function (event) {
+    var sheet = document.querySelector('.sheet');
+    if (!sheet || sheet !== sheetSeen || sheetArmed) return;
+    if (!leaveHoldsChange(sheet)) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
+
   window.addEventListener('pagehide', flushSheetOnLeave);
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') flushSheetOnLeave();
@@ -699,17 +729,19 @@
   // can stay put when it did not. It posts the form it is handed, the one whose
   // text was edited, never whichever note the page shows by the time it runs.
   // `leaving` marks the write sent as the page closes: only that one asks for
-  // keepalive, whose body is capped at 64 KB, so a long note still saves.
+  // keepalive, whose body is capped at 64 KB: a longer note is sent as a plain
+  // fetch, because a keepalive over the cap is refused and sends nothing.
   function writeNote(form, leaving) {
     if (!form) return Promise.resolve(false);
+    var noteBody = new URLSearchParams(new FormData(form)).toString();
     return fetch(form.getAttribute('action'), {
       method: 'POST',
-      keepalive: !!leaving,
+      keepalive: !!leaving && noteBody.length < KEEPALIVE_MAX,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'HX-Request': 'true'
       },
-      body: new URLSearchParams(new FormData(form)).toString()
+      body: noteBody
     })
       .then(function (response) {
         if (response.status === 401) {
