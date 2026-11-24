@@ -597,7 +597,64 @@
   // A box's opener: GitHub's alert syntax, the shape the slash menu writes.
   var CALLOUT = /^(>)( ?)(\[!(NOTE|INFO|TIP|WARNING)\])\s*$/i;
 
-  function lineHtml(line) {
+  // The column a run of leading whitespace reaches; a tab counts to the next
+  // multiple of four.
+  function columnOf(space) {
+    var col = 0;
+    for (var i = 0; i < space.length; i += 1) {
+      col = space.charAt(i) === '\t' ? col + 4 - (col % 4) : col + 1;
+    }
+    return col;
+  }
+
+  // A list line's place in its list: its indent, its content column (the
+  // CommonMark rule: indent plus marker width plus spaces) and, for a number,
+  // its value. Null for any other line.
+  function listLine(line) {
+    if (RULE.test(line)) return null;
+    var m = BULLET.exec(line);
+    if (m) {
+      var indent = columnOf(m[1]);
+      return { indent: indent, content: indent + m[2].length + m[3].length, num: null };
+    }
+    m = NUMBER.exec(line);
+    if (!m) return null;
+    var at = columnOf(m[1]);
+    return { indent: at, content: at + m[2].length + m[3].length + m[4].length, num: parseInt(m[2], 10) };
+  }
+
+  function alpha(n) {
+    var out = '';
+    while (n > 0) {
+      n -= 1;
+      out = String.fromCharCode(97 + (n % 26)) + out;
+      n = Math.floor(n / 26);
+    }
+    return out;
+  }
+
+  function roman(n) {
+    var table = [[1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'],
+      [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']];
+    var out = '';
+    for (var i = 0; i < table.length; i += 1) {
+      while (n >= table[i][0]) {
+        out += table[i][1];
+        n -= table[i][0];
+      }
+    }
+    return out;
+  }
+
+  // The label a numbered item draws at a depth: decimal, lower-alpha, then
+  // lower-roman, cycling. Empty where the digits as written stay.
+  function numberLabel(depth, value, delimiter) {
+    var level = depth % 3;
+    if (level === 0 || value < 1 || value > 3999) return '';
+    return (level === 1 ? alpha(value) : roman(value)) + delimiter;
+  }
+
+  function lineHtml(line, label) {
     var m;
     if ((m = HEADING.exec(line))) {
       return ['lp__line--h' + m[1].length, marker(m[1] + m[2]) + inline(m[3])];
@@ -608,12 +665,16 @@
         // A task line has no dot: its box is drawn over the `[ ]` characters.
         var done = m[4].charAt(1) !== ' ';
         return ['lp__line--task' + (done ? ' lp__line--done' : ''),
-          esc(m[1]) + marker(m[2] + m[3]) + '<span class="lp__task">' + esc(m[4]) + '</span>' + inline(m[5])];
+          marker(m[1]) + marker(m[2] + m[3]) + '<span class="lp__task">' + esc(m[4]) + '</span>' + inline(m[5])];
       }
-      return ['lp__line--bullet', esc(m[1]) + marker(m[2] + m[3]) + inline(m[5])];
+      return ['lp__line--bullet', marker(m[1]) + marker(m[2] + m[3]) + inline(m[5])];
     }
     if ((m = NUMBER.exec(line))) {
-      return ['lp__line--number', esc(m[1]) + '<span class="lp__num">' + esc(m[2] + m[3] + m[4]) + '</span>' + inline(m[5])];
+      var digits = esc(m[2] + m[3] + m[4]);
+      var num = label
+        ? '<span class="lp__num" data-label="' + esc(label) + '"><span class="lp__digits">' + digits + '</span></span>'
+        : '<span class="lp__num">' + digits + '</span>';
+      return ['lp__line--number', marker(m[1]) + num + inline(m[5])];
     }
     if ((m = CALLOUT.exec(line))) {
       return ['lp__line--quote lp__line--callout lp__line--callout-' + m[4].toLowerCase(),
@@ -652,11 +713,18 @@
     // The box a run of `> ` lines belongs to, from its opener on.
     var box = '';
     var html = '';
+    // The open list items, outermost first, and per depth the run of numbers
+    // the last item there belongs to (its first value and its index).
+    var stack = [];
+    var runs = [];
     for (var i = 0; i < lines.length; i += 1) {
       var line = lines[i];
       var classes = 'lp__line';
       var body;
+      var style = '';
       if (FENCE.test(line)) {
+        stack = [];
+        runs = [];
         fenced = !fenced;
         classes += ' lp__line--fence';
         body = esc(line);
@@ -664,7 +732,29 @@
         classes += ' lp__line--code';
         body = esc(line);
       } else {
-        var parts = lineHtml(line);
+        var item = listLine(line);
+        var label = '';
+        var depth = 0;
+        if (item) {
+          while (stack.length && stack[stack.length - 1].content > item.indent) stack.pop();
+          depth = stack.length;
+          stack.push(item);
+          runs.length = depth + 1;
+          var run = runs[depth];
+          if (item.num === null) {
+            runs[depth] = null;
+          } else {
+            if (run) run.index += 1;
+            else run = runs[depth] = { first: item.num, index: 0 };
+            label = numberLabel(depth, run.first + run.index, NUMBER.exec(line)[3]);
+          }
+          classes += ' lp__line--list lp__line--d' + (depth % 3);
+          style = ' style="--depth:' + depth + '"';
+        } else if (line.trim() !== '' && stack.length && columnOf(/^\s*/.exec(line)[0]) < stack[0].content) {
+          stack = [];
+          runs = [];
+        }
+        var parts = lineHtml(line, label);
         var opener = /lp__line--callout-(\w+)/.exec(parts[0]);
         if (opener) {
           box = opener[1];
@@ -677,7 +767,7 @@
         body = parts[1];
       }
       if (i === this.activeLine) classes += ' lp__line--active';
-      html += '<span class="' + classes + '">' + body + '\n</span>';
+      html += '<span class="' + classes + '"' + style + '>' + body + '\n</span>';
     }
     this.root.innerHTML = html;
     // The root's data-placeholder shows through CSS while the text is empty.

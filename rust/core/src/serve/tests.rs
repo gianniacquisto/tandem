@@ -903,6 +903,11 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 "graph.js opens a node through an htmx push"
             );
         }
+        if path == "/static/app.css" {
+            for key in ["lower-alpha", "lower-roman", "--space-list"] {
+                assert!(body.contains(key), "app.css carries {key}");
+            }
+        }
         if path == "/static/tandem.js" {
             for key in [
                 "tandem.collapsed",
@@ -915,6 +920,8 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 "live:follow",
                 "data-live-final-newline",
                 "data-placeholder",
+                "--depth",
+                "data-label",
             ] {
                 assert!(body.contains(key), "tandem.js carries {key}");
             }

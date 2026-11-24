@@ -362,4 +362,33 @@ mod tests {
         assert!(html.contains("[[B]]"), "{html}");
         assert!(!html.contains("wikilink"), "{html}");
     }
+
+    fn nests(md: &str, tag: &str) {
+        let html = document(&TicketMarkdown::blocks(Some(md)));
+        let open = format!("<{tag} class=\"markdown__list\"");
+        assert_eq!(html.matches(&open).count(), 3, "{html}");
+        // Each list sits inside the previous item, so the closes stack up.
+        let close = format!("</li></{tag}>");
+        assert!(html.contains(&close.repeat(3)), "{html}");
+    }
+
+    #[test]
+    fn nested_numbered_lists_render_inside_each_item() {
+        nests("1. a\n   1. b\n      1. c", "ol");
+    }
+
+    #[test]
+    fn nested_bullet_lists_render_inside_each_item() {
+        nests("- a\n  - b\n    - c", "ul");
+    }
+
+    #[test]
+    fn a_four_space_child_under_a_two_column_marker_still_nests() {
+        let html = document(&TicketMarkdown::blocks(Some("- a\n    - b")));
+        assert_eq!(
+            html.matches("<ul class=\"markdown__list\"").count(),
+            2,
+            "{html}"
+        );
+    }
 }

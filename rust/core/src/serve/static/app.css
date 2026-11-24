@@ -2433,8 +2433,18 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 
 .markdown__list {
   margin: 0;
-  padding-left: 18px;
+  padding-left: var(--space-list);
 }
+
+/* Levels cycle as browsers and Google Docs draw them. */
+ol.markdown__list { list-style-type: decimal; }
+ol.markdown__list ol.markdown__list { list-style-type: lower-alpha; }
+ol.markdown__list ol.markdown__list ol.markdown__list { list-style-type: lower-roman; }
+ol.markdown__list ol.markdown__list ol.markdown__list ol.markdown__list { list-style-type: decimal; }
+ul.markdown__list { list-style-type: disc; }
+ul.markdown__list ul.markdown__list { list-style-type: circle; }
+ul.markdown__list ul.markdown__list ul.markdown__list { list-style-type: square; }
+ul.markdown__list ul.markdown__list ul.markdown__list ul.markdown__list { list-style-type: disc; }
 
 .markdown__item {
   margin: 2px 0;
@@ -3784,8 +3794,50 @@ a.menu__option {
   color: var(--ink-dim);
 }
 
+.lp__line--bullet.lp__line--d1:not(.lp__line--active)::before { content: "\25E6"; }
+.lp__line--bullet.lp__line--d2:not(.lp__line--active)::before { content: "\25AA"; }
+
 .lp__line--bullet:not(.lp__line--active) {
-  margin-left: 1.1em;
+  margin-left: calc(1.1em + var(--depth, 0) * var(--space-list));
+}
+
+/* A list line off the caret is a block so a long item wraps under its own
+ * text column; the trailing newline ends the block without an empty line. */
+.lp__line--list:not(.lp__line--active) {
+  display: block;
+}
+
+/* The marker hangs in the first column; wrapped text lines up under the text. */
+.lp__line--number:not(.lp__line--active) {
+  padding-left: 1.8em;
+  text-indent: -1.8em;
+}
+
+.lp__line--number:not(.lp__line--active) .lp__num {
+  display: inline-block;
+  min-width: 1.8em;
+  text-indent: 0;
+}
+
+.lp__line--task:not(.lp__line--active) {
+  padding-left: 1.1em;
+  text-indent: -1.1em;
+}
+
+/* A nested number or task steps in by the same list indent. */
+.lp__line--number:not(.lp__line--active),
+.lp__line--task:not(.lp__line--active) {
+  margin-left: calc(var(--depth, 0) * var(--space-list));
+}
+
+/* A lettered or roman label is drawn over digits that stay in the text, shrunk
+ * to nothing off the active line. */
+.lp__line:not(.lp__line--active) .lp__num[data-label]::before {
+  content: attr(data-label);
+}
+
+.lp__line:not(.lp__line--active) .lp__num[data-label] .lp__digits {
+  font-size: 0;
 }
 
 .lp__num {
