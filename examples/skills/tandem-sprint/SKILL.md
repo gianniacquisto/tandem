@@ -37,7 +37,7 @@ From then on it is a ready ticket like any other. If the dead pass left an open 
 
 ## Model routing
 
-Every dispatch names its model and effort; a subagent never inherits the session's model. The brief's `Size:` line (written by the refiner) picks them. A drawn ticket with no `Size:` takes the size from its latest `scout` comment, or, with none, gets a `scout` (`agents/scout.md`, on `sonnet`, low effort) before its build; the scout's size stands. The session running the sprint only follows this table, so it can run on any model, `haiku` included.
+Every dispatch names its model and effort; a subagent never inherits the session's model. The brief's `Size:` line (written by the refiner) picks them. A drawn ticket with no `Size:` takes the size from its latest `scout` comment, or, with none, gets a `scout` (`agents/scout.md`, on `sonnet`, low effort) before its build; the scout's size stands. The `scribe` (`agents/scribe.md`) also runs on `sonnet`, low effort. The session running the sprint only follows this table, so it can run on any model, `haiku` included.
 
 | Size | The ticket | Builder | Reviewer |
 | --- | --- | --- | --- |
@@ -93,13 +93,15 @@ The close runs when every batch ticket has an exit state. There are four, and ev
 
 Settle the project as well: a dead claim outside the batch goes back to `ready` with a comment; `human` stays only where a question is open. One comment per ticket the close moves, signed `sprint`, carrying what landed, the outcome and next status, and any issues; none where nothing moved.
 
+As each batch ticket reaches its exit state (the drain's per-ticket loop included), dispatch a scribe for it as `skills/tandem-scribe/` says, and wait for the outstanding ones before the report.
+
 **The close report**, the last thing the sprint says:
 
 ```
 SPRINT: <project>: <n> landed, <n> escalated, <n> slipped, <n> parked
 ```
 
-Then one line per batch ticket (`<ref> <title>: landed, PR #<n>`), one line per skipped ticket with its reason, and what waits on the human. Every ticket named in the report follows the Naming tickets rule in `AGENTS.md`: ref, title and gist. A sprint that ends in the middle (the session dies, the human stops it) leaves dead claims, and the next sprint's §2 recovers them.
+Then one line per batch ticket (`<ref> <title>: landed, PR #<n>`), one line per skipped ticket with its reason, a `Notes:` block with one `SCRIBE:` line per batch ticket, and what waits on the human. Every ticket named in the report follows the Naming tickets rule in `AGENTS.md`: ref, title and gist. A sprint that ends in the middle (the session dies, the human stops it) leaves dead claims, and the next sprint's §2 recovers them.
 
 ## Drain mode
 
