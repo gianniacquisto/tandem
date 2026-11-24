@@ -68,5 +68,9 @@
     <main class="shell__body shell__body--bleed">
       {{ body }}
     </main>
+    <footer class="shell__footer">
+      <span class="shell__version">Tandem {{ self.version() }}</span>
+      <a class="shell__source" href="{{ self.source() }}" target="_blank" rel="noopener">AGPL-3.0-only · Source</a>
+    </footer>
   </body>
 </html>

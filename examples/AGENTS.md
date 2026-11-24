@@ -7,7 +7,7 @@ A starter for your own global agent instructions. Copy it, edit it, drop what yo
 Memory is the notes (in `~/.tandem/notes/`, markdown with `[[wikilinks]]`) and the board. The ticket comment log is the work record: no session records, captures or consolidation pass exist.
 
 - **Orient**: `ticket_list` for the open work, and `Index.md` only when the task needs background. Read a note only for the part the task touches: find it with `note_search` (and `note_backlinks` for what links to it), and change one passage with `note_edit` (`oldText` must match once; an empty `oldText` appends) instead of rewriting the note. A note is a hint: where it disagrees with the code or the board, the code and the board win.
-- **Record**: write a note with `note_write` only for a decision, gotcha or fact that would cost real effort to re-derive and is not already in a ticket, an ADR or the code. Edit the existing note in place; do not add one beside it. Never copy board state into a note.
+- **Record**: when a decision settles or something surprising turns up in the work, dispatch the `scribe` agent as `skills/tandem-scribe/` says, with what happened, the ticket if there is one, and the files or pages involved. The scribe decides whether it is worth keeping and where it goes: the project's own docs, a note, or nowhere ([ADR 0056](https://github.com/gianniacquisto/tandem/blob/main/docs/adr/0056-project-docs-and-notes.md)). Do not write the note yourself; where your host cannot dispatch an agent, follow `agents/scribe.md` yourself. Never copy board state into a note.
 
 ## Tickets
 
@@ -21,7 +21,7 @@ Agents call Tandem through the MCP tools, never through the shell.
 
 ## Handoff
 
-The actor that finishes a ticket's work sets the next status and, where there is a next, the next assignee, in one `ticket_set`. Before it moves a status, it appends one comment on every ticket it carried, with three short fields: **what landed**, **outcome and next status**, **issues** (or none).
+The actor that finishes a ticket's work sets the next status and, where there is a next, the next assignee, in one `ticket_set`. Before it moves a status, it appends one comment on every ticket it carried, with three short fields: **what landed**, **outcome and next status**, **issues** (or none). The actor that closes a hold records the decision in a comment and moves status and assignee in the same `ticket_set`; the inbox is the assignee alone.
 
 ## Naming tickets
 

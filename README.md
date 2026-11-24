@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/gianniacquisto/tandem/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/gianniacquisto/tandem/actions/workflows/release.yml)
 [![Release](https://img.shields.io/github/v/release/gianniacquisto/tandem)](https://github.com/gianniacquisto/tandem/releases/latest)
-[![Licence](https://img.shields.io/badge/licence-MIT-sage.svg)](LICENSE)
+[![Licence](https://img.shields.io/badge/licence-AGPL--3.0--only-sage.svg)](LICENSE)
 
 ![The tandem bike](Resources/TandemBike.jpg)
 
@@ -100,4 +100,4 @@ Start at the [documentation index](docs/README.md). The most used pages:
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE) and [NOTICE.txt](NOTICE.txt).
+The core is AGPL-3.0-only: see [LICENSE](LICENSE). `examples/` (agent prompts and skills) is MIT: see [examples/LICENSE](examples/LICENSE). Releases up to v2.9.1 stay MIT. The third-party and earlier notices are in [NOTICE.txt](NOTICE.txt).

@@ -14,7 +14,7 @@ The records that explain the product as it is today:
 - [0035](0035-ticket-dependencies.md): the blocking edge.
 - [0039](0039-projects-own-lanes.md), [0047, lanes are labels](0047-lanes-are-labels.md) and [0053](0053-one-prefix-per-project.md): projects and labels, and who owns the ref prefix.
 - [0004](0004-vault-protocol.md), [0005](0005-wikilink-rename-rewriting.md), [0008](0008-vault-path-rule.md) and [0022](0022-bikeshed-move.md): how notes are stored, named, renamed and moved.
-- [0033](0033-wiki-is-documentation.md): what the notes are for.
+- [0033](0033-wiki-is-documentation.md) and [0056](0056-project-docs-and-notes.md): what the notes are for, and when a fact goes in the project's own docs instead.
 - [0045](0045-the-board-and-notes-cut.md): what was cut, and what stayed.
 - [0046](0046-tandem-serve-and-single-binary-distribution.md): `tandem serve`, the single binary and how it is distributed.
 - [0047, serve is the single door](0047-serve-is-the-single-door.md): agents reach Tandem over MCP on `tandem serve`; how requests are guarded and named.
@@ -65,7 +65,7 @@ The status comes from each record's own header and from the "Prior records" list
 | 0030 | [One entity, the ticket](0030-one-entity-the-ticket.md) | In force | The vocabulary. |
 | 0031 | [One database, the store](0031-one-database-the-store.md) | In force as amended | No `store_imports` table ships; the store gained `store_meta` and its revision. |
 | 0032 | [Sprint records](0032-sprint-records.md) | Superseded by 0045 | |
-| 0033 | [The wiki is documentation](0033-wiki-is-documentation.md) | In force | What the notes hold and how a page stays true. |
+| 0033 | [The wiki is documentation](0033-wiki-is-documentation.md) | In force, amended by 0056 | What the notes hold and how a page stays true. |
 | 0034 | [Agent face in the artifact](0034-agent-face-in-the-artifact.md) | Superseded by 0045 | The binary ships no agent face and no installer for one. |
 | 0035 | [Ticket dependencies](0035-ticket-dependencies.md) | In force, amended by 0045 | The edge and the derived block stand; the `tickets.link` and sprint-draw clauses retired. |
 | 0036 | [The tag bumps the tap](0036-the-tag-bumps-the-tap.md) | Superseded by 0046 | |
@@ -89,6 +89,8 @@ The status comes from each record's own header and from the "Prior records" list
 | 0053 | [One prefix per project](0053-one-prefix-per-project.md) | In force | The project owns the ref key and the counter (schema v16); a ticket stores its project and never changes it; there is no default area; a label is optional inside one project; retired refs resolve through `ticket_aliases`. Amends 0039 and 0047. |
 | 0054 | [Notes link to projects and labels](0054-notes-link-to-projects-and-labels.md) | In force | Typed wikilinks `[[project:X]]` and `[[label:x]]` resolve against the board; an orphan has no link in or out and is not filed under a project folder; `note_health` reports `unmatchedFolders`; the graph's node and edge types. Amends 0005. |
 | 0055 | [The notes store is called notes](0055-the-notes-store-is-called-notes.md) | In force | Supersedes 0015 on the word: the store is notes, one file is a note; the on-disk folder, export entry, doctor check and Rust names moved with it (TAN-862), with a one-time migration. |
+| 0056 | [Durable knowledge goes in the project's own docs](0056-project-docs-and-notes.md) | In force | Amends 0033: if the project has its own docs, a durable fact goes there through the project's process; otherwise it goes in the notes; already recorded elsewhere, nowhere new. Docs explain in detail and do not transcribe code. |
+| 0057 | [The core is AGPL](0057-the-core-is-agpl.md) | In force | The core is AGPL-3.0-only, `examples/` stays MIT, past releases stay MIT, with the CLA of TAN-859. |
 
 ## Adding a record
 
