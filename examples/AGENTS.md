@@ -21,7 +21,7 @@ Agents call Tandem through the MCP tools, never through the shell.
 
 ## Handoff
 
-The actor that finishes a ticket's work sets the next status and, where there is a next, the next assignee, in one `ticket_set`. Before it moves a status, it appends one comment on every ticket it carried, with three short fields: **what landed**, **outcome and next status**, **issues** (or none).
+The actor that finishes a ticket's work sets the next status and, where there is a next, the next assignee, in one `ticket_set`. Before it moves a status, it appends one comment on every ticket it carried, with three short fields: **what landed**, **outcome and next status**, **issues** (or none). The actor that closes a hold records the decision in a comment and moves status and assignee in the same `ticket_set`; the inbox is the assignee alone.
 
 ## Naming tickets
 
