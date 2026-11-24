@@ -3760,6 +3760,27 @@ a.menu__option {
   pointer-events: none;
 }
 
+/* The slash hint: a zero-width box so the caret stays before the text. */
+.lp:focus .lp__line--hint::before {
+  content: "Type / for commands" / "";
+  display: inline-block;
+  width: 0;
+  overflow: visible;
+  white-space: nowrap;
+  color: var(--ink-dim);
+  pointer-events: none;
+  user-select: none;
+}
+
+.lp__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .lp__m {
   display: none;
   color: var(--ink-dim);

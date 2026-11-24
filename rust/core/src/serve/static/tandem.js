@@ -686,6 +686,10 @@
     return ['', inline(line)];
   }
 
+  // The one wording of the empty-line hint and of the editor's description.
+  var SLASH_HINT = 'Type / for commands';
+  var SLASH_DESCRIPTION = 'Type / to insert a block or command';
+
   function Live(root, store) {
     this.root = root;
     this.store = store;
@@ -766,7 +770,11 @@
         classes += parts[0] ? ' ' + parts[0] : '';
         body = parts[1];
       }
-      if (i === this.activeLine) classes += ' lp__line--active';
+      if (i === this.activeLine) {
+        classes += ' lp__line--active';
+        // The hint rides the caret's own empty line, never a code line.
+        if (line === '' && !fenced && this.text !== '') classes += ' lp__line--hint';
+      }
       html += '<span class="' + classes + '"' + style + '>' + body + '\n</span>';
     }
     this.root.innerHTML = html;
@@ -1566,6 +1574,13 @@
       root.setAttribute('role', 'textbox');
       root.setAttribute('aria-multiline', 'true');
       root.setAttribute('aria-label', root.getAttribute('aria-label') || 'Note');
+      var desc = document.createElement('span');
+      desc.className = 'lp__sr';
+      desc.id = 'lp-desc-' + lives.length + '-' + Math.floor(Math.random() * 1e6);
+      desc.textContent = SLASH_DESCRIPTION;
+      root.parentNode.insertBefore(desc, root);
+      root.setAttribute('aria-describedby', desc.id);
+      root.setAttribute('data-slash-hint', SLASH_HINT);
       lives.push(new Live(root, store));
     }
   }
