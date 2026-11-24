@@ -904,7 +904,12 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
             );
         }
         if path == "/static/app.css" {
-            for key in ["lower-alpha", "lower-roman", "--space-list", "lp__line--hint"] {
+            for key in [
+                "lower-alpha",
+                "lower-roman",
+                "--space-list",
+                "lp__line--hint",
+            ] {
                 assert!(body.contains(key), "app.css carries {key}");
             }
         }
