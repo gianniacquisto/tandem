@@ -13,6 +13,6 @@ A pass that settles the human's decisions and nothing else: building, refining a
 4. **Record as you go**: one `ticket_comment_add` per settled ticket with the decision, the cost of any override of the brief's recommendation, a correction to any false premise, and what done now means.
 5. **Move the pair** with one `ticket_set`: `ready` when the brief survives the decision, `backlog` when the decision contradicts it (the refiner rewrites from the comment), with the next owner, or none.
 6. **File follow-ups** a decision creates, with the decision in their description.
-7. **Close with a table**: every queue ticket, its decision, its new status; flag the answers that overrode a recommendation.
+7. **Close with a table**: every queue ticket, its decision, its new status, and its `SCRIBE:` line (a scribe per settled ticket, as `skills/tandem-scribe/` says); flag the answers that overrode a recommendation.
 
 Done when every queue ticket carries its decision as a comment and has left the human's queue or says what it still waits on.

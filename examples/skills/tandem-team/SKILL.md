@@ -11,12 +11,13 @@ A template: the roster below is this repository's own. Replace it with your team
 | --- | --- | --- |
 | `human` | the decisions: a preference, a spend, an irreversible or outward-facing act; the release | |
 | `scout` | one ticket's refine tier and size: reads, then records the `SCOUT:` line in one comment | `agents/scout.md` |
+| `scribe` | the notes: judges what a pass turned up, writes it to the notes or proposes a docs change | `agents/scribe.md`, run by `skills/tandem-scribe/` |
 | `refiner` | `backlog` to `ready` (or `on-hold`) | `agents/refiner.md`, run by `skills/tandem-refine/` |
 | `builder` | one ticket: branch, build, verify, PR, `in-review` | `agents/builder.md` |
 | `reviewer` | the merge gate: merge, escalate or block | `agents/reviewer.md` |
 | `sprint` | the batch: draw, dispatch, gate, close | `skills/tandem-sprint/` |
 
-`retro`, `tidy` and `interview` are skills the human invokes, not roles: each signs as the role that runs it, and `retro` files with `origin` retro. The review lenses (`skills/review-lenses/`) are checklists the refiner and reviewer read, not roles.
+`retro`, `tidy` and `interview` are skills the human invokes, not roles: each signs as the role that runs it, and `retro` files with `origin` retro. The `scribe` signs `author` scribe and files with `origin` scribe; it never holds an `assignee`. The review lenses (`skills/review-lenses/`) are checklists the refiner and reviewer read, not roles.
 
 ## The name rule
 
