@@ -861,3 +861,40 @@ fn the_sheet_select_draws_no_native_arrow() {
         ".sheet__select declares appearance: none"
     );
 }
+
+#[test]
+fn the_sheet_status_dot_and_the_board_column_share_one_status_map() {
+    let rules = app_rules();
+    for status in [
+        "backlog",
+        "on-hold",
+        "ready",
+        "in-progress",
+        "in-review",
+        "done",
+    ] {
+        assert!(
+            rules.iter().any(|(sel, body)| {
+                sel.contains(".board__column")
+                    && sel.contains(".sheet__status-dot")
+                    && sel.contains(&format!("data-status=\"{status}\""))
+                    && body.contains("--status-tone:")
+            }),
+            "{status} is in the shared status map"
+        );
+    }
+    assert!(
+        sheet_rules()
+            .iter()
+            .any(|(sel, body)| sel == ".sheet__status-dot" && body.contains("var(--status-tone")),
+        ".sheet__status-dot paints from --status-tone"
+    );
+    for (sel, body) in sheet_rules() {
+        assert!(!body.contains("--chip"), "{sel} still sets --chip");
+        if sel.contains(".sheet__status-dot") {
+            for raw in ["--ember-deep", "--accent-deep", "--moss"] {
+                assert!(!body.contains(raw), "{sel} paints with {raw}");
+            }
+        }
+    }
+}

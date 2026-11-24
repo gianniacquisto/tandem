@@ -1835,31 +1835,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--chip, var(--ink-dim));
-}
-
-.sheet__status-dot[data-status="backlog"] {
-  --chip: var(--ink-dim);
-}
-
-.sheet__status-dot[data-status="on-hold"] {
-  --chip: var(--ember-deep);
-}
-
-.sheet__status-dot[data-status="ready"] {
-  --chip: var(--accent-deep);
-}
-
-.sheet__status-dot[data-status="in-progress"] {
-  --chip: var(--accent);
-}
-
-.sheet__status-dot[data-status="in-review"] {
-  --chip: var(--moss);
-}
-
-.sheet__status-dot[data-status="done"] {
-  --chip: var(--ink-dim);
+  background: var(--status-tone, var(--ink-dim));
 }
 
 .sheet__reading,
@@ -3132,11 +3108,13 @@ a.menu__option {
   background: var(--status-tone, var(--ink-dim));
 }
 
-.board__column[data-status="on-hold"] { --status-tone: var(--tone-sun); }
-.board__column[data-status="ready"] { --status-tone: var(--tone-sky); }
-.board__column[data-status="in-progress"] { --status-tone: var(--tone-ember); }
-.board__column[data-status="in-review"] { --status-tone: var(--tone-accent); }
-.board__column[data-status="done"] { --status-tone: var(--tone-hill); }
+/* The one status map: the board column dot and the ticket sheet's Status dot. */
+:is(.board__column, .sheet__status-dot)[data-status="backlog"] { --status-tone: var(--ink-dim); }
+:is(.board__column, .sheet__status-dot)[data-status="on-hold"] { --status-tone: var(--tone-sun); }
+:is(.board__column, .sheet__status-dot)[data-status="ready"] { --status-tone: var(--tone-sky); }
+:is(.board__column, .sheet__status-dot)[data-status="in-progress"] { --status-tone: var(--tone-ember); }
+:is(.board__column, .sheet__status-dot)[data-status="in-review"] { --status-tone: var(--tone-accent); }
+:is(.board__column, .sheet__status-dot)[data-status="done"] { --status-tone: var(--tone-hill); }
 
 .board__column-title {
   justify-content: flex-start;
