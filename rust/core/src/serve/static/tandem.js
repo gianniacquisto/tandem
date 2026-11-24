@@ -1939,18 +1939,33 @@
   });
 
   // Enter in a note's title asks for the caret at the start of the body once the
-  // rename swap has run. One-shot: every other path clears it (TAN-869).
+  // rename swap has run. The keydown only marks an Enter as pending for this task;
+  // the flag arms when the title form's request actually starts, so an Enter that
+  // browser validation blocks (empty title) arms nothing. One-shot: every other
+  // path clears it (TAN-869).
   var enterToBody = false;
+  var enterPending = false;
 
   document.addEventListener('keydown', function (event) {
     if (event.key !== 'Enter' || event.isComposing) return;
     var field = event.target && event.target.closest ? event.target.closest('.page-title') : null;
     if (field && field.closest('#notes-root') && !field.classList.contains('page-title--static')) {
-      enterToBody = true;
+      enterPending = true;
+      setTimeout(function () { enterPending = false; }, 0);
     }
   });
 
-  document.addEventListener('htmx:responseError', function () { enterToBody = false; });
+  document.addEventListener('htmx:beforeRequest', function (event) {
+    var el = event.detail && event.detail.elt;
+    if (enterPending && el && el.classList && el.classList.contains('page-title-form')) {
+      enterToBody = true;
+    }
+    enterPending = false;
+  });
+
+  ['htmx:responseError', 'htmx:sendError', 'htmx:timeout'].forEach(function (name) {
+    document.addEventListener(name, function () { enterToBody = false; });
+  });
 
   function focusBody() {
     if (!enterToBody) return;
