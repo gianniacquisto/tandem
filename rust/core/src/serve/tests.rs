@@ -875,6 +875,7 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
         ("/static/sse.js", "text/javascript; charset=utf-8"),
         ("/static/tandem.js", "text/javascript; charset=utf-8"),
         ("/static/graph.js", "text/javascript; charset=utf-8"),
+        ("/static/theme.js", "text/javascript; charset=utf-8"),
         ("/static/icon.svg", "image/svg+xml"),
     ] {
         let (status, headers, body) = get(&app, path).await;
@@ -903,6 +904,12 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 "graph.js opens a node through an htmx push"
             );
         }
+        if path == "/static/theme.js" {
+            assert!(
+                body.contains("classList.add('js')"),
+                "theme.js marks <html> with the js class before the first paint"
+            );
+        }
         if path == "/static/app.css" {
             for key in [
                 "lower-alpha",
@@ -920,7 +927,8 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 "tandem.relations.open",
                 "tandem.relations.sections",
                 "data-tree-action",
-                "revealedPath === undefined",
+                "uiState",
+                "data-ui-cookie",
                 "data-live-store",
                 "live:follow",
                 "data-live-final-newline",
@@ -9727,4 +9735,161 @@ async fn todays_note_starts_with_the_about_line_only_when_a_project_is_focused()
         "",
         "an unknown project is no focus"
     );
+}
+
+/// A request for a notes page that carries `cookie` as its `Cookie` header.
+fn notes_get_with_cookie(uri: &str, cookie: &str, htmx: bool) -> Request<Body> {
+    let mut request = Request::builder()
+        .uri(uri)
+        .header(header::HOST, "127.0.0.1:7700")
+        .header(header::COOKIE, cookie);
+    if htmx {
+        request = request.header("HX-Request", "true");
+    }
+    request.body(Body::empty()).expect("the request builds")
+}
+
+/// The tag of the `<li>` that holds the tree row for `path`, up to its row.
+fn tree_item(body: &str, path: &str) -> String {
+    let marker = format!("data-path=\"{path}\"");
+    let at = body
+        .find(&marker)
+        .unwrap_or_else(|| panic!("row {path}: {body}"));
+    let start = body[..at].rfind("<li").expect("an item");
+    let end = body[at..].find("</div>").expect("a row end") + at;
+    body[start..end].to_string()
+}
+
+fn tree_vault(store: &Store) {
+    let notes = vault(store);
+    for path in ["a/b/c.md", "a/x.md", "d/e.md", "top.md"] {
+        notes.create(path).expect("the note is created");
+    }
+}
+
+fn tree_cookie(json: &str) -> String {
+    let encoded: String = json
+        .bytes()
+        .map(|byte| {
+            if byte.is_ascii_alphanumeric() {
+                (byte as char).to_string()
+            } else {
+                format!("%{byte:02X}")
+            }
+        })
+        .collect();
+    format!("tandem_7700_tree={encoded}")
+}
+
+#[tokio::test]
+async fn the_shell_names_the_ui_cookie_prefix_on_the_html_element() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("ui-cookie-prefix");
+    let app = router(context(sandbox.store()));
+    let (_, _, body) = send(&app, page_get("/notes")).await;
+    assert!(
+        body.contains("data-ui-cookie=\"tandem_7700_\""),
+        "the shell carries the cookie prefix: {body}"
+    );
+}
+
+#[tokio::test]
+async fn the_tree_cookie_draws_the_folds_on_the_first_paint() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("ui-cookie-tree");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    tree_vault(&store);
+    let app = router(context(store));
+    let cookie = tree_cookie(r#"{"default":"shut","except":["a"]}"#);
+
+    let (status, _, body) = send(&app, notes_get_with_cookie("/notes", &cookie, false)).await;
+    assert_eq!(status, StatusCode::OK);
+    let a = tree_item(&body, "a");
+    assert!(
+        a.contains("aria-expanded=\"true\"") && a.contains("\u{25be}"),
+        "{a}"
+    );
+    assert!(!a.contains("<li role=\"none\" hidden"), "{a}");
+    assert!(!tree_item(&body, "a/x.md").starts_with("<li role=\"none\" hidden"));
+    let ab = tree_item(&body, "a/b");
+    assert!(
+        ab.contains("aria-expanded=\"false\"") && ab.contains("\u{25b8}"),
+        "{ab}"
+    );
+    assert!(
+        tree_item(&body, "a/b/c.md").starts_with("<li role=\"none\" hidden"),
+        "a note under a shut folder is hidden"
+    );
+    let d = tree_item(&body, "d");
+    assert!(d.contains("aria-expanded=\"false\""), "{d}");
+    assert!(tree_item(&body, "d/e.md").starts_with("<li role=\"none\" hidden"));
+    assert!(!tree_item(&body, "top.md").starts_with("<li role=\"none\" hidden"));
+}
+
+#[tokio::test]
+async fn without_a_tree_cookie_every_folder_is_shut_but_the_open_notes_ancestors() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("ui-cookie-tree-first");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    tree_vault(&store);
+    let app = router(context(store));
+
+    let (_, _, body) = send(&app, page_get("/notes?path=a/b/c.md")).await;
+    for open in ["a", "a/b"] {
+        assert!(
+            tree_item(&body, open).contains("aria-expanded=\"true\""),
+            "{open}"
+        );
+    }
+    assert!(tree_item(&body, "d").contains("aria-expanded=\"false\""));
+    assert!(tree_item(&body, "d/e.md").starts_with("<li role=\"none\" hidden"));
+    assert!(!tree_item(&body, "a/b/c.md").starts_with("<li role=\"none\" hidden"));
+}
+
+#[tokio::test]
+async fn a_foreign_damaged_or_oversized_tree_cookie_reads_as_absent() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("ui-cookie-tree-bad");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    tree_vault(&store);
+    let app = router(context(store));
+    let good = tree_cookie(r#"{"default":"open","except":[]}"#);
+    let oversized = format!("tandem_7700_tree={}", "a".repeat(4000));
+    for cookie in [
+        good.replace("7700", "7701"),
+        "tandem_7700_tree=%7Bnot-json".to_string(),
+        oversized,
+    ] {
+        let (_, _, body) = send(&app, notes_get_with_cookie("/notes", &cookie, false)).await;
+        assert!(
+            tree_item(&body, "a").contains("aria-expanded=\"false\""),
+            "{cookie:.40} reads as the first-visit layout"
+        );
+    }
+    let (_, _, body) = send(&app, notes_get_with_cookie("/notes", &good, false)).await;
+    assert!(tree_item(&body, "a").contains("aria-expanded=\"true\""));
+}
+
+#[tokio::test]
+async fn an_htmx_note_swap_draws_the_same_folds() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("ui-cookie-tree-swap");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    tree_vault(&store);
+    let app = router(context(store));
+    let cookie = tree_cookie(r#"{"default":"shut","except":["a"],"open":"top.md"}"#);
+
+    let (_, _, body) = send(
+        &app,
+        notes_get_with_cookie("/notes?path=top.md", &cookie, true),
+    )
+    .await;
+    assert!(!body.contains("<!doctype html>"), "a partial has no shell");
+    assert!(tree_item(&body, "a").contains("aria-expanded=\"true\""));
+    assert!(tree_item(&body, "d").contains("aria-expanded=\"false\""));
+    assert!(tree_item(&body, "d/e.md").starts_with("<li role=\"none\" hidden"));
 }

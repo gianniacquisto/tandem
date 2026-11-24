@@ -543,6 +543,7 @@ pub(super) fn board_with_sheet(
         export: context.may_export(),
         tokens: context.shows_tokens(),
         people: context.shows_people(),
+        ui_cookie: context.ui_cookie(),
     })
     .render()
     {
@@ -596,6 +597,7 @@ fn render_response(
         export: context.may_export(),
         tokens: context.shows_tokens(),
         people: context.shows_people(),
+        ui_cookie: context.ui_cookie(),
     })
     .render()
     {

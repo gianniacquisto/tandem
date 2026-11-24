@@ -266,6 +266,11 @@ impl Access {
         Some(hex(&hasher.finalize()))
     }
 
+    /// The port this serve bound.
+    pub(super) fn port(&self) -> u16 {
+        self.port
+    }
+
     fn authority(&self, name: &str) -> String {
         format!("{name}:{}", self.port)
     }

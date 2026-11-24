@@ -103,6 +103,10 @@ struct TreeRowView {
     indent: usize,
     folder: bool,
     selected: bool,
+    /// A folder drawn open (its twisty down, `aria-expanded` true).
+    expanded: bool,
+    /// A row under a shut folder, drawn `hidden` by the server (TAN-880).
+    hidden: bool,
     /// `project`, `label` or `no label` on a folder the board names; else empty.
     tag: &'static str,
     /// The tag is a warning: a project subfolder no label of the project names.
@@ -388,6 +392,38 @@ fn tree_tag(path: &str, names: &BoardNames) -> (&'static str, bool) {
     }
 }
 
+/// Draw each folder's fold and hide the rows under a shut one, from the
+/// remembered `tree` state and the open note, so the first paint is final.
+/// `tandem.js` reads the same state with the same rules (TAN-880).
+fn fold_rows(rows: &mut [TreeRowView], state: Option<&ui_state::TreeState>) {
+    let folders: Vec<&str> = rows
+        .iter()
+        .filter(|row| row.folder)
+        .map(|row| row.path.as_str())
+        .collect();
+    let open = rows
+        .iter()
+        .find(|row| row.selected && !row.folder)
+        .map(|row| row.path.as_str());
+    let shut = ui_state::shut_folders(state, &folders, open);
+    let mut hide_below: Option<usize> = None;
+    for row in rows.iter_mut() {
+        if row.folder {
+            row.expanded = !shut.contains(&row.path);
+        }
+        if let Some(level) = hide_below {
+            if row.level > level {
+                row.hidden = true;
+                continue;
+            }
+            hide_below = None;
+        }
+        if row.folder && !row.expanded {
+            hide_below = Some(row.level);
+        }
+    }
+}
+
 fn flatten_tree(
     nodes: &[NotesNode],
     depth: usize,
@@ -410,6 +446,8 @@ fn flatten_tree(
             indent: 8 + depth * 14,
             folder,
             selected: false,
+            expanded: true,
+            hidden: false,
             tag,
             tag_warn,
         });
@@ -544,6 +582,7 @@ fn render_notes(
     notice: Option<String>,
     error: Option<String>,
     conflict: Option<ConflictView>,
+    fold_state: Option<&ui_state::TreeState>,
 ) -> Result<NotesView, String> {
     let project = field(params, "project").trim().to_string();
     let show_all = !matches!(field(params, "show_all"), "" | "0" | "false");
@@ -829,6 +868,7 @@ fn render_notes(
         row.href = notes_href(&project, show_all, Some(&row.path), None);
         row.selected = path.as_deref() == Some(row.path.as_str());
     }
+    fold_rows(&mut rows, fold_state);
 
     let mut note = None;
     let mut crumbs = Vec::new();
@@ -1081,7 +1121,8 @@ fn notes_response(
     if let Some(refusal) = notice.as_ref().or(error.as_ref()) {
         tracing::warn!(error = ?refusal, "notes refused");
     }
-    let view = match render_notes(context, params, notice, error, conflict) {
+    let tree: Option<ui_state::TreeState> = ui_state::read(headers, &context.ui_cookie(), "tree");
+    let view = match render_notes(context, params, notice, error, conflict, tree.as_ref()) {
         Ok(view) => view,
         Err(error) => {
             tracing::error!(error = ?error, "the notes could not be read");
@@ -1113,6 +1154,7 @@ fn notes_response(
         export: context.may_export(),
         tokens: context.shows_tokens(),
         people: context.shows_people(),
+        ui_cookie: context.ui_cookie(),
     })
     .render()
     {

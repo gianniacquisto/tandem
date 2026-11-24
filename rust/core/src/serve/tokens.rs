@@ -224,6 +224,7 @@ pub(super) fn shell(
         export: context.may_export(),
         tokens: context.shows_tokens(),
         people: context.shows_people(),
+        ui_cookie: context.ui_cookie(),
     };
     let mut response = match page.render() {
         Ok(html) => html_response(html, status),

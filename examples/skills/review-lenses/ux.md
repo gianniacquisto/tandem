@@ -17,6 +17,7 @@ The checklist for a diff that changes what the human does: what they can reach, 
 - A state the human can reach with no way out: an error banner with no dismiss, an empty state with no route to the thing it names.
 - A failure that is swallowed, so the action looks done: a write's error dropped before it reaches the human.
 - A screen the PR's screenshot shows broken for the human's path (a disabled control that is the only route, a label that names the wrong action), judged as the diff's own change.
+- A screen the change makes paint and then correct itself: a flash of a default state that script then replaces, a late layout shift, a camera catch-up. The server draws remembered state on the first paint and the `.js` class draws a script-dependent state (`DESIGN.md`, Do's and Don'ts).
 
 ## Never blocks on
 

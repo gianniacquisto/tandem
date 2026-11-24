@@ -14,6 +14,10 @@
   var STYLES = ['neutral', 'tandem', 'nord', 'gruvbox', 'solarized', 'catppuccin'];
   var APPEARANCES = ['system', 'light', 'dark'];
   var root = document.documentElement;
+  // A script is running: CSS may draw a script-dependent screen's final state
+  // on the first paint (`.js .x { ... }`); a page without script keeps its
+  // plain form (TAN-880).
+  root.classList.add('js');
   var dark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
 
   function read(key, allowed, fallback) {

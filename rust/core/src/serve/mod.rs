@@ -60,6 +60,7 @@ mod operator;
 mod people;
 mod sheet;
 mod tokens;
+mod ui_state;
 
 /// How often the watch stats the store's files. Short enough that a face
 /// updates before a human notices, and cheap because a tick stats twice and
@@ -279,6 +280,11 @@ impl Context {
                 guard::Principal::MemberSession(member) => member.role == crate::store::Role::Admin,
                 guard::Principal::MemberToken(_) | guard::Principal::Operator => false,
             }
+    }
+
+    /// The prefix of the UI-state cookies this serve reads and the page writes.
+    fn ui_cookie(&self) -> String {
+        ui_state::prefix(self.access.port())
     }
 
     /// Whether this viewer may export: the shell draws its control only then.
@@ -783,6 +789,9 @@ struct PageView {
     /// Whether the header menu links the People screen (CUT-42): team mode only,
     /// for an admin's browser session and for the owner's.
     people: bool,
+    /// The prefix of this serve's UI-state cookies, `tandem_<port>_`, on
+    /// `<html data-ui-cookie>` so the page's script never guesses it.
+    ui_cookie: String,
 }
 
 impl PageView {
