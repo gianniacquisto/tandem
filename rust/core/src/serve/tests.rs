@@ -10772,3 +10772,41 @@ async fn a_retype_after_a_conflict_posts_with_theirs_as_was() {
         "saveField bases a retype on theirs"
     );
 }
+
+#[tokio::test]
+async fn the_sheet_comment_box_sends_on_enter_and_keeps_shift_enter() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-comment-enter");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    let app = router(context(store));
+    let (_, _, script) = get(&app, "/static/tandem.js").await;
+    let script = script.replace("\r\n", "\n");
+    for key in [
+        "closest(event.target, '.sheet__addition-field')",
+        "event.shiftKey || event.altKey",
+        "event.isComposing || event.keyCode === 229",
+        "field.value.trim() === ''",
+        "htmxPost(form, '#board-root')",
+    ] {
+        assert!(script.contains(key), "tandem.js carries {key}");
+    }
+    assert!(
+        !script.contains("event.shiftKey && event.key === 'Enter'"),
+        "the Cmd/Ctrl+Shift+Enter post is gone"
+    );
+}
+
+#[tokio::test]
+async fn the_sheet_footer_hint_names_enter_to_post() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-hint-enter");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let id = by_title(&board, "Café alpha").id.to_string();
+    let app = router(context(store));
+    let (_, _, page) = send(&app, sheet_get(&format!("/tickets/{id}"))).await;
+    assert!(page.contains("Enter posts a comment"), "{page}");
+    assert!(page.contains("Shift+Enter adds a line"), "{page}");
+    assert!(!page.contains("Cmd/Ctrl+Shift+Enter"), "{page}");
+}
