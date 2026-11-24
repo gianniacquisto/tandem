@@ -674,6 +674,29 @@ fn neutral_and_published_palettes_meet_aa_on_surfaces_columns_and_cards() {
     }
 }
 
+/// The board's scrollbar thumb is drawn in `--ink-dim` (WCAG 1.4.11): it must
+/// reach 3:1 against `--paper` in every one of the twelve palette sets.
+#[test]
+fn board_scrollbar_thumb_token_reaches_three_to_one_on_paper_in_every_palette() {
+    for (label, set) in [
+        ("neutral light", &NEUTRAL_LIGHT[..]),
+        ("neutral dark", &NEUTRAL_DARK[..]),
+        ("tandem light", &TANDEM_LIGHT[..]),
+        ("tandem dark", &TANDEM_DARK[..]),
+        ("nord light", &NORD_LIGHT[..]),
+        ("nord dark", &NORD_DARK[..]),
+        ("gruvbox light", &GRUVBOX_LIGHT[..]),
+        ("gruvbox dark", &GRUVBOX_DARK[..]),
+        ("solarized light", &SOLARIZED_LIGHT[..]),
+        ("solarized dark", &SOLARIZED_DARK[..]),
+        ("catppuccin light", &CATPPUCCIN_LIGHT[..]),
+        ("catppuccin dark", &CATPPUCCIN_DARK[..]),
+    ] {
+        let ratio = contrast(value(set, "--ink-dim"), value(set, "--paper"));
+        assert!(ratio >= 3.0, "{label}: --ink-dim on --paper is {ratio:.2}");
+    }
+}
+
 /// The first raw colour literal a stylesheet holds, if any: a hex value,
 /// `rgb()` or `hsl()`. A selector's `#id` is not a colour, and the check reads a
 /// hex run only when it is three, six or eight digits long and ends at a

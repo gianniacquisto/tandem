@@ -1002,12 +1002,12 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
 /* The board: one column per workflow stage, in declared order. Each column is
  * its own scroll pane with a sticky head naming the stage and its card count;
  * the board scrolls sideways when a workflow declares more stages than the
- * window fits, and a column never grows past a card's readable width. */
+ * window fits, and a column never shrinks below a card's readable width. */
 
 .board {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(190px, 1fr);
+  grid-auto-columns: minmax(180px, 1fr);
   align-items: stretch;
   gap: 10px;
   padding-bottom: var(--space-label);
@@ -1027,6 +1027,7 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   padding: 0 4px 4px;
   border-radius: var(--radius-control);
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .board__column[data-targeted] {
@@ -2823,11 +2824,11 @@ a.menu__option {
 .board {
   gap: 14px;
   padding-bottom: 24px;
-  grid-auto-columns: minmax(230px, 1fr);
+  grid-auto-columns: minmax(180px, 1fr);
 }
 
 .board__column {
-  max-height: calc(100vh - 170px);
+  max-height: calc(100vh - 190px);
   padding: 0 8px 8px;
   border-radius: var(--radius-card);
   background: var(--col-tint, var(--parchment));
@@ -3162,13 +3163,37 @@ a.menu__option {
   vertical-align: 2px;
 }
 
-.board,
 .board__column,
 .sheet__body,
 .notes__document,
 .notes__tree {
   scrollbar-width: thin;
   scrollbar-color: var(--shadow) transparent;
+}
+
+/* The board's own bar stays visible and takes layout space when the columns
+ * overflow: a classic WebKit/Blink bar. The standard scrollbar properties are
+ * left off .board, since Chrome 121+ ignores ::-webkit-scrollbar where they
+ * apply; Firefox gets the thin standard bar through @supports. */
+.board::-webkit-scrollbar {
+  height: 12px;
+}
+
+.board::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.board::-webkit-scrollbar-thumb {
+  border: 3px solid var(--paper);
+  border-radius: 6px;
+  background: var(--ink-dim);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .board {
+    scrollbar-width: thin;
+    scrollbar-color: var(--ink-dim) transparent;
+  }
 }
 
 /* The sheet: one left edge for the title, the rows and the sections. */
