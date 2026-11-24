@@ -627,9 +627,17 @@
   var sheetCarry = null;
 
   document.addEventListener('htmx:beforeSwap', function () {
+    sheetCarry = null;
     var sheet = document.querySelector('.sheet');
     if (!sheet || sheet !== sheetSeen || failedFields().length === 0) return;
-    sheetCarry = { failures: sheetFailures, saved: sheetEverSaved, armed: sheetArmed, fields: {} };
+    sheetCarry = {
+      old: sheet,
+      ticket: sheet.getAttribute('data-ticket'),
+      failures: sheetFailures,
+      saved: sheetEverSaved,
+      armed: sheetArmed,
+      fields: {}
+    };
     failedFields().forEach(function (field) {
       var control = sheetControl(sheet, field);
       if (!control) return;
@@ -644,8 +652,10 @@
   document.addEventListener('htmx:load', function () {
     var carry = sheetCarry;
     var sheet = document.querySelector('.sheet');
-    if (!carry || !sheet || sheet === sheetSeen) return;
+    if (!carry || !sheet || sheet === carry.old) return;
     sheetCarry = null;
+    // Only the same ticket's redraw takes the failures back, never another's.
+    if (sheet.getAttribute('data-ticket') !== carry.ticket) return;
     sheetSeen = sheet;
     sheetTimers = {};
     sheetFailures = {};

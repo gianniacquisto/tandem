@@ -1823,6 +1823,8 @@ async fn a_comment_posts_with_a_field_failure_showing_and_the_failed_field_is_pu
     let _board = setup_board(&store);
     let app = router(context(store));
     let (_, _, script) = get(&app, "/static/tandem.js").await;
+    // A checkout may carry CRLF line endings: match on LF only.
+    let script = script.replace("\r\n", "\n");
     let confirm_at = script
         .find("var issue = event.detail.issueRequest;\n    flushSheet(sheet).then(issue);")
         .expect("the sheet hold issues the request once the saves land, failure or not");
