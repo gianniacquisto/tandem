@@ -2237,6 +2237,38 @@ async fn post_notes_daily_creates_the_days_page_once_and_opens_it_after() {
 }
 
 #[tokio::test]
+async fn only_today_s_note_form_carries_the_daily_hook_and_the_script_matches_it() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-daily-hook");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    let app = router(context(store));
+
+    let (_, _, body) = send(&app, page_get("/notes")).await;
+    let form_tag = |action: &str| -> String {
+        let at = body
+            .find(&format!("action=\"{action}\""))
+            .unwrap_or_else(|| panic!("the {action} form is drawn: {body}"));
+        let open = body[..at]
+            .rfind("<form")
+            .expect("the form opens before its action");
+        let close = body[at..].find('>').expect("the form tag closes");
+        body[open..at + close].to_string()
+    };
+    assert!(
+        form_tag("/notes/daily").contains("data-daily"),
+        "today's note form carries the hook"
+    );
+    assert!(
+        !form_tag("/notes/new").contains("data-daily"),
+        "the new note form does not take the daily date"
+    );
+    let (_, _, script) = get(&app, "/static/tandem.js").await;
+    assert!(script.contains("hasAttribute('data-daily')"));
+    assert!(!script.contains("contains('tree__daily')"));
+}
+
+#[tokio::test]
 async fn post_notes_create_create_folder_and_move_update_vault_and_refuse_invalid_reparent() {
     let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("notes-move");
