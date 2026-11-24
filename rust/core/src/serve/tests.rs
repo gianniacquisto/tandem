@@ -916,6 +916,7 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 "lower-roman",
                 "--space-list",
                 "lp__line--hint",
+                ".js .live[data-live-store]:not([data-live-ready])",
             ] {
                 assert!(body.contains(key), "app.css carries {key}");
             }
@@ -930,6 +931,7 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 "uiState",
                 "data-ui-cookie",
                 "data-live-store",
+                "htmx:afterSwap', setUpNote",
                 "live:follow",
                 "data-live-final-newline",
                 "data-placeholder",

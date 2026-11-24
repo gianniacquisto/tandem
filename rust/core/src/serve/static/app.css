@@ -3746,6 +3746,13 @@ a.menu__option {
   caret-color: var(--ink);
 }
 
+/* With script, the note's rendered HTML is not shown while the editor has not
+ * taken the root: its space stays reserved and it paints once, as the live
+ * surface (TAN-888). Without script the rendered note shows as before. */
+.js .live[data-live-store]:not([data-live-ready]) {
+  visibility: hidden;
+}
+
 .live--note,
 .live--note.lp {
   min-height: calc(100vh - 300px);

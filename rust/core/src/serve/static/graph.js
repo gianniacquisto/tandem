@@ -1909,7 +1909,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', init);
-  document.addEventListener('htmx:afterSettle', init);
+  document.addEventListener('htmx:afterSwap', init);
   // A history snapshot carries the ready flag and the drawn svg: a restored
   // container is rebuilt, not skipped.
   document.addEventListener('htmx:historyRestore', function () {
