@@ -765,6 +765,7 @@ Notion's geometry is sober-editorial - `{rounded.md}` (8px) buttons distinguish 
 - Apply `{rounded.lg}` (12px) to all card families
 - Maintain Notion-Sans across every UI surface
 - Use the workspace mockup card on hero bands to show actual product UI
+- Draw every board screen in its final state on the first paint: remembered state (the tree's folds, later the tabs and panes) is read by the server from a `tandem_<port>_<state>` cookie, and a state that needs script is drawn through the `.js` class that `theme.js` sets in `<head>` before the first paint. A placeholder for data that arrives after the page is allowed when it holds the final space and is replaced in place with nothing moving
 
 ### Don't
 - Don't use the purple for body text or large background surfaces
@@ -772,6 +773,7 @@ Notion's geometry is sober-editorial - `{rounded.md}` (8px) buttons distinguish 
 - Don't mix link-blue ({colors.link-blue}) with primary-purple ({colors.primary}) - they have distinct roles
 - Don't apply heavy shadows on flat documentation cards
 - Don't replace Notion-Sans with a generic Inter
+- Don't paint a screen that script then rearranges, a layout that drifts into place, or a camera that glides to its start: nothing is shown until it is drawn correctly
 
 ## Responsive Behavior
 

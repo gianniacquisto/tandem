@@ -7,6 +7,59 @@
  * same form POST the page already carries. Listeners are delegated from the
  * document, so an htmx swap never needs them rebound.
  */
+// MARK: - Remembered UI state in cookies
+//
+// A state the server must draw on the first paint (the notes tree's folds, and
+// later the tabs and the Relations pane) lives in one cookie per state,
+// `<prefix><state>`, where the server names the prefix on
+// `<html data-ui-cookie>` (`tandem_<port>_`; cookies ignore ports, so two
+// serves on one host must not share a state). The value is
+// `encodeURIComponent(JSON.stringify(value))`, a year, `Path=/`,
+// `SameSite=Lax`, neither `Secure` (a plain-http LAN serve keeps it) nor
+// `HttpOnly`. The server reads it (`serve/ui_state.rs`) and never trusts it.
+(function () {
+  var MAX_ENCODED = 3800;
+
+  function prefix() {
+    return document.documentElement.getAttribute('data-ui-cookie') || '';
+  }
+
+  function rawValue(state) {
+    var name = prefix() + state + '=';
+    if (!prefix()) return null;
+    var pairs = document.cookie ? document.cookie.split(';') : [];
+    for (var i = 0; i < pairs.length; i += 1) {
+      var pair = pairs[i].replace(/^\s+/, '');
+      if (pair.indexOf(name) === 0) return pair.slice(name.length);
+    }
+    return null;
+  }
+
+  // The state's parsed value, or null when it is absent or damaged.
+  function read(state) {
+    var raw = rawValue(state);
+    if (raw === null) return null;
+    try {
+      return JSON.parse(decodeURIComponent(raw));
+    } catch (error) {
+      return null;
+    }
+  }
+
+  // Writes the state; false when it is too large for a cookie or none is set.
+  function write(state, value) {
+    if (!prefix()) return false;
+    var encoded = encodeURIComponent(JSON.stringify(value));
+    if (encoded.length > MAX_ENCODED) return false;
+    document.cookie = prefix() + state + '=' + encoded +
+      '; Path=/; Max-Age=31536000; SameSite=Lax';
+    return true;
+  }
+
+  window.tandem = window.tandem || {};
+  window.tandem.uiState = { read: read, write: write, has: function (state) { return rawValue(state) !== null; } };
+})();
+
 (function () {
   var draggedCard = null;
   var draggedNote = null;
@@ -1930,37 +1983,14 @@
   //
   // The tree is a flat list with each row's depth, so a folder hides the rows
   // below it that sit deeper, up to the next row at its own depth or shallower.
-  // Which folders are shut is kept per browser.
-  var COLLAPSED_KEY = 'tandem.collapsed';
-  // Present once the human has chosen a layout; until then every folder is shut
-  // except the ancestors of the open note.
-  var CHOSEN_KEY = 'tandem.collapsedSet';
-
-  function collapsedFolders() {
-    try {
-      return JSON.parse(window.localStorage.getItem(COLLAPSED_KEY) || '[]');
-    } catch (error) {
-      return [];
-    }
-  }
-
-  function layoutChosen() {
-    try {
-      return window.localStorage.getItem(CHOSEN_KEY) !== null ||
-        window.localStorage.getItem(COLLAPSED_KEY) !== null;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  function saveShut(shut) {
-    try {
-      window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify(shut));
-      window.localStorage.setItem(CHOSEN_KEY, '1');
-    } catch (error) {
-      // Private mode: the fold holds until the next redraw.
-    }
-  }
+  // Which folders are shut is kept per browser in the `tree` cookie
+  // (`{"default":"shut"|"open","except":[paths],"open":note}`), and the server
+  // draws it on the first paint and on every swap with the same rules
+  // (`serve/ui_state.rs`): this script only keeps it up to date and applies a
+  // click at once, so its redraw changes nothing the server drew (TAN-880).
+  var TREE = 'tree';
+  var LEGACY_COLLAPSED = 'tandem.collapsed';
+  var LEGACY_CHOSEN = 'tandem.collapsedSet';
 
   function folderPaths() {
     var rows = document.querySelectorAll('.tree__row[data-kind="folder"]');
@@ -1970,7 +2000,7 @@
   }
 
   function openNotePath() {
-    var row = document.querySelector('.tree__row[aria-selected="true"]');
+    var row = document.querySelector('.tree__row[data-kind="note"][aria-selected="true"]');
     return row ? row.getAttribute('data-path') : null;
   }
 
@@ -1987,40 +2017,93 @@
     return shut.filter(function (entry) { return above.indexOf(entry) < 0; });
   }
 
-  // The shut list to draw: the stored one once chosen, else every folder but
-  // the open note's ancestors.
-  function effectiveShut() {
-    if (layoutChosen()) return collapsedFolders();
-    return withoutAncestors(folderPaths(), openNotePath());
+  function storedTree() {
+    var state = window.tandem.uiState.read(TREE);
+    if (!state || (state.default !== 'shut' && state.default !== 'open')) return null;
+    if (!Array.isArray(state.except)) return null;
+    return state;
   }
 
-  // A note that has just opened shows its ancestors: the stored list drops
-  // them. Collapse all on the same note is not undone by a later redraw, and
-  // the page's first load only records the open note: a stored layout is kept
-  // exactly across a reload.
-  var revealedPath;
-  function revealOpenNote() {
-    var open = openNotePath();
-    if (revealedPath === undefined) {
-      revealedPath = open;
-      return;
+  // The old localStorage folds carry over once: the shut list becomes an
+  // `open` default with that list as the exceptions, which draws exactly what
+  // the old code drew. The keys go afterwards.
+  function migrateLegacyTree() {
+    if (window.tandem.uiState.has(TREE)) return;
+    try {
+      var chosen = window.localStorage.getItem(LEGACY_CHOSEN) !== null;
+      var raw = window.localStorage.getItem(LEGACY_COLLAPSED);
+      if (!chosen && raw === null) return;
+      var shut = [];
+      try {
+        shut = JSON.parse(raw || '[]');
+      } catch (error) {
+        shut = [];
+      }
+      if (!Array.isArray(shut)) shut = [];
+      window.tandem.uiState.write(TREE, { default: 'open', except: shut, open: openNotePath() });
+      window.localStorage.removeItem(LEGACY_COLLAPSED);
+      window.localStorage.removeItem(LEGACY_CHOSEN);
+    } catch (error) {
+      // Private mode: the folds start from the first-visit layout.
     }
-    if (open === revealedPath) return;
-    revealedPath = open;
-    if (!layoutChosen()) return;
-    var shut = collapsedFolders();
-    var next = withoutAncestors(shut, open);
-    if (next.length !== shut.length) saveShut(next);
+  }
+
+  // The shut folders to draw, the same rule `ui_state::shut_folders` applies:
+  // no stored state shuts every folder; a stored one is kept exactly. Either
+  // way a note that is not the last one revealed opens its ancestors.
+  function shutFolders(state, folders, open) {
+    var shut;
+    if (!state) {
+      shut = folders.slice();
+    } else {
+      shut = folders.filter(function (path) {
+        return (state.except.indexOf(path) >= 0) === (state.default === 'open');
+      });
+    }
+    if (!state || (open !== null && state.open !== open)) shut = withoutAncestors(shut, open);
+    return shut;
+  }
+
+  // Store a shut list in the smaller of its two forms, trimmed to fit a cookie.
+  function saveShut(shut, folders, open) {
+    var opens = folders.filter(function (path) { return shut.indexOf(path) < 0; });
+    var state = opens.length <= shut.length
+      ? { default: 'shut', except: opens, open: open }
+      : { default: 'open', except: shut.slice(), open: open };
+    while (!window.tandem.uiState.write(TREE, state) && state.except.length > 0) {
+      state.except.length = Math.floor(state.except.length / 2);
+    }
+  }
+
+  function currentShut() {
+    return shutFolders(storedTree(), folderPaths(), openNotePath());
+  }
+
+  // A note that has just opened shows its ancestors: the stored layout drops
+  // them. The server drew that already; this keeps the cookie in step so the
+  // same note drawn again keeps the layout exactly.
+  function recordOpenNote() {
+    var state = storedTree();
+    var open = openNotePath();
+    if (!state || open === null || state.open === open) return;
+    saveShut(shutFolders(state, folderPaths(), open), folderPaths(), open);
   }
 
   function applyTree() {
     var items = document.querySelectorAll('.tree > li');
-    var shut = effectiveShut();
+    var shut = currentShut();
     var hideBelow = null;
     for (var i = 0; i < items.length; i += 1) {
       var row = items[i].querySelector('.tree__row');
       if (!row) continue;
       var level = Number(row.getAttribute('aria-level'));
+      var folder = row.getAttribute('data-kind') === 'folder';
+      var closed = folder && shut.indexOf(row.getAttribute('data-path')) >= 0;
+      if (folder) {
+        row.setAttribute('aria-expanded', closed ? 'false' : 'true');
+        var twisty = row.querySelector('.tree__twisty');
+        if (twisty) twisty.textContent = closed ? '\u25b8' : '\u25be';
+      }
       if (hideBelow !== null) {
         if (level > hideBelow) {
           items[i].hidden = true;
@@ -2029,20 +2112,22 @@
         hideBelow = null;
       }
       items[i].hidden = false;
-      if (row.getAttribute('data-kind') === 'folder') {
-        var closed = shut.indexOf(row.getAttribute('data-path')) >= 0;
-        row.setAttribute('aria-expanded', closed ? 'false' : 'true');
-        var twisty = row.querySelector('.tree__twisty');
-        if (twisty) twisty.textContent = closed ? '\u25b8' : '\u25be';
-        if (closed) hideBelow = level;
-      }
+      if (closed) hideBelow = level;
     }
+  }
+
+  // Runs on load and on every swap of the tree, before the swap is painted.
+  function setUpTree() {
+    migrateLegacyTree();
+    recordOpenNote();
+    applyTree();
   }
 
   document.addEventListener('click', function (event) {
     var tool = closest(event.target, '[data-tree-action]');
     if (tool) {
-      saveShut(tool.getAttribute('data-tree-action') === 'collapse' ? folderPaths() : []);
+      var all = folderPaths();
+      saveShut(tool.getAttribute('data-tree-action') === 'collapse' ? all : [], all, openNotePath());
       applyTree();
       return;
     }
@@ -2050,11 +2135,11 @@
     var row = closest(event.target, '.tree__row[data-kind="folder"]');
     if (!row) return;
     var path = row.getAttribute('data-path');
-    var shut = effectiveShut();
+    var shut = currentShut();
     var at = shut.indexOf(path);
     if (at >= 0) shut.splice(at, 1);
     else shut.push(path);
-    saveShut(shut);
+    saveShut(shut, folderPaths(), openNotePath());
     applyTree();
   });
 
@@ -2070,9 +2155,9 @@
       rows[i].setAttribute('aria-selected', match ? 'true' : 'false');
       if (match) chosen = rows[i];
     }
-    var shut = effectiveShut();
+    var shut = currentShut();
     var next = withoutAncestors(shut, path);
-    if (next.length !== shut.length) saveShut(next);
+    if (next.length !== shut.length) saveShut(next, folderPaths(), openNotePath());
     applyTree();
     if (chosen) chosen.scrollIntoView({ block: 'nearest' });
   });
@@ -2093,10 +2178,10 @@
     }
     initLive();
     focusTitle();
-    revealOpenNote();
-    applyTree();
   }
 
+  document.addEventListener('DOMContentLoaded', setUpTree);
+  document.addEventListener('htmx:afterSwap', setUpTree);
   document.addEventListener('DOMContentLoaded', setUpNote);
   document.addEventListener('htmx:afterSettle', setUpNote);
 })();
