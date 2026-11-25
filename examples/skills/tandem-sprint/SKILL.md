@@ -31,9 +31,9 @@ From then on it is a ready ticket like any other. If the dead pass left an open 
 - leave `on-hold` alone: it is parked on purpose;
 - a ticket with an open question, a pending human decision, or more than one pass of work is not ready: report it for refine.
 
-**Order the batch.** A ticket another batch ticket blocks on goes first. For parallel mode, read each brief's `## What` for the files it names: two tickets that touch the same files run one after the other, never side by side.
+**Order the batch.** A ticket another batch ticket blocks on goes first. Then run the **overlap read** on every batch: read each brief's `## What` for the files it names, and group the batch into tickets that can build side by side and tickets that wait for another because they share a file. Two tickets that touch the same files never build side by side. A brief that names no files counts as overlapping every other ticket and builds alone.
 
-**State the batch before the first dispatch**, in one message to the human: the drawn tickets in order, the skipped ones with their reason, and the mode, **one at a time** (the default) or **in parallel** (the human's call). Zero drawn is a triage-only sprint: report it and stop.
+**State the batch before the first dispatch**, in one message to the human: the drawn tickets in order, the skipped ones with their reason, and one question: **one at a time** or **in parallel**. Offer first the recommendation from the overlap read, naming the tickets that run side by side and, for each one that waits, the ticket and file it waits on (for example "TAN-859 and TAN-860 side by side, TAN-862 after TAN-860: both touch `rust/core/src/x.rs`"). Recommend parallel when at least two drawn tickets are disjoint, otherwise one at a time. Ask every sprint and store no answer. When the human named the mode on starting the sprint ("sprint, parallel"), skip the question and state the mode. Wait for the answer before the first dispatch. Zero drawn is a triage-only sprint: report it and stop.
 
 ## Model routing
 
@@ -58,15 +58,15 @@ On a host whose dispatch takes no model, the agent's own configuration decides, 
 
 ## 3. Build
 
-Per ticket, in batch order:
+One at a time: take the tickets in batch order. In parallel: claim and dispatch every ticket whose files are disjoint from all running builds, up to the whole batch, and when a build hands off, start the next waiting ticket whose files are now free (§2's overlap read). Each builder works in its own worktree. Per ticket:
 
 1. **Claim**: `ticket_set` with `status` in-progress and `assignee` builder.
-2. **Dispatch** the `builder`, on the model and effort the routing picks, with the ticket id, its description (`ticket_show`) and its comment log (`ticket_comment_list`). The builder works in its own worktree and hands to `in-review` only on a green head.
+2. **Dispatch** the `builder`, on the model and effort the routing picks, with the ticket id, its description (`ticket_show`) and its comment log (`ticket_comment_list`). The builder hands to `in-review` only on a green head.
 3. **Check the handoff.** Re-read the ticket: `in-review` with a PR number in the log is a build. Anything else is a failed dispatch: remove its worktree, then one fresh dispatch. A second failure makes it a dead claim (§2) with the failure quoted, and the ticket slips.
 
 ## 4. Gate
 
-Dispatch the `reviewer`, on the model the routing picks, with the ticket id and the PR. It answers one `VERDICT:` line:
+Dispatch the `reviewer`, on the model the routing picks, with the ticket id and the PR. In parallel mode, gate each ticket as its build hands off, without waiting for the others; merge order is first green, first merged. It answers one `VERDICT:` line:
 
 - **`merged`**: the reviewer completed the ticket. Every other open batch PR is now behind `main` and its next gate will say so.
 - **`escalated`**: accept it only after `ticket_show` reads status `in-review` and assignee `human`. Anything else is a failed gate: re-dispatch the reviewer once, then hand it over yourself. An escalated ticket leaves the active batch; the sprint does not wait for the human.
@@ -107,10 +107,10 @@ Then one line per batch ticket (`<ref> <title>: landed, PR #<n>`), one line per 
 
 **Drain** is the sprint with no cap and no human in the loop: it builds and gates `ready` tickets until none is left, for a session left to run on its own (spending the rest of a usage allowance, say). The human starts it by asking to drain the board, or with "sprint, drain". Every rule above holds except these:
 
-- **No batch, no cap.** Draw one ticket at a time, one at a time (never parallel), and after each one reaches an exit state, re-read the board and draw the next: a merge can unblock a ticket that was blocked at the start.
-- **Never wait on the human.** Skip §2's statement of the batch and start. Anything that needs the human is escalated or parked as §4 and §5 already say, and the drain moves on.
+- **No batch, no cap.** Run parallel with no question, up to five builds at once (the sprint's batch size, since a drain has no batch). Draw only tickets whose files are disjoint from every running build (§2's overlap read); the rest wait. A ticket that names no files runs only when nothing else is running. When any ticket reaches an exit state, re-read the board and fill the free slot with the next `ready`, unblocked, untried ticket that overlaps no running build: a merge can unblock a ticket that was blocked at the start.
+- **Never wait on the human.** Skip §2's statement of the batch and its question, and start. Anything that needs the human is escalated or parked as §4 and §5 already say, and the drain moves on.
 - **One attempt per ticket per drain.** A ticket that slipped or was escalated in this drain is not drawn again in it, so a ticket that keeps failing cannot loop.
-- **The circuit breaker.** Three tickets in a row that end in anything but landed point at something wider than one ticket (CI down, `main` red, the builder misconfigured). Stop drawing, recover what is in flight, and close.
+- **The circuit breaker.** Three consecutive exits, in the order they happen, that are anything but landed point at something wider than one ticket (CI down, `main` red, the builder misconfigured). Stop drawing, let in-flight tickets reach an exit state or recover them as dead claims, and close.
 - **Stop on empty**: no `ready`, unblocked ticket left that this drain has not tried. Then the close (§5) over every ticket the drain carried, with `DRAIN:` in place of `SPRINT:`.
 
 A drain that runs out of usage dies mid-ticket like any interrupted sprint: the next sprint or drain recovers the dead claim in §2. Keep the drain's own window small: read each builder and reviewer report for its one result line, and do not carry their detail forward.
