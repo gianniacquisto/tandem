@@ -2685,11 +2685,12 @@ body {
   min-width: 190px;
   flex-direction: column;
   gap: 2px;
-  padding: 8px;
+  padding: var(--space-panel);
   border: var(--hairline) solid var(--line);
   border-radius: var(--radius-card);
   background: var(--paper);
   box-shadow: 0 8px 28px var(--shadow);
+  max-width: calc(100vw - 2 * var(--space-gutter));
 }
 
 .filter-menu .menu__panel {
@@ -3725,6 +3726,7 @@ a.menu__option {
 }
 
 .row-menu {
+  position: relative;
   flex: none;
   opacity: 0;
 }
@@ -3756,7 +3758,12 @@ a.menu__option {
 }
 
 .row-menu__panel {
-  top: 100%;
+  /* Fixed, so the sidebar's scroll box cannot clip it; tandem.js places it
+     under the button and keeps it inside the viewport gutter. */
+  position: fixed;
+  right: auto;
+  left: 0;
+  top: calc(100% + 6px);
   min-width: 210px;
   gap: 6px;
 }

@@ -2895,6 +2895,55 @@
       if (open[i] !== details) open[i].open = false;
     }
   }, true);
+  // Keep a panel `--space-gutter` from every viewport edge (TAN-863): shift it
+  // sideways, or flip it above its trigger when there is room. Offsets are
+  // inline and cleared on close, so the next open measures afresh.
+  function reset(panel) {
+    panel.style.transform = '';
+    panel.style.top = '';
+    panel.style.bottom = '';
+    panel.style.left = '';
+  }
+
+  function clamp(details) {
+    var panel = details.querySelector('.menu__panel');
+    if (!panel) return;
+    reset(panel);
+    var summary = details.querySelector('summary');
+    var trigger = summary ? summary.getBoundingClientRect() : null;
+    var fixed = getComputedStyle(panel).position === 'fixed';
+    if (fixed && trigger) {
+      panel.style.left = Math.round(trigger.left) + 'px';
+      panel.style.top = Math.round(trigger.bottom + 6) + 'px';
+    }
+    var gutter = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-gutter')) || 20;
+    var vw = document.documentElement.clientWidth;
+    var vh = document.documentElement.clientHeight;
+    var rect = panel.getBoundingClientRect();
+    var dx = 0;
+    if (rect.right > vw - gutter) dx = vw - gutter - rect.right;
+    if (rect.left + dx < gutter) dx = gutter - rect.left;
+    if (dx) panel.style.transform = 'translateX(' + Math.round(dx) + 'px)';
+    if (rect.bottom > vh - gutter && trigger && trigger.top - 6 - rect.height >= gutter) {
+      if (fixed) {
+        panel.style.top = Math.round(trigger.top - 6 - rect.height) + 'px';
+      } else {
+        panel.style.top = 'auto';
+        panel.style.bottom = 'calc(100% + 6px)';
+      }
+    }
+  }
+
+  document.addEventListener('toggle', function (event) {
+    var details = event.target;
+    if (!details.matches || !details.matches(MENU_SELECTOR)) return;
+    if (details.open) {
+      clamp(details);
+    } else {
+      var panel = details.querySelector('.menu__panel');
+      if (panel) reset(panel);
+    }
+  }, true);
 })();
 
 // MARK: - Tabs for the open notes on the notes face

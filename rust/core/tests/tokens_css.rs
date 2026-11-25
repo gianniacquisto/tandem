@@ -459,7 +459,8 @@ const CATPPUCCIN_DARK: [(&str, &str); 34] = [
     ("--tone-sky", "#89B4FA"),
 ];
 /// The geometry, motion and layout scale, in the file's order.
-const SCALE: [&str; 17] = [
+const SCALE: [&str; 18] = [
+    "--space-panel",
     "--hairline",
     "--radius-checkbox",
     "--radius-control",
@@ -607,6 +608,28 @@ fn tokens_pin_the_geometry_and_motion_scale() {
             "tokens.css declares {name}"
         );
     }
+}
+
+/// TAN-863: the panel padding is one shared scale token (the scale lives in
+/// `:root`, so every palette inherits it); `.menu__panel` uses it with the
+/// viewport clamp, and the rename panel anchors to its own button.
+#[test]
+fn menu_panel_uses_the_panel_token_and_the_gutter_clamp() {
+    assert!(TOKENS.contains("--space-panel: 12px;"));
+    let rules = app_rules();
+    let body = |sel: &str| {
+        rules
+            .iter()
+            .find(|(s, _)| s == sel)
+            .unwrap_or_else(|| panic!("{sel} rule"))
+            .1
+            .clone()
+    };
+    let panel = body(".menu__panel");
+    assert!(panel.contains("padding: var(--space-panel);"));
+    assert!(panel.contains("max-width: calc(100vw - 2 * var(--space-gutter));"));
+    assert!(body(".row-menu").contains("position: relative;"));
+    assert!(NOTES.contains("menu__panel row-menu__panel"));
 }
 
 fn channel(hex: &str, at: usize) -> f64 {
