@@ -91,7 +91,9 @@ fn only_the_e2e_job_in_rust_yml_invokes_node_or_npm() {
             "release.yml still runs `{command}`: the release pipeline is Cargo-only (CUT-16)"
         );
     }
-    let rust = std::fs::read_to_string(workflows().join("rust.yml")).expect("rust.yml");
+    let rust = std::fs::read_to_string(workflows().join("rust.yml"))
+        .expect("rust.yml")
+        .replace("\r\n", "\n");
     let (before_e2e, e2e_and_after) = rust
         .split_once("\n  e2e:\n")
         .expect("rust.yml defines the `e2e` job (TAN-482)");
@@ -569,7 +571,9 @@ fn the_publish_step_never_deletes_a_release_and_the_audit_runs() {
         release.contains("attest-build-provenance"),
         "archives are attested"
     );
-    let rust = std::fs::read_to_string(workflows().join("rust.yml")).expect("rust.yml");
+    let rust = std::fs::read_to_string(workflows().join("rust.yml"))
+        .expect("rust.yml")
+        .replace("\r\n", "\n");
     assert!(
         rust.contains("cargo-deny-action"),
         "rust.yml runs cargo deny"
