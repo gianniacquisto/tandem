@@ -15,7 +15,7 @@ Before the ticket or the diff, two facts, each read once. Either one failing end
   - same repo: `git fetch origin`, then `git rev-list --left-right --count origin/<base>...origin/<branch>`;
   - a fork (`isCrossRepository` true): add the remote `fork-<login>` once (`https://github.com/<login>/<repo>.git`, with `<repo>` the `headRepository` name), fetch the branch from it, and count against `fork-<login>/<branch>`.
 
-  A non-zero right count means the branch is behind.
+  A non-zero left count means the branch is behind its base; the right count is the branch's own commits, so a PR always has a non-zero right count.
 - **Green on the head sha.** `gh pr view <n> --json headRefOid -q .headRefOid`, then `gh pr checks <n>` as a snapshot: any red or pending check blocks. `no checks reported` right after a push is timing, not a verdict. No polling, no `sleep`.
 
 ## 2. Read
