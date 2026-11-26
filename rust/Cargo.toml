@@ -65,6 +65,7 @@ serde_urlencoded = "0.7"
 # its body; both are axum's own transitive dependencies, named here because the
 # test names them directly.
 tower = { version = "0.5", features = ["util"] }
+http-body = "1"
 http-body-util = "0.1"
 # `tandem serve`'s application log (ADR 0046 amendment): the macros the core
 # emits through, and the subscriber the cli installs. The subscriber carries

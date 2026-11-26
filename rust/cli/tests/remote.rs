@@ -278,6 +278,41 @@ fn a_wrong_token_exits_non_zero_naming_the_refusal_and_never_the_token() {
 }
 
 #[test]
+fn a_wrong_token_with_a_large_body_is_still_read_as_a_refusal() {
+    // A body larger than the socket buffers is still unread when the guard
+    // answers; without the drain the close resets the connection and the
+    // client reports "cannot reach the server" instead of the refusal.
+    let sandbox = Sandbox::new("wrong-token-large");
+    let good = "g".repeat(32);
+    let server = Server::start(&sandbox, "served", "0.0.0.0", Some(&good));
+    let wrong = "w".repeat(32);
+    let big = "x".repeat(1024 * 1024);
+    let mut command = sandbox.cli("elsewhere", Some(&server.url), Some(&wrong));
+    command.args(["ticket", "add", "--title", "t", "--description", "-"]);
+    command
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = command.spawn().expect("the CLI runs");
+    let mut stdin = child.stdin.take().expect("stdin");
+    let feeder = std::thread::spawn(move || {
+        use std::io::Write;
+        let _ = stdin.write_all(big.as_bytes());
+    });
+    let output = child.wait_with_output().expect("the CLI finishes");
+    let _ = feeder.join();
+    let code = output.status.code();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    assert_ne!(code, Some(0));
+    assert!(
+        stderr.contains("refused the token"),
+        "{}",
+        &stderr[..stderr.len().min(300)]
+    );
+    assert!(!stderr.contains(&wrong) && !stderr.contains(&good));
+}
+
+#[test]
 fn an_http_non_loopback_url_with_a_token_is_refused_before_any_request() {
     let sandbox = Sandbox::new("clear-token");
     let token = "c".repeat(32);
