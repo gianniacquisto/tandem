@@ -225,6 +225,7 @@ pub(super) fn shell(
         tokens: context.shows_tokens(),
         people: context.shows_people(),
         ui_cookie: context.ui_cookie(),
+        switcher: None,
     };
     let mut response = match page.render() {
         Ok(html) => html_response(html, status),

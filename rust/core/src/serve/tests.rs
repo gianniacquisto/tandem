@@ -69,7 +69,8 @@ fn context(store: Store) -> SessionContext {
     }
 }
 
-async fn send(app: &Router, request: Request<Body>) -> (StatusCode, HeaderMap, String) {
+/// One request, answered as is: a redirect is the answer.
+async fn send_once(app: &Router, request: Request<Body>) -> (StatusCode, HeaderMap, String) {
     let response = app
         .clone()
         .oneshot(request)
@@ -84,6 +85,41 @@ async fn send(app: &Router, request: Request<Body>) -> (StatusCode, HeaderMap, S
         .expect("the body collects")
         .to_bytes();
     (status, headers, String::from_utf8_lossy(&bytes).to_string())
+}
+
+/// `send_once`, except that a GET the faces redirect to the project they open
+/// on (the remembered one or the first) follows that redirect with the same
+/// headers: a test about something else reads the page it lands on. The tests
+/// of the redirect itself use `send_once` and `get_once`.
+async fn send(app: &Router, request: Request<Body>) -> (StatusCode, HeaderMap, String) {
+    let method = request.method().clone();
+    let headers = request.headers().clone();
+    let (status, answer, body) = send_once(app, request).await;
+    let target = answer
+        .get(header::LOCATION)
+        .and_then(|value| value.to_str().ok())
+        .filter(|location| {
+            location.starts_with("/board?project=") || location.starts_with("/notes?project=")
+        });
+    match target {
+        Some(location) if status == StatusCode::SEE_OTHER && method == Method::GET => {
+            let mut next = Request::builder().uri(location);
+            for (name, value) in &headers {
+                next = next.header(name, value);
+            }
+            send_once(app, next.body(Body::empty()).expect("the request builds")).await
+        }
+        _ => (status, answer, body),
+    }
+}
+
+async fn get_once(app: &Router, uri: &str) -> (StatusCode, HeaderMap, String) {
+    let request = Request::builder()
+        .uri(uri)
+        .header(header::HOST, "127.0.0.1:7700")
+        .body(Body::empty())
+        .expect("the request builds");
+    send_once(app, request).await
 }
 
 async fn get(app: &Router, uri: &str) -> (StatusCode, HeaderMap, String) {
@@ -303,7 +339,7 @@ async fn a_ticket_in_a_stage_the_board_does_not_draw_still_lands_in_a_column() {
     }
     let app = router(context(store));
 
-    let (status, _, body) = get(&app, "/").await;
+    let (status, _, body) = get(&app, "/board?project=Elsewhere").await;
     assert_eq!(status, StatusCode::OK, "the board answers: {body}");
     let backlog = body
         .find("data-status=\"backlog\"")
@@ -317,6 +353,43 @@ async fn a_ticket_in_a_stage_the_board_does_not_draw_still_lands_in_a_column() {
     assert!(
         backlog < card && card < on_hold,
         "a stage the six do not name lands in Backlog: {body}"
+    );
+}
+
+#[tokio::test]
+async fn an_empty_project_draws_its_copy_without_a_stray_comma() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-empty-project");
+    let store = sandbox.store();
+    let board = Board::with_actor(store.clone(), Actor::Human);
+    board
+        .add_project("Quiet", None)
+        .expect("the project is added");
+    board
+        .add_project("Busy", None)
+        .expect("the project is added");
+    board
+        .add(
+            "Elsewhere card",
+            AddTicket {
+                project: Some("Busy"),
+                status: Status::Backlog,
+                ..AddTicket::default()
+            },
+        )
+        .expect("the ticket is added");
+    let app = router(context(store));
+
+    let (status, _, body) = get(&app, "/?project=Quiet").await;
+    assert_eq!(status, StatusCode::OK, "the board answers: {body}");
+    assert!(
+        body.contains("No tickets in Quiet"),
+        "the title draws: {body}"
+    );
+    assert!(!body.contains("foot,."), "no stray comma: {body}");
+    assert!(
+        body.contains("foot.") || body.contains("foot.</"),
+        "the copy ends at the full stop: {body}"
     );
 }
 
@@ -339,34 +412,35 @@ async fn get_board_filters_by_project_focus_label_assignee_and_accent_folded_sea
         "the focus hides the other project: {focus}"
     );
 
-    let (_, _, every) = get(&app, "/?project=Alpha&show_all=1").await;
+    // The retired show-all flag on an old link is ignored: the project stays.
+    let (_, _, old) = get(&app, "/?project=Alpha&show_all=1").await;
     assert!(
-        every.contains("Beta one"),
-        "show all escapes the focus without clearing it: {every}"
+        !old.contains("Beta one"),
+        "an old show_all link still draws the named project only: {old}"
     );
 
-    let (_, _, label) = get(&app, "/?label=beta").await;
+    let (_, _, label) = get(&app, "/?project=Beta&label=beta").await;
     assert!(label.contains("Beta one"));
     assert!(
         !label.contains("Café alpha"),
         "the label filter narrows: {label}"
     );
 
-    let (_, _, loose) = get(&app, "/?label=%20").await;
+    let (_, _, loose) = get(&app, "/?project=Elsewhere&label=%20").await;
     assert!(loose.contains("Loose"), "the default area is selectable");
     assert!(
         !loose.contains("Beta one"),
         "the default area is one label: {loose}"
     );
 
-    let (_, _, assigned) = get(&app, "/?assignee=builder").await;
+    let (_, _, assigned) = get(&app, "/?project=Alpha&assignee=builder").await;
     assert!(assigned.contains("Café alpha"));
     assert!(
         !assigned.contains("Beta one"),
         "the assignee filter narrows: {assigned}"
     );
 
-    let (_, _, searched) = get(&app, "/?text=cafe").await;
+    let (_, _, searched) = get(&app, "/?project=Alpha&text=cafe").await;
     assert!(
         searched.contains("Café alpha"),
         "the search folds the accent: {searched}"
@@ -645,20 +719,16 @@ async fn the_new_form_files_into_its_own_project_and_label_selects() {
     let board = setup_board(&store);
     let app = router(context(store.clone()));
 
-    // No focus: the Project select starts empty and is required, the Label select
-    // is disabled, and every label carries its project for the page script.
-    let (_, _, page) = get(&app, "/").await;
+    // One project is always open, so the Project select is preset to it, is
+    // required, and every label carries its project for the page script.
+    let (_, _, page) = get(&app, "/board?project=Alpha").await;
     assert!(
         page.contains("<select class=\"new-form__status\" name=\"ticket_project\" aria-label=\"Project\" required>"),
         "the Project select is required: {page}"
     );
     assert!(
-        page.contains("<option value=\"\" selected>Project</option>"),
-        "with no focus nothing is preset: {page}"
-    );
-    assert!(
-        page.contains("name=\"ticket_label\" aria-label=\"Label\" disabled"),
-        "the Label select waits for a project: {page}"
+        page.contains("<option value=\"Alpha\" selected>Alpha</option>"),
+        "the open project is preset: {page}"
     );
     assert!(
         page.contains("<option value=\"alpha\" data-project=\"Alpha\""),
@@ -1974,10 +2044,10 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
         .write("Other.md", "See [[Index]]", None)
         .expect("the note is written");
     notes
-        .create("projects/tandem/inside.md")
+        .create("projects/alpha/inside.md")
         .expect("the note is created");
     notes
-        .create("projects/other/outside.md")
+        .create("projects/beta/outside.md")
         .expect("the note is created");
     board
         .set_link(&ticket.id.to_string(), Some("Index.md"))
@@ -2026,13 +2096,13 @@ async fn get_notes_renders_tree_focus_breadcrumb_and_markdown_preview_with_foote
         "mode=read carries no placeholder: {read}"
     );
 
-    let (_, _, focused) = send(&app, page_get("/notes?project=tandem&path=Index.md")).await;
+    let (_, _, focused) = send(&app, page_get("/notes?project=Alpha&path=Index.md")).await;
     assert!(
         focused.contains("inside"),
         "the focused tree keeps the project's folder: {focused}"
     );
     assert!(
-        !focused.contains("data-path=\"projects/other/outside.md\""),
+        !focused.contains("data-path=\"projects/beta/outside.md\""),
         "the focused tree drops another project's folder: {focused}"
     );
 }
@@ -7799,6 +7869,10 @@ async fn creating_a_token_shows_it_once_with_no_store_and_a_later_list_never_sho
 
     let (status, headers, page) = send(&screen.app, cookie_get("/tokens", &screen.bob)).await;
     assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(
+        !page.contains("project-switch"),
+        "the tokens screen draws no project switcher: {page}"
+    );
     let main = main_of(&page);
     assert_eq!(main.matches("<h1").count(), 1, "one h1 in the page");
     assert!(main.contains(">Personal tokens</h1>"));
@@ -8584,6 +8658,10 @@ async fn an_admin_adds_a_person_and_the_response_shows_a_sign_in_key_once() {
     assert!(s.store.member_find("cy").unwrap().is_some());
     assert!(s.store.member_by_signin_key(&key).unwrap().is_some());
     let (_, _, list) = send(&s.app, cookie_get("/people", &s.alice)).await;
+    assert!(
+        !list.contains("project-switch"),
+        "the people screen draws no project switcher"
+    );
     assert!(!list.contains("tdk_"), "the list never shows a key");
 }
 
@@ -9370,7 +9448,7 @@ async fn get_notes_graph_renders_the_container_the_switch_and_keeps_the_focus() 
         .expect("the note is created");
     let app = router(context(store));
 
-    let (status, _, body) = get(&app, "/notes/graph?project=Alpha&show_all=1").await;
+    let (status, _, body) = get(&app, "/notes/graph?project=Alpha").await;
     assert_eq!(status, StatusCode::OK, "{body}");
     assert!(body.contains("id=\"notes-graph\""), "the container: {body}");
     assert!(
@@ -9399,7 +9477,7 @@ async fn get_notes_graph_renders_the_container_the_switch_and_keeps_the_focus() 
         "both switch links push the URL: {body}"
     );
     assert!(
-        note_side.contains("project=Alpha") && note_side.contains("show_all=1"),
+        note_side.contains("project=Alpha"),
         "the Note side keeps the focus: {note_side}"
     );
     assert!(
@@ -9486,11 +9564,7 @@ async fn get_notes_with_a_note_renders_the_switch_with_note_pressed_and_a_graph_
         .expect("the note is created");
     let app = router(context(store));
 
-    let (status, _, body) = get(
-        &app,
-        "/notes?path=projects/alpha/Inside.md&project=Alpha&show_all=1",
-    )
-    .await;
+    let (status, _, body) = get(&app, "/notes?path=projects/alpha/Inside.md&project=Alpha").await;
     assert_eq!(status, StatusCode::OK, "{body}");
     let note_side = body
         .split("<a")
@@ -9503,7 +9577,7 @@ async fn get_notes_with_a_note_renders_the_switch_with_note_pressed_and_a_graph_
         .find(|piece| piece.contains("data-view=\"graph\""))
         .expect("the Graph side");
     assert!(
-        graph_side.contains("/notes/graph?project=Alpha&#38;show_all=1"),
+        graph_side.contains("/notes/graph?project=Alpha"),
         "the Graph link keeps the focus: {graph_side}"
     );
     assert!(graph_side.contains("hx-push-url=\"true\""), "{graph_side}");
@@ -10397,7 +10471,8 @@ async fn a_bare_notes_visit_reopens_the_active_note() {
     tabs_vault(&store);
     let app = router(context(store));
     let cookie = tabs_cookie(&["a.md", "b.md"], "b.md");
-    let (status, headers, _) = send(&app, notes_get_with_cookie("/notes", &cookie, false)).await;
+    let (status, headers, _) =
+        send_once(&app, notes_get_with_cookie("/notes", &cookie, false)).await;
     assert_eq!(status, StatusCode::SEE_OTHER);
     let target = location(&headers);
     assert_eq!(target, "/notes?project=&path=b.md");
@@ -10508,7 +10583,8 @@ async fn the_graph_keeps_the_active_tab_so_the_note_switch_restores_it() {
     let cookie = tabs_cookie(&["a.md", "b.md"], "b.md");
     let (_, headers, _) = send(&app, notes_get_with_cookie("/notes/graph", &cookie, false)).await;
     assert!(stored_tabs(&headers).is_none(), "the list is unchanged");
-    let (status, headers, _) = send(&app, notes_get_with_cookie("/notes", &cookie, false)).await;
+    let (status, headers, _) =
+        send_once(&app, notes_get_with_cookie("/notes", &cookie, false)).await;
     assert_eq!(status, StatusCode::SEE_OTHER);
     assert_eq!(location(&headers), "/notes?project=&path=b.md");
 }
@@ -10530,29 +10606,30 @@ async fn several_checked_labels_draw_the_tickets_that_carry_any_of_them() {
     setup_board(&store);
     let app = router(context(store));
 
-    let (_, _, two) = get(&app, "/?label=alpha&label=beta").await;
+    // One project is open at a time, so a union is read inside one project.
+    let (_, _, two) = get(&app, "/?project=Alpha&label=alpha&label=shared").await;
     assert_eq!(
         drawn(&two, &LABELLED),
-        [true, false, true, false],
-        "two labels draw both and hide the third label and the unlabelled: {two}"
+        [true, true, false, false],
+        "two labels draw both and hide the other project's tickets: {two}"
     );
 
-    let (_, _, mixed) = get(&app, "/?label=%20&label=beta").await;
+    let (_, _, mixed) = get(&app, "/?project=Elsewhere&label=%20&label=beta").await;
     assert_eq!(
         drawn(&mixed, &LABELLED),
-        [false, false, true, true],
+        [false, false, false, true],
         "No label joins the union: {mixed}"
     );
 
-    let (_, _, one) = get(&app, "/?label=beta").await;
-    assert_eq!(drawn(&one, &LABELLED), [false, false, true, false]);
-    let (_, _, none) = get(&app, "/?label=%20").await;
+    let (_, _, one) = get(&app, "/?project=Alpha&label=shared").await;
+    assert_eq!(drawn(&one, &LABELLED), [false, true, false, false]);
+    let (_, _, none) = get(&app, "/?project=Elsewhere&label=%20").await;
     assert_eq!(drawn(&none, &LABELLED), [false, false, false, true]);
 
-    let (_, _, old) = get(&app, "/?label=&assignee=").await;
+    let (_, _, old) = get(&app, "/?project=Alpha&label=&assignee=").await;
     assert_eq!(
         drawn(&old, &LABELLED),
-        [true, true, true, true],
+        [true, true, false, false],
         "an empty label= means none: {old}"
     );
 }
@@ -10565,9 +10642,9 @@ async fn the_label_filter_draws_a_checkbox_per_label_and_one_chip() {
     setup_board(&store);
     let app = router(context(store));
 
-    let (_, _, page) = get(&app, "/?label=%20&label=beta&label=alpha").await;
+    let (_, _, page) = get(&app, "/?project=Alpha&label=%20&label=beta&label=alpha").await;
     assert!(
-        !page.contains("aria-label=\"Label\">"),
+        !page.contains("name=\"label\" aria-label=\"Label\""),
         "no Label select is drawn: {page}"
     );
     assert!(
@@ -10642,7 +10719,7 @@ async fn a_card_move_and_a_sheet_open_keep_every_checked_label() {
     let revision = store.revision().expect("the revision reads");
 
     let body = format!(
-        "status=in-progress&expected_revision={revision}&project=&show_all=&label=alpha&label=beta&assignee=&text="
+        "status=in-progress&expected_revision={revision}&project=&label=alpha&label=beta&assignee=&text="
     );
     let (status, _, page) = send(
         &app,
@@ -10656,7 +10733,7 @@ async fn a_card_move_and_a_sheet_open_keep_every_checked_label() {
         "{page}"
     );
     assert!(
-        page.contains("hx-get=\"/board?project=&#38;show_all=&#38;label=alpha&#38;label=beta&#38;"),
+        page.contains("hx-get=\"/board?project=&#38;label=alpha&#38;label=beta&#38;"),
         "the refresh URL carries both: {page}"
     );
 
@@ -10809,4 +10886,235 @@ async fn the_sheet_footer_hint_names_enter_to_post() {
     assert!(page.contains("Enter posts a comment"), "{page}");
     assert!(page.contains("Shift+Enter adds a line"), "{page}");
     assert!(!page.contains("Cmd/Ctrl+Shift+Enter"), "{page}");
+}
+
+// MARK: - The project switcher and the remembered project (TAN-530)
+
+/// A GET that carries a cookie header and is answered as is.
+async fn get_cookie_once(app: &Router, uri: &str, cookie: &str) -> (StatusCode, HeaderMap, String) {
+    let request = Request::builder()
+        .uri(uri)
+        .header(header::HOST, "127.0.0.1:7700")
+        .header(header::COOKIE, cookie)
+        .body(Body::empty())
+        .expect("the request builds");
+    send_once(app, request).await
+}
+
+/// The `last` cookie a browser sends back, as the server writes it.
+fn last_cookie_header(project: &str, face: &str) -> String {
+    let json = serde_json::json!({ "project": project, "face": face }).to_string();
+    format!("tandem_7700_last={}", ui_state::percent_encode(&json))
+}
+
+fn set_cookies(headers: &HeaderMap) -> Vec<String> {
+    headers
+        .get_all(header::SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok().map(str::to_string))
+        .collect()
+}
+
+#[tokio::test]
+async fn the_board_header_holds_the_project_switcher_and_tabs_that_carry_the_project() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("switch-board");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store));
+
+    let (status, headers, page) = get_once(&app, "/board?project=Alpha").await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    let header_html = page
+        .split("</header>")
+        .next()
+        .expect("the shell draws a header");
+    assert!(
+        header_html.contains(
+            "<select class=\"project-switch__select\" name=\"project\" aria-label=\"Project\">"
+        ),
+        "the switcher is in the header: {header_html}"
+    );
+    assert!(
+        header_html.contains("<option value=\"Alpha\" selected>Alpha</option>"),
+        "Alpha is selected: {header_html}"
+    );
+    assert!(
+        !header_html.contains("All projects"),
+        "there is no All projects option: {header_html}"
+    );
+    let switcher = header_html.find("project-switch__select").unwrap();
+    let tabs = header_html.find("shell__tabs").unwrap();
+    assert!(switcher < tabs, "the switcher sits before the tabs");
+    assert!(
+        header_html.contains(
+            "<a class=\"shell__tab\" href=\"/board?project=Alpha\" aria-current=\"page\">Board</a>"
+        ),
+        "Board is current and carries the project: {header_html}"
+    );
+    assert!(
+        header_html.contains("<a class=\"shell__tab\" href=\"/notes?project=Alpha\">Notes</a>"),
+        "Notes carries the project: {header_html}"
+    );
+    assert!(page.contains("Café alpha") && !page.contains("Beta one"));
+    assert!(
+        !page.contains("focus-picker") && !page.contains("show_all") && !page.contains("Show all"),
+        "no in-face picker or show-all is left: {page}"
+    );
+    assert!(
+        page.contains("<input type=\"hidden\" name=\"project\" value=\"Alpha\">"),
+        "the filter form keeps the project: {page}"
+    );
+    let cookies = set_cookies(&headers);
+    let last = cookies
+        .iter()
+        .find(|cookie| cookie.starts_with("tandem_7700_last="))
+        .expect("the page remembers the project");
+    assert!(
+        last.contains("HttpOnly") && last.contains("SameSite=Lax") && last.contains("Path=/"),
+        "{last}"
+    );
+    assert!(last.contains("Max-Age=31536000"), "{last}");
+}
+
+#[tokio::test]
+async fn the_notes_header_keeps_the_open_note_across_a_project_switch() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("switch-notes");
+    let store = sandbox.store();
+    setup_board(&store);
+    vault(&store)
+        .create("Index.md")
+        .expect("the note is created");
+    let app = router(context(store));
+
+    let (status, headers, page) = get_once(&app, "/notes?project=Beta&path=Index.md").await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    let header_html = page.split("</header>").next().unwrap();
+    assert!(
+        header_html.contains("<option value=\"Beta\" selected>Beta</option>"),
+        "{header_html}"
+    );
+    assert!(
+        header_html.contains("<input type=\"hidden\" name=\"path\" value=\"Index.md\">"),
+        "the switcher form keeps the open note: {header_html}"
+    );
+    assert!(
+        header_html.contains("href=\"/notes?project=Beta\" aria-current=\"page\">Notes</a>")
+            && header_html.contains("href=\"/board?project=Beta\">Board</a>"),
+        "{header_html}"
+    );
+    assert!(
+        !page.contains("notes-focus") && !page.contains("show_all"),
+        "the notes aside has no project picker: {page}"
+    );
+    let cookie = set_cookies(&headers)
+        .into_iter()
+        .find(|cookie| cookie.starts_with("tandem_7700_last="))
+        .expect("the notes face remembers the project");
+    assert!(cookie.contains("notes"), "{cookie}");
+}
+
+#[tokio::test]
+async fn a_bare_board_or_notes_visit_goes_to_the_first_project() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("switch-first");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store));
+
+    let (status, headers, _) = get_once(&app, "/board").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(location(&headers), "/board?project=Alpha");
+    let (status, headers, _) = get_once(&app, "/notes").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(location(&headers), "/notes?project=Alpha");
+    let (status, headers, _) = get_once(&app, "/").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(location(&headers), "/board?project=Alpha");
+}
+
+#[tokio::test]
+async fn the_remembered_project_and_face_decide_where_a_bare_visit_lands() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("switch-remember");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store));
+
+    let notes_cookie = last_cookie_header("Beta", "notes");
+    let (status, headers, _) = get_cookie_once(&app, "/", &notes_cookie).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(location(&headers), "/notes?project=Beta");
+    let (_, headers, _) = get_cookie_once(&app, "/board", &notes_cookie).await;
+    assert_eq!(
+        location(&headers),
+        "/board?project=Beta",
+        "a face route keeps its face and takes the project"
+    );
+
+    // An explicit project wins over the cookie, and is remembered in turn.
+    let (status, headers, _) =
+        get_cookie_once(&app, "/board?project=Elsewhere", &notes_cookie).await;
+    assert_eq!(status, StatusCode::OK);
+    let written = set_cookies(&headers).join(";");
+    assert!(written.contains("Elsewhere"), "{written}");
+
+    // The page's own cookie sends a later bare visit to the same project.
+    let (_, headers, _) = get_once(&app, "/board?project=Beta").await;
+    let written = set_cookies(&headers)
+        .into_iter()
+        .find(|cookie| cookie.starts_with("tandem_7700_last="))
+        .expect("the cookie is written");
+    let pair = written.split(';').next().unwrap();
+    let (status, headers, _) = get_cookie_once(&app, "/board", pair).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(location(&headers), "/board?project=Beta");
+}
+
+#[tokio::test]
+async fn an_unknown_project_or_a_stale_cookie_redirects_to_one_that_exists() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("switch-unknown");
+    let store = sandbox.store();
+    setup_board(&store);
+    let app = router(context(store));
+
+    let (status, headers, _) = get_once(&app, "/board?project=Ghost&text=x").await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(location(&headers), "/board?project=Alpha&text=x");
+
+    let beta = last_cookie_header("Beta", "board");
+    let (_, headers, _) = get_cookie_once(&app, "/board?project=Ghost", &beta).await;
+    assert_eq!(location(&headers), "/board?project=Beta");
+
+    let deleted = last_cookie_header("Deleted", "notes");
+    let (_, headers, _) = get_cookie_once(&app, "/", &deleted).await;
+    assert_eq!(
+        location(&headers),
+        "/board?project=Alpha",
+        "a cookie naming a deleted project is ignored, face and all"
+    );
+
+    // The retired show-all flag is ignored: the named project is drawn.
+    let (status, _, page) = get_once(&app, "/board?project=Alpha&show_all=1").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!page.contains("Beta one"), "{page}");
+}
+
+#[tokio::test]
+async fn with_no_projects_both_faces_draw_a_disabled_switcher_and_do_not_redirect() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("switch-none");
+    let app = router(context(sandbox.store()));
+
+    for uri in ["/board", "/notes"] {
+        let (status, _, page) = get_once(&app, uri).await;
+        assert_eq!(status, StatusCode::OK, "{uri}: {page}");
+        assert!(
+            page.contains("name=\"project\" aria-label=\"Project\" disabled"),
+            "{uri} draws a disabled switcher: {page}"
+        );
+        assert!(page.contains("No projects"), "{uri}: {page}");
+    }
 }

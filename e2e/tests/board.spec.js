@@ -72,7 +72,7 @@ test.describe('Tandem serve browser suite', () => {
       await page.keyboard.type('\nFlushed on leave');
 
       // Navigate away immediately inside the 1000ms debounce window.
-      await page.locator('a.shell__tab[href="/board"]').click();
+      await page.locator('a.shell__tab[href^="/board"]').click();
       // The keepalive save outlives the page, so assert on the file, not the response.
       await expect.poll(() => srv.readNote()).toContain('Flushed on leave');
       await expect(page.locator('#board-root')).toBeVisible();
@@ -225,6 +225,51 @@ test.describe('Tandem serve browser suite', () => {
       expect(consoleErrors).toEqual([]);
       expect(pageErrors).toEqual([]);
       expect(cspViolations).toEqual([]);
+
+      await testInfo.attach('end-state', {
+        body: await page.screenshot({ fullPage: true }),
+        contentType: 'image/png',
+      });
+    } finally {
+      await srv.stop();
+    }
+  });
+
+  test('8. the project switcher opens one project at a time, keeps it across Board and Notes, and a bare visit reopens it', async ({ page }, testInfo) => {
+    const srv = await startServer();
+    try {
+      srv.cli(['project', 'add', '--name', 'Other project with a long name that has to truncate']);
+      srv.cli(['ticket', 'add', '--project', 'Other project with a long name that has to truncate', '--title', 'Other card']);
+      const other = 'Other project with a long name that has to truncate';
+
+      // A bare visit lands on the first project's board.
+      await page.goto(`${srv.baseURL}/`);
+      await expect(page).toHaveURL(/\/board\?project=Tandem$/);
+      const switcher = page.locator('.project-switch__select');
+      await expect(switcher).toHaveValue('Tandem');
+      await expect(page.locator('.ticket-card', { hasText: 'First card' })).toBeVisible();
+      await expect(page.locator('.ticket-card', { hasText: 'Other card' })).toHaveCount(0);
+
+      // Changing the select reloads the same face for the other project.
+      await switcher.selectOption(other);
+      await expect(page).toHaveURL(/\/board\?project=Other/);
+      await expect(page.locator('.ticket-card', { hasText: 'Other card' })).toBeVisible();
+      await expect(page.locator('.ticket-card', { hasText: 'First card' })).toHaveCount(0);
+      await expect(page.locator('.shell__tab[aria-current="page"]')).toHaveText('Board');
+
+      // Board and Notes keep the project in both directions.
+      await page.locator('.shell__tab', { hasText: 'Notes' }).click();
+      await expect(page).toHaveURL(/\/notes\?project=Other/);
+      await expect(page.locator('.project-switch__select')).toHaveValue(other);
+      await expect(page.locator('.shell__tab[aria-current="page"]')).toHaveText('Notes');
+      await expect(page.locator('.focus')).toHaveCount(0);
+      await page.locator('.shell__tab', { hasText: 'Board' }).click();
+      await expect(page).toHaveURL(/\/board\?project=Other/);
+
+      // Back on Notes, then a fresh visit to `/` reopens the last project and face.
+      await page.locator('.shell__tab', { hasText: 'Notes' }).click();
+      await page.goto(`${srv.baseURL}/`);
+      await expect(page).toHaveURL(/\/notes\?project=Other/);
 
       await testInfo.attach('end-state', {
         body: await page.screenshot({ fullPage: true }),
