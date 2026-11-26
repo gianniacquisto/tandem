@@ -19,10 +19,32 @@
   <body class="shell" hx-ext="sse"{% if stream %} sse-connect="/events"{% endif %}>
     <header class="shell__header">
       <h1 class="shell__wordmark">Tandem</h1>
+      {%- if let Some(sw) = switcher %}
+      {#- A plain GET form: a project change is a full navigation, so the header and
+          the body are drawn together by the server. The script submits it on change;
+          the button below is the way without it, shown when it takes focus. -#}
+      <form class="project-switch" method="get" action="{{ sw.action }}" aria-label="Project">
+        <span class="project-switch__sep" aria-hidden="true">/</span>
+        <select class="project-switch__select" name="project" aria-label="Project"{% if sw.disabled %} disabled{% endif %}>
+          {%- for option in sw.options %}
+          <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}{% if option.value.is_empty() && !sw.disabled %} disabled{% endif %}>{{ option.label }}</option>
+          {%- endfor %}
+        </select>
+        {%- for (name, value) in sw.hidden %}
+        <input type="hidden" name="{{ name }}" value="{{ value }}">
+        {%- endfor %}
+        <button type="submit" class="project-switch__go">Open project</button>
+      </form>
+      <nav class="shell__tabs" aria-label="Faces">
+        <a class="shell__tab" href="{{ sw.board_href }}"{% if sw.board_current() %} aria-current="page"{% endif %}>Board</a>
+        <a class="shell__tab" href="{{ sw.notes_href }}"{% if sw.notes_current() %} aria-current="page"{% endif %}>Notes</a>
+      </nav>
+      {%- else %}
       <nav class="shell__tabs" aria-label="Faces">
         <a class="shell__tab" href="/board">Board</a>
         <a class="shell__tab" href="/notes">Notes</a>
       </nav>
+      {%- endif %}
       <details class="menu theme-menu">
         <summary class="menu__button" aria-label="Appearance and style">
           <svg class="menu__icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 2v12"/></svg>

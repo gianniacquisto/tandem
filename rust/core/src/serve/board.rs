@@ -1,6 +1,7 @@
 //! The board surface: the filter bar, the columns and the card writes, and the
 //! shell each of them draws in.
 
+use super::project_switch::{self, Face, Switcher};
 use super::*;
 use crate::domain::DomainError;
 
@@ -11,7 +12,7 @@ fn visible<'a>(
     projects: &[crate::domain::ProjectWithLabels],
     filters: &Filters,
 ) -> Option<Vec<&'a Ticket>> {
-    let focus: Option<&str> = if filters.show_all || filters.project.is_empty() {
+    let focus: Option<&str> = if filters.project.is_empty() {
         None
     } else {
         projects
@@ -67,7 +68,6 @@ struct BoardView {
     board_query: String,
     notice: Option<String>,
     form: FiltersView,
-    project_options: Vec<ProjectOption>,
     label_options: Vec<LabelOption>,
     label_chip: Option<LabelChip>,
     assignee_options: Vec<AssigneeOption>,
@@ -81,7 +81,6 @@ struct BoardView {
     project_chosen: bool,
     /// An empty home: there is no project to file into.
     no_projects: bool,
-    show_all: bool,
     empty: Option<EmptyView>,
     columns: Vec<ColumnView>,
     /// The ticket sheet, drawn inside the board root so an htmx swap of the
@@ -97,7 +96,6 @@ struct LabelRow {
 
 pub(super) struct FiltersView {
     pub(super) project: String,
-    pub(super) show_all: bool,
     pub(super) labels: Vec<String>,
     pub(super) assignee: String,
     pub(super) text: String,
@@ -257,7 +255,7 @@ fn empty_view(
     {
         return Some(EmptyView {
             title: format!("No tickets in {}", filters.project),
-            subtitle: "Add a card from a column's foot, or show every project.".to_string(),
+            subtitle: "Add a card from a column's foot,.".to_string(),
             hero: false,
         });
     }
@@ -296,25 +294,6 @@ fn render_board(
     let shown = visible(&tickets, &projects, filters);
     let shown = shown.unwrap_or_default();
 
-    let project_options = {
-        let mut options = vec![ProjectOption {
-            value: String::new(),
-            label: "All projects".to_string(),
-            selected: filters.project.is_empty()
-                || !projects
-                    .iter()
-                    .any(|project| project.name == filters.project),
-        }];
-        for project in &projects {
-            options.push(ProjectOption {
-                value: project.name.clone(),
-                label: project.name.clone(),
-                selected: project.name == filters.project,
-            });
-        }
-        options
-    };
-
     let label_options = {
         let mut options = vec![LabelOption {
             value: " ".to_string(),
@@ -326,7 +305,6 @@ fn render_board(
             // With a project in focus the filter offers that project's labels,
             // and a checked label from outside it stays listed to be unchecked.
             if !checked
-                && !filters.show_all
                 && let Some(focused) = projects
                     .iter()
                     .find(|project| project.name == filters.project)
@@ -376,14 +354,10 @@ fn render_board(
     // starts on the focused project (zero extra clicks); with "All projects" in
     // focus it starts empty and `required` stops a submit. The Label starts on
     // the filter's label when it belongs to that project, else "No label".
-    let preset: Option<&str> = if filters.show_all {
-        None
-    } else {
-        projects
-            .iter()
-            .find(|project| project.name == filters.project)
-            .map(|project| project.name.as_str())
-    };
+    let preset: Option<&str> = projects
+        .iter()
+        .find(|project| project.name == filters.project)
+        .map(|project| project.name.as_str());
     let new_projects: Vec<NewProjectOption> = projects
         .iter()
         .map(|project| NewProjectOption {
@@ -505,12 +479,10 @@ fn render_board(
         notice,
         form: FiltersView {
             project: filters.project.clone(),
-            show_all: filters.show_all,
             labels: filters.labels.clone(),
             assignee: filters.assignee.clone(),
             text: filters.text.clone(),
         },
-        project_options,
         label_options,
         label_chip,
         assignee_options,
@@ -525,7 +497,6 @@ fn render_board(
                 encoded: super::sheet::encode_component(label),
             })
             .collect(),
-        show_all: filters.show_all,
         empty,
         columns,
         sheet: None,
@@ -564,10 +535,14 @@ pub(super) fn board_with_sheet(
                 .into_response();
         }
     };
+    let switcher = board_switcher(context, filters);
+    let cookie = project_switch::last_cookie(context, switcher.as_ref());
     if is_partial(headers) {
-        return html_response(board, status);
+        let mut response = html_response(board, status);
+        project_switch::stamp(&mut response, cookie);
+        return response;
     }
-    match (PageView {
+    let mut response = match (PageView {
         assets: assets::urls(),
         body: askama::filters::Safe(board),
         stream: false,
@@ -576,6 +551,7 @@ pub(super) fn board_with_sheet(
         tokens: context.shows_tokens(),
         people: context.shows_people(),
         ui_cookie: context.ui_cookie(),
+        switcher,
     })
     .render()
     {
@@ -585,7 +561,9 @@ pub(super) fn board_with_sheet(
             format!("the shell could not be drawn: {error}\n"),
         )
             .into_response(),
-    }
+    };
+    project_switch::stamp(&mut response, cookie);
+    response
 }
 fn render_response(
     context: &Context,
@@ -618,10 +596,14 @@ fn render_response(
                 .into_response();
         }
     };
+    let switcher = board_switcher(context, filters);
+    let cookie = project_switch::last_cookie(context, switcher.as_ref());
     if is_partial(headers) {
-        return html_response(board, status);
+        let mut response = html_response(board, status);
+        project_switch::stamp(&mut response, cookie);
+        return response;
     }
-    match (PageView {
+    let mut response = match (PageView {
         assets: assets::urls(),
         body: askama::filters::Safe(board),
         stream: true,
@@ -630,6 +612,7 @@ fn render_response(
         tokens: context.shows_tokens(),
         people: context.shows_people(),
         ui_cookie: context.ui_cookie(),
+        switcher,
     })
     .render()
     {
@@ -639,15 +622,64 @@ fn render_response(
             format!("the shell could not be drawn: {error}\n"),
         )
             .into_response(),
-    }
+    };
+    project_switch::stamp(&mut response, cookie);
+    response
 }
+/// The board face's switcher: the filters a project change keeps ride along as
+/// hidden fields, so switching project does not clear a search.
+fn board_switcher(context: &Context, filters: &Filters) -> Option<Switcher> {
+    let mut hidden: Vec<(String, String)> = filters
+        .labels
+        .iter()
+        .map(|label| ("label".to_string(), label.clone()))
+        .collect();
+    if !filters.assignee.is_empty() {
+        hidden.push(("assignee".to_string(), filters.assignee.clone()));
+    }
+    if !filters.text.is_empty() {
+        hidden.push(("text".to_string(), filters.text.clone()));
+    }
+    project_switch::switcher(context, Face::Board, &filters.project, "/board", hidden)
+}
+
+/// `GET /board`: the project's board. One project is open at a time, so a
+/// request that names none (or an unknown one) goes to the remembered project.
 pub(super) async fn board_page(
     context: Context,
     Query(pairs): Query<Pairs>,
     headers: HeaderMap,
 ) -> Response {
-    let filters = Filters::parse(&pairs);
+    let mut filters = Filters::parse(&pairs);
+    match project_switch::resolve(&context, &headers, &filters.project) {
+        project_switch::Resolved::Fallback(project) => {
+            return project_switch::redirect("/board", &project, &pairs);
+        }
+        project_switch::Resolved::Known(project) => filters.project = project,
+        project_switch::Resolved::NoProjects => {}
+    }
     render_response(&context, &filters, None, &headers, StatusCode::OK)
+}
+
+/// `GET /`: the face and project the browser last left, else the first
+/// project's board.
+pub(super) async fn root_page(
+    context: Context,
+    Query(pairs): Query<Pairs>,
+    headers: HeaderMap,
+) -> Response {
+    let requested = Filters::parse(&pairs).project;
+    let project = match project_switch::resolve(&context, &headers, &requested) {
+        project_switch::Resolved::Known(project) | project_switch::Resolved::Fallback(project) => {
+            project
+        }
+        project_switch::Resolved::NoProjects => {
+            let filters = Filters::default();
+            return render_response(&context, &filters, None, &headers, StatusCode::OK);
+        }
+    };
+    let face = project_switch::last_face(&context, &headers);
+    project_switch::redirect(face.path(), &project, &pairs)
 }
 pub(super) async fn add_ticket(
     context: Context,
