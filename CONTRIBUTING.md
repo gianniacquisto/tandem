@@ -20,7 +20,10 @@ Apple silicon Mac or x86_64 Linux machine is only for shipped-binary work.
 - Only for shipped-binary work: an Apple silicon Mac or an x86_64 Linux
   machine, for running the installer and the binary the release publishes.
   `install.sh` verifies the archive's digest and installs into
-  `~/.local/bin`; on macOS it strips the quarantine flag.
+  `~/.local/bin`; on macOS it strips the quarantine flag. `install.ps1` is its
+  Windows twin (user PATH, `%LOCALAPPDATA%\Programs\tandem`); its suite,
+  `Scripts/test_install.ps1`, runs under Windows PowerShell 5.1 in the
+  Windows build job of `release.yml` against the zip that job just packaged.
 - Rust via [rustup](https://rustup.rs). The pin lives in
   [rust/rust-toolchain.toml](rust/rust-toolchain.toml) (currently 1.99.1 with
   the `rustfmt` and `clippy` components), so the right toolchain arrives on

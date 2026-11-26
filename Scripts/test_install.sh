@@ -254,15 +254,24 @@ case "$(cat "$t7/dist/install.sh" 2>/dev/null)" in
   *'DEFAULT_VERSION="1.2.3"'*) ok "stager stamps the tag version" ;;
   *) no "stager stamps the tag version" ;;
 esac
-if [ -f "$t7/dist/SHA256SUMS" ] && [ "$(wc -l < "$t7/dist/SHA256SUMS" | tr -d ' ')" = "4" ] \
+if [ -f "$t7/dist/SHA256SUMS" ] && [ "$(wc -l < "$t7/dist/SHA256SUMS" | tr -d ' ')" = "5" ] \
   && grep -q "tandem-1.2.3-darwin-arm64.tar.gz" "$t7/dist/SHA256SUMS" \
   && grep -q "tandem-1.2.3-linux-x86_64.tar.gz" "$t7/dist/SHA256SUMS" \
   && grep -q "tandem-1.2.3-windows-x86_64.zip" "$t7/dist/SHA256SUMS" \
-  && grep -q "install.sh" "$t7/dist/SHA256SUMS"; then
-  ok "SHA256SUMS covers the three archives and the script"
+  && grep -q "install.sh" "$t7/dist/SHA256SUMS" \
+  && grep -q "install.ps1" "$t7/dist/SHA256SUMS"; then
+  ok "SHA256SUMS covers the three archives and both scripts"
 else
-  no "SHA256SUMS covers the three archives and the script"
+  no "SHA256SUMS covers the three archives and both scripts"
 fi
+case "$(cat "$t7/dist/install.ps1" 2>/dev/null)" in
+  *'$DefaultVersion = "1.2.3"'*) ok "stager stamps install.ps1 with the tag version" ;;
+  *) no "stager stamps install.ps1 with the tag version" ;;
+esac
+case "$(cat "$t7/dist/install.ps1" 2>/dev/null)" in
+  *'$DefaultVersion = "latest"'*) no "the staged install.ps1 no longer says latest" ;;
+  *) ok "the staged install.ps1 no longer says latest" ;;
+esac
 if (cd "$t7/dist" && sum256 -c SHA256SUMS >/dev/null 2>&1); then
   ok "staged checksums verify"
 else

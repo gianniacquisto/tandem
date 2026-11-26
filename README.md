@@ -16,11 +16,19 @@ You and your agent share one ticket list: it files tickets you see, and it sees 
 curl -fsSL https://github.com/gianniacquisto/tandem/releases/latest/download/install.sh | sh
 ```
 
-This verifies a SHA-256 checksum and installs `tandem` (and a `tandem-cli` link) into `~/.local/bin`. Add that to your PATH if the installer says it is missing. Supported: macOS (Apple silicon and Intel) and Linux (x86_64 and arm64, static musl builds that run on any distro). On Windows, download the [zip](https://github.com/gianniacquisto/tandem/releases/latest), extract `tandem.exe` and put it on PATH. To **upgrade**, add `--reinstall` (running the installer again without it leaves your existing install alone), then restart `tandem serve`:
+This verifies a SHA-256 checksum and installs `tandem` (and a `tandem-cli` link) into `~/.local/bin`. Add that to your PATH if the installer says it is missing. Supported: macOS (Apple silicon and Intel) and Linux (x86_64 and arm64, static musl builds that run on any distro). On Windows, `install.ps1` does the same from Windows PowerShell 5.1 or later (below). To **upgrade**, add `--reinstall` (running the installer again without it leaves your existing install alone), then restart `tandem serve`:
 
 ```sh
 curl -fsSL https://github.com/gianniacquisto/tandem/releases/latest/download/install.sh | sh -s -- --reinstall
 ```
+
+On **Windows**, in PowerShell:
+
+```powershell
+irm https://github.com/gianniacquisto/tandem/releases/latest/download/install.ps1 | iex
+```
+
+This verifies the same checksum, installs `tandem.exe` into `%LOCALAPPDATA%\Programs\tandem` and adds that folder to your user PATH (no elevation); open a new shell afterwards. To upgrade, stop `tandem serve`, set `$env:TANDEM_VERSION` if you want a version other than the latest, and run the installer saved as a file with `-Reinstall`. See [docs/install-paths.md](docs/install-paths.md).
 
 Your data in `~/.tandem` is never touched by an install, upgrade or uninstall. Pinning a version, uninstalling and macOS notes: [install paths](docs/install-paths.md).
 
