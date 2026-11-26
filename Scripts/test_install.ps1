@@ -143,4 +143,7 @@ try {
 }
 
 Write-Host "$script:pass passed, $script:fail failed"
+# Explicit in both directions: the last child's $LASTEXITCODE (1, the refusal
+# case) would otherwise become this script's exit code under `powershell -command`.
 if ($script:fail -gt 0) { exit 1 }
+exit 0
