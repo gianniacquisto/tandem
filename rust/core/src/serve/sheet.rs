@@ -202,7 +202,6 @@ fn render_sheet(
         board_query: filters.query(),
         filters: FiltersView {
             project: filters.project.clone(),
-            show_all: filters.show_all,
             labels: filters.labels.clone(),
             assignee: filters.assignee.clone(),
             text: filters.text.clone(),
@@ -285,7 +284,14 @@ pub(super) async fn ticket_page(
     Query(pairs): Query<Pairs>,
     headers: HeaderMap,
 ) -> Response {
-    let filters = Filters::parse(&pairs);
+    let mut filters = Filters::parse(&pairs);
+    // A link that names no project (a bookmark, an agent's URL) opens over the
+    // ticket's own project, so the header's switcher names what is behind it.
+    if filters.project.is_empty()
+        && let Ok((ticket, _)) = context.board().ticket_snapshot(&id)
+    {
+        filters.project = ticket.project;
+    }
     sheet_response(&context, &id, &filters, None, None, &headers)
 }
 

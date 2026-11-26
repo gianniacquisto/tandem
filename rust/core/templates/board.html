@@ -22,6 +22,7 @@
   <form class="tickets__bar tickets__bar--board" method="get" action="/board"
         hx-get="/board" hx-target="#board-root" hx-swap="outerHTML" hx-push-url="true"
         hx-trigger="change, submit">
+    <input type="hidden" name="project" value="{{ form.project }}">
     <div class="search search--board">
       <svg class="search__icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
       <input class="search__input" type="search" name="text" value="{{ form.text }}"
@@ -34,18 +35,6 @@
     <details class="menu filter-menu">
       <summary class="menu__button menu__button--label"><svg class="menu__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12M4.5 8h7M7 12.5h2"/></svg>Filter</summary>
       <div class="menu__panel menu__panel--form">
-        <label class="menu__field">
-          <span class="menu__title">Project</span>
-          <select id="focus-picker" class="filter focus__picker" name="project" aria-label="Project">
-            {% for option in project_options %}
-            <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label class="menu__check" for="show-all">
-          <input id="show-all" type="checkbox" name="show_all" value="1"{% if show_all %} checked{% endif %}>
-          Show all
-        </label>
         <fieldset class="menu__group">
           <legend class="menu__title">Label</legend>
           <div class="menu__list">
@@ -69,12 +58,6 @@
     </details>
 
     <ul class="chips" aria-label="Active filters">
-      {% for option in project_options %}{% if option.selected && !option.value.is_empty() %}
-      <li><button type="button" class="chip" data-clear="project" aria-label="Remove project filter {{ option.label }}">{{ option.label }} <span aria-hidden="true">×</span></button></li>
-      {% endif %}{% endfor %}
-      {% if show_all %}
-      <li><button type="button" class="chip" data-clear="show_all" aria-label="Remove show all">Show all <span aria-hidden="true">×</span></button></li>
-      {% endif %}
       {% if let Some(chip) = label_chip %}
       <li><button type="button" class="chip" data-clear="label" aria-label="{{ chip.aria }}">{{ chip.text }} <span aria-hidden="true">×</span></button></li>
       {% endif %}
@@ -91,7 +74,6 @@
       <form class="label-form" method="post" action="/labels" hx-post="/labels"
             hx-target="#board-root" hx-swap="outerHTML">
         <input type="hidden" name="project" value="{{ form.project }}">
-        <input type="hidden" name="show_all" value="{% if form.show_all %}1{% endif %}">
         {% for label in form.labels %}<input type="hidden" name="label" value="{{ label }}">{% endfor %}
         <input type="hidden" name="assignee" value="{{ form.assignee }}">
         <input type="hidden" name="text" value="{{ form.text }}">
@@ -103,7 +85,6 @@
       <form class="label-form" method="post" action="/labels/{{ label.encoded }}/rename"
             hx-post="/labels/{{ label.encoded }}/rename" hx-target="#board-root" hx-swap="outerHTML">
         <input type="hidden" name="project" value="{{ form.project }}">
-        <input type="hidden" name="show_all" value="{% if form.show_all %}1{% endif %}">
         {% for label in form.labels %}<input type="hidden" name="label" value="{{ label }}">{% endfor %}
         <input type="hidden" name="assignee" value="{{ form.assignee }}">
         <input type="hidden" name="text" value="{{ form.text }}">
@@ -123,7 +104,6 @@
             hx-post="/tickets" hx-target="#board-root" hx-swap="outerHTML">
         <input type="hidden" name="expected_revision" value="{{ revision }}">
         <input type="hidden" name="project" value="{{ form.project }}">
-        <input type="hidden" name="show_all" value="{% if form.show_all %}1{% endif %}">
         {% for label in form.labels %}<input type="hidden" name="label" value="{{ label }}">{% endfor %}
         <input type="hidden" name="assignee" value="{{ form.assignee }}">
         <input type="hidden" name="text" value="{{ form.text }}">

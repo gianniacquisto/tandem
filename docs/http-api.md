@@ -2,6 +2,8 @@
 
 `tandem serve` answers HTTP on one port (default `127.0.0.1:7700`). This page lists the routes meant for programs: health checks, the MCP endpoint, the live change stream, the export and the operator API. The other routes (`/`, `/board`, `/tickets/...`, `/notes/...`, `/people`, `/tokens`) draw and drive the board in the browser. Their shape may change in any release, so do not script against them: use [MCP](mcp.md) or the [CLI](cli.md) instead.
 
+One thing about those routes is worth knowing when you open the board from a script or a bookmark. The browser shows one project at a time, chosen by the project switcher in the header. `/`, `/board` and `/notes` with no `?project=<name>` (or a name the board does not hold) answer `303` to the same face for the project the browser last had open, kept in an `HttpOnly` cookie named `tandem_<port>_last` (the last project and face, a year), else for the first project. `/` also returns to the last face. With no projects at all the faces draw as they are, with no redirect. The old `show_all` parameter is ignored.
+
 | Route | Method | For | Reference |
 | --- | --- | --- | --- |
 | `/health` | `GET` | Liveness checks | [below](#get-health) |

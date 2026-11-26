@@ -73,7 +73,7 @@ pub(super) fn set_cookie<T: Serialize>(
     .ok()
 }
 
-fn percent_encode(text: &str) -> String {
+pub(super) fn percent_encode(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for byte in text.bytes() {
         if byte.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&byte) {
