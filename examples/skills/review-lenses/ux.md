@@ -1,6 +1,6 @@
 # UX lens
 
-The checklist for a diff that changes what the human does: what they can reach, what a wrong click costs, and how they get back. It reads the templates, the client script and any screenshot the PR attaches, and judges no screen it cannot see.
+The checklist for a diff that changes what the human does: what they can reach, what a wrong click costs, and how they get back. It reads the templates, the client script and the screenshots in the browser-suite run artifact the PR links, and judges no screen it cannot see.
 
 ## Read
 
@@ -16,7 +16,7 @@ The checklist for a diff that changes what the human does: what they can reach, 
 - An action the change moves off a keyboard path it had, with nothing put in its place, where the diff's own text claims no alternative.
 - A state the human can reach with no way out: an error banner with no dismiss, an empty state with no route to the thing it names.
 - A failure that is swallowed, so the action looks done: a write's error dropped before it reaches the human.
-- A screen the PR's screenshot shows broken for the human's path (a disabled control that is the only route, a label that names the wrong action), judged as the diff's own change.
+- A screen the run artifact's screenshot shows broken for the human's path (a disabled control that is the only route, a label that names the wrong action), judged as the diff's own change.
 - A screen the change makes paint and then correct itself: a flash of a default state that script then replaces, a late layout shift, a camera catch-up. The server draws remembered state on the first paint and the `.js` class draws a script-dependent state (`DESIGN.md`, Do's and Don'ts).
 
 ## Never blocks on

@@ -29,7 +29,7 @@ Review for correctness first: does it do what the ticket asked, hold at the edge
 
 ## 3. Evidence
 
-The suite's evidence is the checks on the head sha. Leave every suite CI ran on that sha (tests, lint, format, installers) to CI, because a second run of the same suite is the same opinion. Run locally only (a) the one command a body claim asserts that no CI job exercises, in a throwaway worktree of the head, its output quoted, or (b) the eye on a rendering claim, on the head's build under a scratch home. Platform-conditional jobs (Windows-only, Linux-only, macOS-only) are evidence only on their platform. A diff that changes what a face draws and attaches no picture is named in the body, not blocked.
+The suite's evidence is the checks on the head sha. Leave every suite CI ran on that sha (tests, lint, format, installers) to CI, because a second run of the same suite is the same opinion. Run locally only (a) the one command a body claim asserts that no CI job exercises, in a throwaway worktree of the head, its output quoted, or (b) the eye on a rendering claim, on the head's build under a scratch home. Platform-conditional jobs (Windows-only, Linux-only, macOS-only) are evidence only on their platform. A diff that changes what a face draws needs UI proof: a case in the repo's browser suite for the change, and a green run of that suite on the head sha whose artifact the `## Live check` links. A UI PR with no case for its change, or a red or missing suite run, is a finding: changes-requested, no merge. Screenshots and Firefox or Safari checks by hand are not asked for.
 
 ## 4. Verdict
 

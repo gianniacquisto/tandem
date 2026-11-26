@@ -36,6 +36,7 @@ The names are the roster's: `examples/skills/tandem-team/SKILL.md`. The builder 
 The prompts under `examples/` are generic: where one says the repo's AGENTS.md names a command, a path or a doc, the answer for Tandem is here.
 
 - **Scoped tests**: in `rust/`, `cargo test -p <crate> <filter>`, or `cargo test -p tandem --test <suite>`. The full gates are in `CONTRIBUTING.md` (The gates), and CI runs them on every head sha.
+- **Browser suite and UI proof**: the Playwright suite in `e2e/` (Chromium, Firefox and WebKit) runs in the `e2e` job of `.github/workflows/rust.yml` and uploads the `playwright-report` artifact (report, screenshots, traces). A UI ticket's PR adds or extends a `test(...)` in `e2e/tests/board.spec.js` as `CONTRIBUTING.md` (Browser tests) describes, and its `## Live check` names the case and links the run. Firefox and Safari are not checked by hand.
 - **Pre-push check**: `bash Scripts/check-prose-dash.sh`, because CI fails on an added em dash (see Prose).
 - **Dev build**: `cargo build -p tandem` in your worktree. Serve that binary (`rust/target/debug/tandem`, never the installed `tandem`) in the background, on `TANDEM_HOME="$(mktemp -d)"` and a free `--port` that is never 7700, because the human's own serve holds it.
 - **Token mode**: sign-in, people, token or operator work serves with `--host 0.0.0.0` and a generated `TANDEM_TOKEN` (`openssl rand -hex 32`). Open it at `http://localhost:<port>`, because the session cookie is `Secure`. Loopback is the default otherwise.
