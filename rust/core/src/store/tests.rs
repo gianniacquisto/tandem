@@ -1022,6 +1022,69 @@ mod schema {
         assert_eq!(run, "closed", "the run row is untouched");
     }
 
+    fn freelist(connection: &Connection) -> i64 {
+        connection
+            .query_row("PRAGMA freelist_count", [], |row| row.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn a_fresh_home_has_no_free_pages_after_its_first_write() {
+        let sandbox = Sandbox::new("vacuum-fresh");
+        probe(&sandbox.store(), &Actor::Human, "A");
+        assert_eq!(freelist(&sandbox.connection()), 0);
+    }
+
+    #[test]
+    fn a_migrating_open_vacuums_after_the_backup_and_leaves_the_pre_image() {
+        let sandbox = Sandbox::new("vacuum-migrated");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..10], &Actor::Human).expect("v10 applies");
+        for n in 0..200 {
+            connection
+                .execute(
+                    "INSERT INTO settings (key, value, author) VALUES (?1, ?2, 'human')",
+                    rusqlite::params![format!("k{n}"), "x".repeat(2000)],
+                )
+                .unwrap();
+        }
+        drop(connection);
+
+        probe(&sandbox.store(), &Actor::Human, "A");
+
+        let connection = sandbox.connection();
+        assert_eq!(freelist(&connection), 0);
+        assert_eq!(version(&connection).unwrap(), Some(CURRENT_VERSION));
+        let backup =
+            Connection::open_with_flags(sandbox.backup(), OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .expect(".bak opens");
+        assert_eq!(version(&backup).unwrap(), Some(10));
+    }
+
+    #[test]
+    fn an_up_to_date_open_does_not_rewrite_the_file_for_a_vacuum() {
+        let sandbox = Sandbox::new("vacuum-once");
+        probe(&sandbox.store(), &Actor::Human, "A");
+        // Free pages a vacuum would reclaim: only a vacuum on this open would
+        // clear them, since the second write is not behind.
+        let connection = Connection::open(sandbox.database()).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE junk (v TEXT);
+                 INSERT INTO junk SELECT hex(zeroblob(2000)) FROM
+                   (WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM c WHERE n<200)
+                    SELECT n FROM c);
+                 DROP TABLE junk;",
+            )
+            .unwrap();
+        let before = freelist(&connection);
+        drop(connection);
+        assert!(before > 0, "the setup leaves free pages");
+        probe(&sandbox.store(), &Actor::Human, "B");
+        assert_eq!(freelist(&sandbox.connection()), before);
+    }
+
     #[test]
     #[allow(clippy::type_complexity)]
     fn a_v8_file_upgrades_to_v10_renaming_sprints_to_workflow_runs_with_the_default_workflow() {
