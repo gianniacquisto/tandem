@@ -167,6 +167,8 @@ impl Drop for Server {
 struct Answer {
     status: u16,
     body: String,
+    /// The `Location` of a redirect.
+    location: Option<String>,
 }
 
 fn request(
@@ -206,14 +208,33 @@ fn request(
         .and_then(|line| line.split_whitespace().nth(1))
         .and_then(|code| code.parse::<u16>().ok())
         .unwrap_or_else(|| panic!("the answer has a status: {head}"));
+    let location = head.lines().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        name.eq_ignore_ascii_case("location")
+            .then(|| value.trim().to_string())
+    });
     Answer {
         status,
         body: body.to_string(),
+        location,
     }
 }
 
+/// A GET that follows the redirect a face makes to a project's page (TAN-530):
+/// a bare `/board` or `/notes` goes to the project the browser last had open,
+/// else the first, once the home holds one.
 fn get(port: u16, path: &str) -> Answer {
-    request(port, "GET", path, &[], None)
+    let answer = request(port, "GET", path, &[], None);
+    match answer.location.clone() {
+        Some(location)
+            if answer.status == 303
+                && (location.starts_with("/board?project=")
+                    || location.starts_with("/notes?project=")) =>
+        {
+            request(port, "GET", &location, &[], None)
+        }
+        _ => answer,
+    }
 }
 
 fn form(port: u16, path: &str, body: &str) -> Answer {

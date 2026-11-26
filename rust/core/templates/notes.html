@@ -13,7 +13,6 @@
     <form class="banner__undo" method="post" action="/notes/restore" hx-post="/notes/restore"
           hx-target="#notes-root" hx-swap="outerHTML">
       <input type="hidden" name="project" value="{{ active_project }}">
-      <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
       <input type="hidden" name="trash" value="{{ undo.trash }}">
       <button class="banner__dismiss" type="submit">Undo</button>
     </form>
@@ -45,7 +44,6 @@
         <input type="hidden" name="baseline_hash" value="{{ conflict.baseline_hash }}">
         <input type="hidden" name="resolution" value="keep_mine">
         <input type="hidden" name="project" value="{{ active_project }}">
-        <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
         <button class="button" type="submit">Keep mine</button>
       </form>
       <form method="post" action="/notes/save" hx-post="/notes/save" hx-target="#notes-root" hx-swap="outerHTML">
@@ -54,7 +52,6 @@
         <input type="hidden" name="baseline_hash" value="{{ conflict.baseline_hash }}">
         <input type="hidden" name="resolution" value="take_theirs">
         <input type="hidden" name="project" value="{{ active_project }}">
-        <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
         <button class="button" type="submit">Take theirs</button>
       </form>
     </div>
@@ -63,22 +60,6 @@
 
   <div class="notes">
     <aside class="notes__tree" aria-label="Notes">
-      <form class="focus" method="get" action="{{ focus_action }}" hx-get="{{ focus_action }}" hx-target="#notes-root" hx-swap="outerHTML">
-        {% if let Some(path) = path %}
-        <input type="hidden" name="path" value="{{ path }}">
-        {% endif %}
-        <label class="focus__label" for="notes-focus">Project</label>
-        <select id="notes-focus" class="filter focus__picker" name="project" aria-label="Project">
-          {% for option in project_options %}
-          <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
-          {% endfor %}
-        </select>
-        <label class="focus__all" for="notes-show-all">
-          <input id="notes-show-all" type="checkbox" name="show_all" value="1"{% if show_all %} checked{% endif %}>
-          Show all
-        </label>
-      </form>
-
       <div class="tree__vault" data-drop-into="">
         <span class="tree__vault-name">Notes</span>
         <div class="tree__tools" role="group" aria-label="Tree">
@@ -89,7 +70,6 @@
       <form class="tree__daily" data-daily method="post" action="/notes/daily" hx-post="/notes/daily"
             hx-target="#notes-root" hx-swap="outerHTML">
         <input type="hidden" name="project" value="{{ active_project }}">
-        <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
         <input type="hidden" name="date" value="">
         <button class="tree__create-summary tree__daily-button" type="submit">
           <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="11" rx="2"/><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"/></svg>Today's note
@@ -99,7 +79,6 @@
       <form class="tree__daily" method="post" action="/notes/new" hx-post="/notes/new"
             hx-target="#notes-root" hx-swap="outerHTML">
         <input type="hidden" name="project" value="{{ active_project }}">
-        <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
         <input type="hidden" name="dir" value="{{ current_dir }}">
         <button class="tree__create-summary tree__daily-button" type="submit">
           <svg class="tree__icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>New note
@@ -113,7 +92,6 @@
         <form class="tree__prompt" method="post" action="/notes/create-folder" hx-post="/notes/create-folder"
               hx-target="#notes-root" hx-swap="outerHTML">
           <input type="hidden" name="project" value="{{ active_project }}">
-          <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
           <input class="tree__prompt-input" name="path" aria-label="New folder path" placeholder="Folder name, then Enter">
           <button class="tree__new tree__new--folder" type="submit">Create folder</button>
         </form>
@@ -153,7 +131,6 @@
               <form class="row-menu__form" method="post" action="/notes/rename" hx-post="/notes/rename"
                     hx-target="#notes-root" hx-swap="outerHTML">
                 <input type="hidden" name="project" value="{{ active_project }}">
-                <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
                 <input type="hidden" name="open" value="{% if let Some(open) = path %}{{ open }}{% endif %}">
                 <input type="hidden" name="path" value="{{ row.path }}">
                 <input class="row-menu__name" name="name" value="{{ row.name }}" aria-label="New name for {{ row.name }}" required>
@@ -164,7 +141,6 @@
                     hx-target="#notes-root" hx-swap="outerHTML"
                     {% if row.folder %}data-confirm="Delete the folder {{ row.name }} and everything in it?"{% endif %}>
                 <input type="hidden" name="project" value="{{ active_project }}">
-                <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
                 <input type="hidden" name="open" value="{% if let Some(open) = path %}{{ open }}{% endif %}">
                 <input type="hidden" name="path" value="{{ row.path }}">
                 <button class="row-menu__action row-menu__action--danger" type="submit">Delete{% if row.folder %} folder{% endif %}</button>
@@ -242,7 +218,6 @@
             <span>The graph draws your notes, their folders and the projects and labels they link to.</span>
             <form method="post" action="/notes/new" hx-post="/notes/new" hx-target="#notes-root" hx-swap="outerHTML">
               <input type="hidden" name="project" value="{{ active_project }}">
-              <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
               <input type="hidden" name="dir" value="">
               <button class="button" type="submit">New note</button>
             </form>
@@ -306,7 +281,6 @@
           <form class="page-title-form" method="post" action="/notes/rename" hx-post="/notes/rename"
                 hx-target="#notes-root" hx-swap="outerHTML" hx-trigger="change, submit">
             <input type="hidden" name="project" value="{{ active_project }}">
-            <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
             <input type="hidden" name="path" value="{{ note.path }}">
             <input type="hidden" name="open" value="{{ note.path }}">
             <input type="hidden" name="mode" value="{{ mode }}">
@@ -321,7 +295,6 @@
                 hx-target="#notes-root" hx-swap="outerHTML">
             <input type="hidden" name="path" value="{{ note.path }}">
             <input type="hidden" name="project" value="{{ active_project }}">
-            <input type="hidden" name="show_all" value="{% if show_all %}1{% endif %}">
             <input type="hidden" name="mode" value="edit">
             {% if !concept_kind.is_empty() %}
             <input type="hidden" name="concept" value="{{ concept_kind }}">

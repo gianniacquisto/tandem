@@ -1,7 +1,7 @@
 //! The notes surface: the tree, the note pane, the editor and the
 //! writes that move, create and save a note.
 
-use super::board::ProjectOption;
+use super::project_switch::{self, Face, Switcher};
 use super::sheet::sheet_handle;
 use super::*;
 use crate::domain::DomainError;
@@ -218,12 +218,8 @@ struct NotesView {
     /// The Note | Graph switch's two links, both keeping the focus params.
     note_switch_href: String,
     graph_switch_href: String,
-    /// Where the focus picker's form goes: `/notes` or `/notes/graph`.
-    focus_action: &'static str,
     rows: Vec<TreeRowView>,
-    project_options: Vec<ProjectOption>,
     active_project: String,
-    show_all: bool,
     path: Option<String>,
     crumbs: Vec<Crumb>,
     mode: &'static str,
@@ -285,22 +281,18 @@ struct TabView {
 }
 
 /// The notes view's own URL: the focus, the show-all escape and one note.
-fn notes_href(project: &str, show_all: bool, path: Option<&str>, mode: Option<&str>) -> String {
-    notes_href_closing(project, show_all, path, mode, None)
+fn notes_href(project: &str, path: Option<&str>, mode: Option<&str>) -> String {
+    notes_href_closing(project, path, mode, None)
 }
 
 /// `notes_href`, plus the tab the request closes.
 fn notes_href_closing(
     project: &str,
-    show_all: bool,
     path: Option<&str>,
     mode: Option<&str>,
     close: Option<&str>,
 ) -> String {
     let mut pairs: Vec<(&str, String)> = vec![("project", project.to_string())];
-    if show_all {
-        pairs.push(("show_all", "1".to_string()));
-    }
     if let Some(path) = path {
         pairs.push(("path", path.to_string()));
     }
@@ -317,11 +309,8 @@ fn notes_href_closing(
 }
 
 /// The graph view's own URL, keeping the focus and the show-all escape.
-fn graph_href(project: &str, show_all: bool) -> String {
-    let mut pairs: Vec<(&str, String)> = vec![("project", project.to_string())];
-    if show_all {
-        pairs.push(("show_all", "1".to_string()));
-    }
+fn graph_href(project: &str) -> String {
+    let pairs: Vec<(&str, String)> = vec![("project", project.to_string())];
     match serde_urlencoded::to_string(&pairs) {
         Ok(query) => format!("/notes/graph?{query}"),
         Err(_) => "/notes/graph".to_string(),
@@ -330,11 +319,8 @@ fn graph_href(project: &str, show_all: bool) -> String {
 
 /// What the graph container carries: the JSON source (scoped by the focus) and
 /// the click prefixes, each already holding the focus params.
-fn graph_pane(project: &str, show_all: bool) -> GraphPane {
-    let mut pairs: Vec<(&str, String)> = vec![("project", project.to_string())];
-    if show_all {
-        pairs.push(("show_all", "1".to_string()));
-    }
+fn graph_pane(project: &str) -> GraphPane {
+    let pairs: Vec<(&str, String)> = vec![("project", project.to_string())];
     let query = serde_urlencoded::to_string(&pairs).unwrap_or_default();
     let src = if project.is_empty() {
         "/notes/graph.json".to_string()
@@ -489,15 +475,12 @@ fn flatten_tree(
 }
 
 /// Where a project or label page opens.
-fn concept_href(project: &str, show_all: bool, kind: ConceptKind, name: &str) -> String {
-    let mut pairs: Vec<(&str, String)> = vec![
+fn concept_href(project: &str, kind: ConceptKind, name: &str) -> String {
+    let pairs: Vec<(&str, String)> = vec![
         ("kind", kind.word().to_string()),
         ("name", name.to_string()),
         ("project", project.to_string()),
     ];
-    if show_all {
-        pairs.push(("show_all", "1".to_string()));
-    }
     match serde_urlencoded::to_string(&pairs) {
         Ok(query) => format!("/notes/concept?{query}"),
         Err(_) => "/notes".to_string(),
@@ -619,7 +602,6 @@ fn render_notes(
     relations: Option<&ui_state::RelationsState>,
 ) -> Result<NotesView, String> {
     let project = field(params, "project").trim().to_string();
-    let show_all = !matches!(field(params, "show_all"), "" | "0" | "false");
     let graph_view = field(params, "view") == "graph";
     let mut path = params
         .get("path")
@@ -635,23 +617,6 @@ fn render_notes(
 
     let board = context.board();
     let names = crate::rpc::vault::try_names(&board).map_err(|error| error.message())?;
-    let (projects, _) = board.projects_snapshot().map_err(|error| error.message())?;
-    let project_options = {
-        let mut options = vec![ProjectOption {
-            value: String::new(),
-            label: "All projects".to_string(),
-            selected: project.is_empty(),
-        }];
-        for project in &projects {
-            options.push(ProjectOption {
-                value: project.name.clone(),
-                label: project.name.clone(),
-                selected: project.name == field(params, "project"),
-            });
-        }
-        options
-    };
-
     let vault = context.notes();
     let mut render_error = error;
 
@@ -722,7 +687,7 @@ fn render_notes(
         let note_row = |note_path: &str, detail: String| RelRow {
             name: note_name(note_path),
             detail,
-            href: Some(notes_href(&project, show_all, Some(note_path), None)),
+            href: Some(notes_href(&project, Some(note_path), None)),
             swap: true,
         };
         let mut linked_from: Vec<(String, String)> = Vec::new();
@@ -821,12 +786,7 @@ fn render_notes(
                             RelRow {
                                 name: child.name.clone(),
                                 detail: format!("label, {count}"),
-                                href: Some(concept_href(
-                                    &project,
-                                    show_all,
-                                    ConceptKind::Label,
-                                    &child.name,
-                                )),
+                                href: Some(concept_href(&project, ConceptKind::Label, &child.name)),
                                 swap: true,
                             }
                         } else {
@@ -891,14 +851,14 @@ fn render_notes(
         }
     }
 
-    let focused = focus_nodes(tree, if show_all { None } else { Some(&project) });
+    let focused = focus_nodes(tree, Some(&project));
     let mut rows = Vec::new();
     flatten_tree(&focused, 0, &names, &mut rows);
     for row in &mut rows {
         if row.folder {
             continue;
         }
-        row.href = notes_href(&project, show_all, Some(&row.path), None);
+        row.href = notes_href(&project, Some(&row.path), None);
         row.selected = path.as_deref() == Some(row.path.as_str());
     }
     fold_rows(&mut rows, fold_state);
@@ -975,7 +935,7 @@ fn render_notes(
                     links_to.push(RelRow {
                         name: name.clone(),
                         detail,
-                        href: Some(concept_href(&project, show_all, kind, name)),
+                        href: Some(concept_href(&project, kind, name)),
                         swap: true,
                     });
                 }
@@ -985,9 +945,9 @@ fn render_notes(
                         .cloned()
                         .unwrap_or_else(|| vault.resolve_with(target, &names))
                 };
-                let href = |path: &str| notes_href(&project, show_all, Some(path), None);
+                let href = |path: &str| notes_href(&project, Some(path), None);
                 let concept_link =
-                    |kind: ConceptKind, name: &str| concept_href(&project, show_all, kind, name);
+                    |kind: ConceptKind, name: &str| concept_href(&project, kind, name);
                 let html = markdown::document_with_links(
                     &TicketMarkdown::blocks(Some(&content.text)),
                     &markdown::Wikilinks {
@@ -1009,7 +969,7 @@ fn render_notes(
                             .into_iter()
                             .map(|backlink| BacklinkRow {
                                 name: note_name(&backlink.path),
-                                href: notes_href(&project, show_all, Some(&backlink.path), None),
+                                href: notes_href(&project, Some(&backlink.path), None),
                                 line: backlink.line,
                             })
                             .collect();
@@ -1111,10 +1071,9 @@ fn render_notes(
                 current_path.clone()
             };
             TabView {
-                href: notes_href(&project, show_all, Some(&label.path), None),
+                href: notes_href(&project, Some(&label.path), None),
                 close_href: notes_href_closing(
                     &project,
-                    show_all,
                     Some(&next)
                         .filter(|next| !next.is_empty())
                         .map(String::as_str),
@@ -1131,19 +1090,16 @@ fn render_notes(
         .collect();
 
     Ok(NotesView {
-        graph: graph_view.then(|| graph_pane(&project, show_all)),
-        note_switch_href: if project.is_empty() && !show_all {
+        graph: graph_view.then(|| graph_pane(&project)),
+        note_switch_href: if project.is_empty() {
             // Bare, so leaving the graph brings back the open note (TAN-877).
             "/notes".to_string()
         } else {
-            notes_href(&project, show_all, None, None)
+            notes_href(&project, None, None)
         },
-        graph_switch_href: graph_href(&project, show_all),
-        focus_action: if graph_view { "/notes/graph" } else { "/notes" },
+        graph_switch_href: graph_href(&project),
         rows,
-        project_options,
         active_project: field(params, "project").to_string(),
-        show_all,
         path: path.clone(),
         crumbs,
         mode,
@@ -1183,7 +1139,7 @@ fn render_notes(
             }),
         error: render_error,
         conflict,
-        focus_url: notes_href(&project, show_all, path.as_deref(), None),
+        focus_url: notes_href(&project, path.as_deref(), None),
         tabs,
         tabs_state,
     })
@@ -1255,13 +1211,15 @@ fn notes_response(
     } else {
         ui_state::set_cookie(&context.ui_cookie(), "tabs", &view.tabs_state)
     };
-    let mut response = notes_page_response(context, headers, body);
+    let switcher = notes_switcher(context, params);
+    let last_cookie = project_switch::last_cookie(context, switcher.as_ref());
+    let mut response = notes_page_response(context, headers, body, switcher);
+    project_switch::stamp(&mut response, last_cookie);
     // A close request is spent once answered: the address bar drops `close`,
     // so a reload never closes the tab again.
     if !field(params, "close").is_empty() && is_partial(headers) {
         let url = notes_href(
             field(params, "project").trim(),
-            !matches!(field(params, "show_all"), "" | "0" | "false"),
             Some(field(params, "path")).filter(|path| !path.is_empty()),
             None,
         );
@@ -1275,7 +1233,36 @@ fn notes_response(
     response
 }
 
-fn notes_page_response(context: &Context, headers: &HeaderMap, body: String) -> Response {
+/// The notes face's switcher. A project change keeps the open note and its
+/// mode (a focus never hides notes), and the graph page stays the graph.
+fn notes_switcher(context: &Context, params: &HashMap<String, String>) -> Option<Switcher> {
+    let graph = field(params, "view") == "graph";
+    let mut hidden = Vec::new();
+    if !graph {
+        let path = field(params, "path").trim();
+        if !path.is_empty() {
+            hidden.push(("path".to_string(), path.to_string()));
+            if field(params, "mode") == "read" {
+                hidden.push(("mode".to_string(), "read".to_string()));
+            }
+        }
+    }
+    let action = if graph { "/notes/graph" } else { "/notes" };
+    project_switch::switcher(
+        context,
+        Face::Notes,
+        field(params, "project").trim(),
+        action,
+        hidden,
+    )
+}
+
+fn notes_page_response(
+    context: &Context,
+    headers: &HeaderMap,
+    body: String,
+    switcher: Option<Switcher>,
+) -> Response {
     if is_partial(headers) {
         return html_response(body, StatusCode::OK);
     }
@@ -1288,6 +1275,7 @@ fn notes_page_response(context: &Context, headers: &HeaderMap, body: String) -> 
         tokens: context.shows_tokens(),
         people: context.shows_people(),
         ui_cookie: context.ui_cookie(),
+        switcher,
     })
     .render()
     {
@@ -1300,14 +1288,31 @@ fn notes_page_response(context: &Context, headers: &HeaderMap, body: String) -> 
     }
 }
 
+/// `GET /notes`: the project's notes. One project is open at a time, so a
+/// request that names none (or an unknown one) goes to the remembered project.
 pub(super) async fn notes_page(
     context: Context,
     Query(params): Query<HashMap<String, String>>,
     headers: HeaderMap,
 ) -> Response {
-    if params.is_empty()
+    let mut params = params;
+    match project_switch::resolve(&context, &headers, field(&params, "project").trim()) {
+        project_switch::Resolved::Fallback(project) => {
+            let rest: Vec<(String, String)> = params.into_iter().collect();
+            return project_switch::redirect("/notes", &project, &rest);
+        }
+        project_switch::Resolved::Known(project) => {
+            params.insert("project".to_string(), project);
+        }
+        project_switch::Resolved::NoProjects => {}
+    }
+    let only_project = params
+        .keys()
+        .all(|key| key == "project" || key == "show_all");
+    if only_project
         && let Some(path) = last_open_note(&context, &headers)
-        && let Ok(location) = HeaderValue::from_str(&notes_href("", false, Some(&path), None))
+        && let Ok(location) =
+            HeaderValue::from_str(&notes_href(field(&params, "project"), Some(&path), None))
     {
         let mut response = StatusCode::SEE_OTHER.into_response();
         response.headers_mut().insert(header::LOCATION, location);
@@ -1673,7 +1678,6 @@ pub(super) async fn note_rename(
             if followed {
                 let url = notes_href(
                     field(&params, "project"),
-                    !matches!(field(&params, "show_all"), "" | "0" | "false"),
                     Some(field(&params, "path")),
                     Some(field(&params, "mode")).filter(|mode| !mode.is_empty()),
                 );

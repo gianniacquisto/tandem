@@ -239,12 +239,11 @@
       form.setAttribute('action', '/notes/move');
       form.innerHTML =
         '<input name="path"><input name="into">' +
-        '<input name="project"><input name="show_all">';
+        '<input name="project">';
       form.elements.path.value = source;
       form.elements.into.value = target;
-      var focus = document.querySelector('#notes-root .focus');
-      form.elements.project.value = focus ? focus.elements.project.value : '';
-      form.elements.show_all.value = focus && focus.elements.show_all.checked ? '1' : '';
+      var picker = document.querySelector('.project-switch__select');
+      form.elements.project.value = picker ? picker.value : '';
       htmxPost(form, '#notes-root');
     }
   });
@@ -283,6 +282,16 @@
     });
     label.disabled = chosen === '';
   }
+
+  // The shell's project switcher: a change submits its plain GET form, so the
+  // header and the body are redrawn together by the server.
+  document.addEventListener('change', function (event) {
+    var select = event.target;
+    if (!select.classList || !select.classList.contains('project-switch__select')) return;
+    var form = select.form;
+    if (form && form.requestSubmit) form.requestSubmit();
+    else if (form) form.submit();
+  });
 
   document.addEventListener('change', function (event) {
     var project = closest(event.target, 'select[name="ticket_project"]');
@@ -1032,8 +1041,7 @@
       var page = new URLSearchParams({
         kind: typed[1].toLowerCase(),
         name: typed[2].trim(),
-        project: value('project'),
-        show_all: value('show_all')
+        project: value('project')
       });
       flushNote().then(function (landed) {
         if (!landed) return;
@@ -1047,8 +1055,7 @@
     var query = new URLSearchParams({
       target: target,
       from: value('path'),
-      project: value('project'),
-      show_all: value('show_all')
+      project: value('project')
     });
     flushNote().then(function (landed) {
       if (!landed) return;

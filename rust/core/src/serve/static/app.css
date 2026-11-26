@@ -900,42 +900,6 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   color: var(--ink);
 }
 
-/* The project focus: the draw's own label picker and its show-all escape. The
- * picker wears the faces' filter sizing; the escape is a pressed control while
- * the face draws every label. */
-.focus {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: var(--space-label);
-}
-
-.focus__label {
-  color: var(--ink-dim);
-  font-size: 12px;
-}
-
-.focus__all {
-  display: inline-flex;
-  align-items: center;
-  height: var(--space-control);
-  padding: 0 10px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--paper);
-  color: var(--ink-dim);
-  font: inherit;
-  font-size: 12px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.focus__all[aria-pressed="true"] {
-  background: var(--parchment);
-  color: var(--ink);
-  font-weight: 600;
-}
-
 .search {
   display: flex;
   flex: 0 0 auto;
@@ -1012,10 +976,6 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   gap: 10px;
   padding-bottom: var(--space-label);
   overflow-x: auto;
-}
-
-.tickets__bar--board .focus {
-  margin-top: 0;
 }
 
 .board__column {
@@ -1294,11 +1254,6 @@ html[data-theme="dark"] .usage__meter::-webkit-meter-optimum-value {
   overflow: auto;
   border-right: var(--hairline) solid var(--sand);
   background: var(--parchment);
-}
-
-.notes__tree > .focus {
-  margin: 10px 0 4px;
-  padding: 0 10px;
 }
 
 .notes__document {
@@ -2623,6 +2578,71 @@ body {
   text-decoration: none;
 }
 
+/* The project switcher: the app's first choice, between the wordmark and the
+ * face tabs. A long name truncates inside the select's own frame. */
+.project-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0 -8px 0 -12px;
+}
+
+.project-switch__sep {
+  color: var(--line);
+  font-size: 18px;
+}
+
+.project-switch__select {
+  box-sizing: border-box;
+  height: var(--space-control);
+  min-width: 0;
+  max-width: 220px;
+  padding: 0 8px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.project-switch__select:disabled {
+  color: var(--ink-dim);
+  cursor: default;
+}
+
+.project-switch__select:focus-visible,
+.project-switch__go:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The submit that works without the script: out of sight until it takes focus. */
+.project-switch__go:not(:focus) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.project-switch__go {
+  height: var(--space-control);
+  padding: 0 10px;
+  border: var(--hairline) solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+
 .shell__tab:hover {
   background: var(--parchment);
   color: var(--ink);
@@ -3552,17 +3572,6 @@ a.menu__option {
   padding: 8px 6px;
   border-right: 0;
   background: var(--parchment);
-}
-
-.notes__tree > .focus {
-  margin: 0 0 8px;
-  padding: 0 4px;
-}
-
-.notes__tree .focus__all {
-  height: 28px;
-  border-color: transparent;
-  background: transparent;
 }
 
 .tree__vault {
