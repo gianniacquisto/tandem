@@ -56,6 +56,7 @@ mod mcp;
 mod notes;
 mod operator;
 mod people;
+mod project_switch;
 mod sheet;
 mod tokens;
 mod ui_state;
@@ -355,7 +356,7 @@ pub fn router_with(context: SessionContext, changes: broadcast::Sender<i64>) -> 
 /// is guarded by construction and cannot be served without the write guard.
 fn routes() -> Router<Arc<SessionContext>> {
     Router::new()
-        .route("/", get(board::board_page))
+        .route("/", get(board::root_page))
         .route("/board", get(board::board_page))
         .route("/events", get(events::events))
         .route("/export", get(export::export))
@@ -656,7 +657,6 @@ fn run_watch(store: Store, changes: broadcast::Sender<i64>, stop: Arc<AtomicBool
 /// raw strings are kept for the hidden inputs a write form carries back.
 struct Filters {
     project: String,
-    show_all: bool,
     /// The checked labels: none is any label, `" "` the unnamed default area,
     /// anything else a name. A ticket matches when it carries any of them.
     labels: Vec<String>,
@@ -678,9 +678,6 @@ impl Filters {
             .get("project")
             .map(|value| value.trim().to_string())
             .unwrap_or_default();
-        let show_all = params
-            .get("show_all")
-            .is_some_and(|value| !matches!(value.as_str(), "" | "0" | "false"));
         let mut labels: Vec<String> = Vec::new();
         for (key, value) in pairs {
             // An empty `label=` (an old hidden input) means none.
@@ -702,7 +699,6 @@ impl Filters {
             .map(|value| (*value).clone());
         Self {
             project,
-            show_all,
             labels,
             assignee,
             text,
@@ -746,17 +742,7 @@ impl Filters {
     /// The filters as a query string, so a link that opens a sheet or lands
     /// back on the board carries them.
     fn query(&self) -> String {
-        let mut pairs: Vec<(&str, String)> = vec![
-            ("project", self.project.clone()),
-            (
-                "show_all",
-                if self.show_all {
-                    "1".into()
-                } else {
-                    String::new()
-                },
-            ),
-        ];
+        let mut pairs: Vec<(&str, String)> = vec![("project", self.project.clone())];
         pairs.extend(self.labels.iter().map(|label| ("label", label.clone())));
         pairs.extend([
             ("assignee", self.assignee.clone()),
@@ -819,6 +805,8 @@ struct PageView {
     /// The prefix of this serve's UI-state cookies, `tandem_<port>_`, on
     /// `<html data-ui-cookie>` so the page's script never guesses it.
     ui_cookie: String,
+    /// The project switcher and face tabs: the board and notes faces only.
+    switcher: Option<project_switch::Switcher>,
 }
 
 impl PageView {
