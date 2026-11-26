@@ -1,6 +1,6 @@
 # UI design lens
 
-The checklist for a diff that draws or sizes something in the UI. It reads the templates and the CSS, plus any screenshot the PR attaches, and judges no screen it cannot see.
+The checklist for a diff that draws or sizes something in the UI. It reads the templates and the CSS, plus the screenshots in the browser-suite run artifact the PR links, and judges no screen it cannot see.
 
 ## Read
 
@@ -17,7 +17,7 @@ The checklist for a diff that draws or sizes something in the UI. It reads the t
 - A spacing, radius, line or colour literal where the tokens have one, so one view drifts from the rest of the UI.
 - A colour that reads only in one palette, when the tokens carry both.
 - A fixed frame on a control that truncates its own text at a length the data allows.
-- A screenshot the PR attaches that shows the token broken (a clipped label, a colour that fails in dark mode), judged as the diff's own change.
+- A screenshot in the run artifact that shows the token broken (a clipped label, a colour that fails in dark mode), judged as the diff's own change.
 
 ## Never blocks on
 
