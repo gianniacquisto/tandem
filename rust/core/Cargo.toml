@@ -12,6 +12,9 @@ name = "tandem_core"
 [dependencies]
 askama.workspace = true
 axum.workspace = true
+# The guard drains a refused request's body through axum's own body types.
+http-body.workspace = true
+http-body-util.workspace = true
 getrandom.workspace = true
 comrak.workspace = true
 flate2.workspace = true
@@ -38,7 +41,6 @@ libc.workspace = true
 [dev-dependencies]
 # The serve suite drives the router as a service and collects the HTML it
 # answers; both are axum's own dependencies, named where the test names them.
-http-body-util.workspace = true
 # The busy-path suite holds the database exclusively the way another process
 # would, which only the engine's own handle can do.
 rusqlite.workspace = true

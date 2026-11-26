@@ -28,10 +28,12 @@
 //!
 //! Nothing here logs a header value, and nothing answers a CORS header.
 
+use axum::body::Body;
 use axum::extract::{MatchedPath, Request};
 use axum::http::{HeaderMap, HeaderValue, Method, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use http_body_util::BodyExt;
 use sha2::{Digest, Sha256};
 
 use crate::permission::{Permission, PrincipalKind, permits};
@@ -733,8 +735,68 @@ pub fn normalize_public_origin(value: &str) -> Result<String, &'static str> {
     })
 }
 
-/// The guard as a layer: every request crosses it before a handler runs.
-pub(super) async fn access_guard(mut request: Request, next: Next) -> Response {
+/// The guard as a layer, with the refusal's body drained. A refusal is answered
+/// before any handler reads the POST body, and closing a socket that holds
+/// unread request bytes makes Windows send RST, which discards the refusal the
+/// client already received (os error 10053, "cannot reach the server"). So a
+/// refused request's body is read and dropped, bounded in bytes and in time,
+/// before the refusal goes out. The refusal itself never changes.
+pub(super) async fn access_guard(request: Request, next: Next) -> Response {
+    let (parts, body) = request.into_parts();
+    let shared = std::sync::Arc::new(std::sync::Mutex::new(body));
+    let request = Request::from_parts(parts, Body::new(SharedBody(shared.clone())));
+    let response = access_guard_inner(request, next).await;
+    if matches!(
+        response.status(),
+        StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN | StatusCode::TOO_MANY_REQUESTS
+    ) {
+        drain(SharedBody(shared)).await;
+    }
+    response
+}
+
+/// How long a refused request may keep sending before its refusal goes out.
+const DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Read and drop what the sender still has, up to the frame limit and the
+/// timeout. Neither limit failing changes the refusal; the body is never kept
+/// or logged.
+async fn drain(mut body: SharedBody) {
+    let read = async {
+        let mut seen = 0usize;
+        while let Some(Ok(frame)) = body.frame().await {
+            if let Some(data) = frame.data_ref() {
+                seen += data.len();
+                if seen > crate::rpc::MAX_FRAME {
+                    return;
+                }
+            }
+        }
+    };
+    let _ = tokio::time::timeout(DRAIN_TIMEOUT, read).await;
+}
+
+/// The request body, shared so the guard can still reach it after the request
+/// moved into the rest of the stack.
+struct SharedBody(std::sync::Arc<std::sync::Mutex<Body>>);
+
+impl axum::body::HttpBody for SharedBody {
+    type Data = axum::body::Bytes;
+    type Error = axum::Error;
+
+    fn poll_frame(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        match self.0.lock() {
+            Ok(mut body) => std::pin::Pin::new(&mut *body).poll_frame(cx),
+            Err(_) => std::task::Poll::Ready(None),
+        }
+    }
+}
+
+/// The guard proper: who may reach a route, and in what shape.
+async fn access_guard_inner(mut request: Request, next: Next) -> Response {
     let Some(access) = request.extensions().get::<Access>().cloned() else {
         // No access policy was installed: refuse rather than serve unguarded.
         tracing::error!("request refused: the router carries no access policy");
