@@ -27,6 +27,10 @@ Decision bullet 1 gains application logging: `tandem serve` writes its log to st
 
 [ADR 0047](0047-serve-is-the-single-door.md) supersedes "`serve` and `mcp` are the two server doors", "No HTTP JSON-RPC" (and its `rpc::Stream` clause) and "Loopback is the authentication". `--allow-unauthenticated` stays, beside an optional `TANDEM_TOKEN`.
 
+## Amendment (2026-11-25)
+
+TAN-482 adds one Node toolchain, scoped to browser tests. The `e2e/` folder holds a Playwright package that drives a real `tandem serve` in Chromium, Firefox and WebKit, and one CI job (`e2e` in `rust.yml`) runs it. The decision "no Node toolchain" still holds for the product: the binary, the Rust workspace, `release.yml` and every other job stay Cargo-only, and `no_workflow_invokes_node_or_npm` narrows to "only the `e2e` job in `rust.yml` may invoke Node or npm". The risky browser code (card drag, the block editor, autosave and flush on leave) cannot be exercised by a fake DOM, which does not model `beforeinput`, composition or drag events. The job skips when a change touches neither the static assets, the templates, `e2e/`, Rust nor the workflow, and uploads the report, a screenshot per case and the traces on every run.
+
 ## Why
 
 - **A transport for a face that is leaving is a migration twice.** `POST /api/rpc` plus Vite asset serving would have been written, tested and deleted inside one release. The board routes are the first real client, so they are the first transport.

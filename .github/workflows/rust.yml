@@ -15,6 +15,8 @@ name: Rust
 #               bins and the tests, so no separate build gate), plus the
 #               installer suite off Windows and the retired-path scan and the em-dash diff gate on macOS.
 #   contention  the ten-run loop over the Windows-flaky store cases.
+#   e2e         the Playwright browser suite against a real `tandem serve` in
+#               Chromium, Firefox and WebKit, with screenshots and traces uploaded.
 # They have to report on every pull request to be worth requiring: a required
 # check that a path-filtered workflow never creates reads "Expected" forever
 # and blocks the merge of a PR that touches no `rust/**` file, and a matrix
@@ -74,6 +76,7 @@ jobs:
         working-directory: .
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      e2e: ${{ steps.filter.outputs.e2e }}
     steps:
       - name: Check out the merge commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -83,7 +86,9 @@ jobs:
 
       - name: Did the change touch what the gates read?
         id: filter
-        run: echo "code=$(bash Scripts/changed-paths.sh Resources/ LICENSE)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "code=$(bash Scripts/changed-paths.sh Resources/ LICENSE)" >> "$GITHUB_OUTPUT"
+          echo "e2e=$(bash Scripts/changed-paths.sh Resources/ LICENSE docs/ examples/ Fixtures/ README.md CONTRIBUTING.md GLOSSARY.md DESIGN.md CLA.md NOTICE.txt AGENTS.md)" >> "$GITHUB_OUTPUT"
 
   deny:
     name: deny
@@ -288,6 +293,69 @@ jobs:
               }
             }
           }
+
+      - name: Save the cache (main pushes only)
+        if: github.event_name == 'push' && steps.setup.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            rust/target
+          key: ${{ steps.setup.outputs.cache-primary-key }}
+
+  e2e:
+    name: e2e
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up the Rust toolchain and cache
+        id: setup
+        uses: ./.github/actions/rust-setup
+        with:
+          enabled: ${{ needs.changes.outputs.e2e }}
+          key: e2e
+
+      - name: Set up Node
+        if: needs.changes.outputs.e2e != 'false'
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Build the tandem binary
+        if: needs.changes.outputs.e2e != 'false'
+        run: cargo build -p tandem
+
+      - name: Install the Playwright runner and browsers
+        if: needs.changes.outputs.e2e != 'false'
+        working-directory: ${{ github.workspace }}/e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium firefox webkit
+
+      - name: "Gate: Playwright browser suite (Chromium, Firefox, WebKit)"
+        if: needs.changes.outputs.e2e != 'false'
+        working-directory: ${{ github.workspace }}/e2e
+        run: npm test
+
+      - name: Upload Playwright report, screenshots and traces
+        if: always() && needs.changes.outputs.e2e != 'false'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 14
 
       - name: Save the cache (main pushes only)
         if: github.event_name == 'push' && steps.setup.outputs.cache-hit != 'true'

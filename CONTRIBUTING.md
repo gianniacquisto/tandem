@@ -52,6 +52,22 @@ cargo fmt --all --check
 cargo clippy --all-targets -- -D warnings
 ```
 
+## Browser tests
+
+The board's own JavaScript (`rust/core/src/serve/static/tandem.js`) is covered by a Playwright suite in `e2e/`, a separate Node package so the Rust workspace gains no Node dependency (ADR 0046, amendment of 2026-11-25). It runs a real `tandem serve` on a scratch home and a free port, in Chromium, Firefox and WebKit.
+
+Run the whole suite with one command from the repo root:
+
+```sh
+(cd rust && cargo build -p tandem) && cd e2e && npm ci && npx playwright install chromium firefox webkit && npm test
+```
+
+After the first run, `cd e2e && npm test` is enough once the binary is built (`TANDEM_BIN` points the suite at another binary). The HTML report lands in `e2e/playwright-report/`, and each case's screenshot and trace in `e2e/test-results/`; open a trace with `npx playwright show-trace <trace.zip>`.
+
+CI runs the same suite in the `e2e` job on every pull request that touches the static assets, the templates, Rust, `e2e/` or the workflow, and uploads the report, screenshots and traces as the `playwright-report` artifact, pass or fail. That artifact is where a UI change's proof lives.
+
+To add a case for your own UI change, add a `test(...)` to `e2e/tests/board.spec.js`: call `startServer()` from `e2e/tests/harness.js` (it seeds one project, label, ticket and note, and returns `baseURL`, `cli`, `readNote` and `writeNote`), drive the page, assert on the page and on the store, attach a screenshot of the end state with `testInfo.attach('end-state', ...)`, and `await srv.stop()` in a `finally`. Keep the case to one behaviour.
+
 ## Run from source
 
 To try a change in the real board, build the `tandem` binary and serve a

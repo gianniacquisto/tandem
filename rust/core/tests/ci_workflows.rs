@@ -70,11 +70,12 @@ fn the_retired_path_scan_is_guarded_by_the_macos_os() {
     );
 }
 
-/// CUT-16 removed the renderer tree and the Node toolchain. A workflow that sets Node up,
-/// installs from a lockfile or runs an npm script is a second toolchain the
-/// repository no longer has, and it fails before it reaches the cargo gates.
+/// CUT-16 removed the renderer tree and the Node toolchain from `release.yml`.
+/// TAN-482 added one Node job (`e2e`) in `rust.yml` for the Playwright browser
+/// suite against `tandem serve`, so `release.yml` stays Cargo-only and `rust.yml`
+/// invokes Node only inside the `e2e` job.
 #[test]
-fn no_workflow_invokes_node_or_npm() {
+fn only_the_e2e_job_in_rust_yml_invokes_node_or_npm() {
     let banned = [
         "actions/setup-node",
         "npm ci",
@@ -83,23 +84,131 @@ fn no_workflow_invokes_node_or_npm() {
         "npm version",
         "npx ",
     ];
-    let mut checked = 0;
-    for entry in std::fs::read_dir(workflows()).expect("the workflow folder reads") {
-        let path = entry.expect("the folder entry reads").path();
-        if path.extension().and_then(|extension| extension.to_str()) != Some("yml") {
-            continue;
-        }
-        let text = std::fs::read_to_string(&path).expect("the workflow reads");
-        for command in banned {
-            assert!(
-                !text.contains(command),
-                "{} still runs `{command}`: the Node toolchain was removed with the renderer tree (CUT-15, CUT-16)",
-                path.display()
-            );
-        }
-        checked += 1;
+    let release = std::fs::read_to_string(workflows().join("release.yml")).expect("release.yml");
+    for command in banned {
+        assert!(
+            !release.contains(command),
+            "release.yml still runs `{command}`: the release pipeline is Cargo-only (CUT-16)"
+        );
     }
-    assert!(checked >= 2, "the workflows are read ({checked} files)");
+    let rust = std::fs::read_to_string(workflows().join("rust.yml"))
+        .expect("rust.yml")
+        .replace("\r\n", "\n");
+    let (before_e2e, e2e_and_after) = rust
+        .split_once("\n  e2e:\n")
+        .expect("rust.yml defines the `e2e` job (TAN-482)");
+    for command in banned {
+        assert!(
+            !before_e2e.contains(command),
+            "rust.yml invokes `{command}` outside the `e2e` job"
+        );
+    }
+    for required in [
+        "actions/setup-node",
+        "npm ci",
+        "playwright install --with-deps chromium firefox webkit",
+        "npm test",
+        "actions/upload-artifact",
+    ] {
+        assert!(
+            e2e_and_after.contains(required),
+            "the `e2e` job in rust.yml carries `{required}`"
+        );
+    }
+}
+
+/// TAN-482: the `e2e` job runs when the PR touches the static assets, templates,
+/// `e2e/` or the workflow, and skips when it touches only docs or non-UI files.
+#[cfg(not(windows))]
+#[test]
+fn the_e2e_filter_runs_for_static_assets_and_skips_unrelated_changes() {
+    let dir = std::env::temp_dir().join(format!("tandem-e2e-paths-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .args([
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+            ])
+            .args(args)
+            .current_dir(&dir)
+            .output()
+            .expect("git runs");
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    git(&["init", "-q"]);
+    std::fs::write(dir.join("seed"), "x").unwrap();
+    git(&["add", "-A"]);
+    git(&["commit", "-qm", "seed"]);
+    let script = repo_root().join("Scripts/changed-paths.sh");
+    let allowlist = [
+        "Resources/",
+        "LICENSE",
+        "docs/",
+        "examples/",
+        "Fixtures/",
+        "README.md",
+        "CONTRIBUTING.md",
+        "GLOSSARY.md",
+        "DESIGN.md",
+        "CLA.md",
+        "NOTICE.txt",
+        "AGENTS.md",
+    ];
+    let answer = |event: &str| {
+        let out = std::process::Command::new("bash")
+            .arg(&script)
+            .args(allowlist)
+            .env("GITHUB_EVENT_NAME", event)
+            .current_dir(&dir)
+            .output()
+            .expect("the script runs");
+        assert!(out.status.success());
+        String::from_utf8(out.stdout).unwrap().trim().to_string()
+    };
+    let touch = |path: &str| {
+        let file = dir.join(path);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, path).unwrap();
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", path]);
+    };
+    for skippable in [
+        "docs/cli.md",
+        "README.md",
+        "CONTRIBUTING.md",
+        "examples/AGENTS.md",
+    ] {
+        touch(skippable);
+        assert_eq!(
+            answer("pull_request"),
+            "false",
+            "{skippable} does not touch the static assets or served UI, so e2e skips"
+        );
+    }
+    for trigger in [
+        "rust/core/src/serve/static/tandem.js",
+        "rust/core/templates/board.html",
+        "e2e/tests/board.spec.js",
+        ".github/workflows/rust.yml",
+    ] {
+        touch(trigger);
+        assert_eq!(
+            answer("pull_request"),
+            "true",
+            "{trigger} runs the e2e suite"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// One workflow step: its `name:` and every line that follows until the next
@@ -462,7 +571,9 @@ fn the_publish_step_never_deletes_a_release_and_the_audit_runs() {
         release.contains("attest-build-provenance"),
         "archives are attested"
     );
-    let rust = std::fs::read_to_string(workflows().join("rust.yml")).expect("rust.yml");
+    let rust = std::fs::read_to_string(workflows().join("rust.yml"))
+        .expect("rust.yml")
+        .replace("\r\n", "\n");
     assert!(
         rust.contains("cargo-deny-action"),
         "rust.yml runs cargo deny"

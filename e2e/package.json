@@ -1,0 +1,11 @@
+{
+  "name": "tandem-e2e",
+  "private": true,
+  "description": "End-to-end Playwright browser tests for tandem serve.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0"
+  }
+}
