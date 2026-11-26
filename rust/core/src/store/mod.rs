@@ -624,11 +624,23 @@ impl Store {
         // image is rolled here, before it runs: rolled afterwards, `.bak`
         // would already hold the new version and a previous build would
         // have nothing to restore.
-        let migrating = existed && schema::behind(&connection)?;
+        let behind = schema::behind(&connection)?;
+        let migrating = existed && behind;
         if migrating {
             backup_database(&database, &self.backup())?;
         }
         schema::migrate(&connection, actor)?;
+        if behind {
+            // Best-effort and once per upgrade (a fresh home included): the
+            // migrations that drop tables leave free pages, and VACUUM hands
+            // them back. It runs after the backup, so `.bak` keeps the
+            // pre-image, and outside any transaction, which VACUUM requires.
+            // It needs roughly the file's size in free disk and runs under
+            // the write gate, so no second writer races it. A failure is
+            // swallowed: the migration committed and `.bak` holds the
+            // pre-image. An up-to-date open is not behind and pays nothing.
+            let _ = connection.execute_batch("VACUUM");
+        }
 
         begin_immediate(&connection)?;
         let changes_before = connection.total_changes();
