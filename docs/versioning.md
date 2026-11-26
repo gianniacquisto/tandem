@@ -23,7 +23,7 @@ Tandem moves quickly, and different surfaces carry different promises. A change 
 
 ## The store
 
-The store's schema only moves forward. A newer binary migrates the store on its first write, keeping the copy from before the migration as the backup, and an older binary then refuses to open it. So an upgrade is one-way unless you restore the backup: see [the store](store.md#upgrading) before downgrading.
+The store's schema only moves forward. A newer binary migrates the store on the first command it runs against the home, or when `tandem serve` starts (`tandem doctor` excepted), keeping the copy from before the migration as the backup, and an older binary then refuses to open it. So an upgrade is one-way unless you restore the backup: see [the store](store.md#upgrading) before downgrading.
 
 An archive made by [`tandem-cli export`](cli.md#export-and-import) can be imported by the same release or a later one, including an archive whose notes sit under the older `bikeshed/` entry name.
 

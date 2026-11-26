@@ -283,3 +283,121 @@ fn a_home_that_cannot_be_created_names_its_path_and_the_cause() {
         "the path is printed once: {stderr}"
     );
 }
+
+// MARK: - An older home moves on the first command (TAN-389)
+
+/// A home an older build left, at schema v15, with one ticket in it.
+fn v15_home(sandbox: &Sandbox) -> PathBuf {
+    let home = sandbox.path().join("home");
+    tandem_core::store::testing::home_at_version(&home, 15).expect("v15 applies");
+    tandem_core::store::testing::execute(
+        &home,
+        "INSERT INTO projects (name, position, author) VALUES ('P', 0, 'human');
+         INSERT INTO labels (name, key, last_number, position, project, author)
+             VALUES ('P', 'P', 1, 0, 'P', 'human');
+         INSERT INTO tickets
+            (id, title, status, archived, label, number, origin, position, created_at, author)
+         VALUES ('00000000-0000-0000-0000-000000000001', 'older home ticket', 'ready', 0,
+                 'P', 1, 'human', 0, '2026-10-01T00:00:00Z', 'human');",
+    )
+    .expect("the ticket lands");
+    home
+}
+
+fn versions_detail(output: &Output) -> String {
+    let value: Value = serde_json::from_slice(&output.stdout).expect("doctor prints JSON");
+    value["checks"]
+        .as_array()
+        .and_then(|rows| rows.iter().find(|row| row["name"] == "versions"))
+        .and_then(|row| row["detail"].as_str())
+        .expect("the report carries a versions row")
+        .to_string()
+}
+
+#[test]
+fn a_read_verb_on_an_older_home_migrates_it_first() {
+    let sandbox = Sandbox::new("migrate-on-read");
+    let home = v15_home(&sandbox);
+
+    let output = tandem(&sandbox, Some(&home), &["ticket", "list"]);
+
+    assert!(
+        output.status.success(),
+        "the read answers: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("older home ticket"),
+        "the ticket is listed"
+    );
+    let doctor = tandem(&sandbox, Some(&home), &["doctor"]);
+    assert!(
+        versions_detail(&doctor).ends_with("store schema v16"),
+        "{}",
+        versions_detail(&doctor)
+    );
+    assert!(
+        home.join("tandem.db.bak").exists(),
+        "the pre-image is rolled"
+    );
+}
+
+#[test]
+fn doctor_on_an_older_home_reports_and_writes_nothing() {
+    let sandbox = Sandbox::new("doctor-older");
+    let home = v15_home(&sandbox);
+    let before = fs::read(home.join("tandem.db")).unwrap();
+
+    let output = tandem(&sandbox, Some(&home), &["doctor"]);
+
+    assert!(
+        versions_detail(&output).ends_with("store schema v15"),
+        "{}",
+        versions_detail(&output)
+    );
+    assert_eq!(fs::read(home.join("tandem.db")).unwrap(), before);
+    assert!(!home.join("tandem.db.bak").exists());
+}
+
+#[test]
+fn a_read_verb_on_an_empty_home_creates_no_database() {
+    let sandbox = Sandbox::new("read-empty");
+    let home = sandbox.path().join("home");
+    fs::create_dir_all(&home).unwrap();
+
+    let output = tandem(&sandbox, Some(&home), &["ticket", "list"]);
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !home.join("tandem.db").exists(),
+        "a read creates no database"
+    );
+}
+
+#[test]
+fn a_read_verb_on_a_newer_home_is_refused_and_writes_nothing() {
+    let sandbox = Sandbox::new("read-newer");
+    let home = sandbox.path().join("home");
+    tandem_core::store::testing::home_at_version(&home, 16).expect("v16 applies");
+    tandem_core::store::testing::execute(
+        &home,
+        "INSERT INTO schema_migrations (version, applied_at, author) VALUES (17, 'x', 'human')",
+    )
+    .expect("a newer version lands");
+    let before = fs::read(home.join("tandem.db")).unwrap();
+
+    let output = tandem(&sandbox, Some(&home), &["ticket", "list"]);
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty(), "nothing is printed on stdout");
+    assert!(
+        !String::from_utf8_lossy(&output.stderr).is_empty(),
+        "the refusal is on stderr"
+    );
+    assert_eq!(fs::read(home.join("tandem.db")).unwrap(), before);
+    assert!(!home.join("tandem.db.bak").exists());
+}

@@ -63,7 +63,7 @@ Things to know around an upgrade:
 
 - `--bin-dir` (or `TANDEM_INSTALL_DIR`) must match on every run. The script looks only in that directory, so installing into a second directory leaves the first copy in place, and whichever comes first on PATH wins. `which -a tandem` lists every copy; `tandem --version` names the one you are running.
 - A running `tandem serve` keeps the old binary until you stop it and start it again. Restart it after an upgrade, or the board and your agents keep talking to the old build ([upgrading the store](store.md#upgrading)).
-- The newer binary migrates the store on its first write, and an older binary then refuses the store. A rollback with `--version` after that needs the backup, not just the old binary: see [the backup](store.md#the-backup).
+- The newer binary migrates the store on the first command it runs, and an older binary then refuses the store. A rollback with `--version` after that needs the backup, not just the old binary: see [the backup](store.md#the-backup).
 - `--uninstall` refuses to remove a `tandem` that does not identify itself as this project's binary, and says so.
 - Exit codes: `0` installed, removed, or left alone; `1` a refusal (checksum, platform, write failure, no latest release found); `2` a bad argument; a failed download, such as a version with no release, exits with curl's own nonzero code.
 

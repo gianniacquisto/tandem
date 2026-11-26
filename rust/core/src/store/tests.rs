@@ -1648,6 +1648,174 @@ mod schema {
         );
     }
 
+    // MARK: - The eager migrate (TAN-389)
+
+    fn versions(sandbox: &Sandbox) -> Vec<i64> {
+        sandbox
+            .connection()
+            .prepare("SELECT version FROM schema_migrations ORDER BY rowid")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap()
+    }
+
+    #[test]
+    fn an_eager_migrate_moves_a_v15_home_to_current_without_a_write() {
+        use crate::domain::{Archived, Board, TicketQuery};
+
+        let sandbox = v15_home("eager-v15");
+        let store = sandbox.store();
+        let revision = store.revision().unwrap();
+
+        store
+            .ensure_migrated(&Actor::Human)
+            .expect("the home moves");
+
+        assert_eq!(store.schema_version().unwrap(), Some(CURRENT_VERSION));
+        assert_eq!(store.revision().unwrap(), revision, "no write ran");
+        let board = Board::with_actor(sandbox.store(), Actor::Human);
+        let tickets = board
+            .list(&TicketQuery {
+                archived: Archived::Included,
+                ..TicketQuery::default()
+            })
+            .unwrap();
+        let moved = tickets.iter().find(|t| t.title == "q1 newer").unwrap();
+        assert_eq!(moved.reference.as_deref(), Some("P-5"));
+        let alias: String = sandbox
+            .connection()
+            .query_row(
+                "SELECT ticket_id FROM ticket_aliases WHERE reference = 'Q-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(alias, "00000000-0000-0000-0000-0000000000b1");
+    }
+
+    #[test]
+    fn an_eager_migrate_applies_every_step_in_order_from_v1() {
+        let sandbox = Sandbox::new("eager-v1");
+        fs::create_dir_all(sandbox.home_path()).unwrap();
+        let connection = Connection::open(sandbox.database()).unwrap();
+        migrate_with(&connection, &MIGRATIONS[..1], &Actor::Human).expect("v1 applies");
+        drop(connection);
+
+        sandbox.store().ensure_migrated(&Actor::Human).unwrap();
+
+        assert_eq!(
+            versions(&sandbox),
+            (1..=CURRENT_VERSION).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn ensure_migrated_on_a_current_home_writes_nothing() {
+        let sandbox = Sandbox::new("eager-current");
+        let store = sandbox.store();
+        probe(&store, &Actor::Human, "first");
+        let revision = store.revision().unwrap();
+        let before = fs::read(sandbox.database()).unwrap();
+
+        store.ensure_migrated(&Actor::Human).unwrap();
+
+        assert!(!sandbox.backup().exists(), "no backup is rolled");
+        assert_eq!(fs::read(sandbox.database()).unwrap(), before);
+        assert_eq!(store.revision().unwrap(), revision);
+    }
+
+    #[test]
+    fn ensure_migrated_on_a_missing_database_creates_nothing() {
+        let sandbox = Sandbox::new("eager-missing");
+        sandbox.store().ensure_migrated(&Actor::Human).unwrap();
+        assert!(!sandbox.home_path().exists(), "no home directory appears");
+        assert!(!sandbox.database().exists());
+    }
+
+    #[test]
+    fn a_failing_eager_migration_names_it_and_leaves_the_prior_version() {
+        let sandbox = v15_home("eager-fails");
+        let mut migrations: Vec<Migration> = MIGRATIONS
+            .iter()
+            .map(|migration| Migration {
+                version: migration.version,
+                name: migration.name,
+                apply: migration.apply,
+            })
+            .collect();
+        migrations[15].apply = |connection| {
+            super::super::rekey::migrate(connection)?;
+            Err(rusqlite::Error::InvalidQuery)
+        };
+
+        let error = sandbox
+            .store()
+            .ensure_migrated_with(&Actor::Human, |connection, actor| {
+                migrate_with(connection, &migrations, actor)
+            })
+            .expect_err("the migration fails");
+
+        let message = error.to_string();
+        assert!(
+            message.contains(&format!("migration 16 ({})", migrations[15].name)),
+            "the error names version and name: {message}"
+        );
+        assert_eq!(version(&sandbox.connection()).unwrap(), Some(15));
+        assert!(sandbox.backup().exists(), "the pre-image was rolled first");
+    }
+
+    #[test]
+    fn ensure_migrated_refuses_legacy_and_newer_and_writes_nothing() {
+        // The retired store's seam: no `author` column.
+        let legacy = Sandbox::new("eager-legacy");
+        fs::create_dir_all(legacy.home_path()).unwrap();
+        let connection = Connection::open(legacy.database()).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, appliedAt TEXT NOT NULL);
+                 INSERT INTO schema_migrations VALUES (5, '2026-01-01T00:00:00Z');",
+            )
+            .unwrap();
+        drop(connection);
+        let before = fs::read(legacy.database()).unwrap();
+        let error = legacy.store().ensure_migrated(&Actor::Human).unwrap_err();
+        assert!(
+            matches!(error, StoreError::Legacy { version: 5 }),
+            "{error:?}"
+        );
+        assert_eq!(fs::read(legacy.database()).unwrap(), before);
+        assert!(!legacy.backup().exists());
+
+        // A file from a newer build.
+        let newer = Sandbox::new("eager-newer");
+        super::super::testing::home_at_version(&newer.home_path(), MIGRATIONS.len()).unwrap();
+        let connection = Connection::open(newer.database()).unwrap();
+        connection
+            .execute(
+                "INSERT INTO schema_migrations (version, applied_at, author) VALUES (?1, 'x', 'human')",
+                [CURRENT_VERSION + 1],
+            )
+            .unwrap();
+        drop(connection);
+        let before = fs::read(newer.database()).unwrap();
+        let error = newer.store().ensure_migrated(&Actor::Human).unwrap_err();
+        assert!(matches!(error, StoreError::Newer { .. }), "{error:?}");
+        assert_eq!(fs::read(newer.database()).unwrap(), before);
+        assert!(!newer.backup().exists());
+    }
+
+    #[test]
+    fn the_eager_migrate_rolls_the_pre_migration_backup() {
+        let sandbox = v15_home("eager-backup");
+        sandbox.store().ensure_migrated(&Actor::Human).unwrap();
+        let backup =
+            Connection::open_with_flags(sandbox.backup(), OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .expect("the backup opens");
+        assert_eq!(version(&backup).unwrap(), Some(15));
+    }
+
     #[test]
     fn a_v6_file_reads_an_empty_board_and_the_first_write_migrates_it() {
         use crate::domain::{AddTicket, Board};

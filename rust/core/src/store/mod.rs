@@ -44,6 +44,8 @@ mod rekey;
 // Reachable from the schema suite, which builds a v2 home to prove a read of
 // an older file never fails on a column a later migration adds.
 pub(crate) mod schema;
+#[doc(hidden)]
+pub mod testing;
 #[cfg(test)]
 mod tests;
 mod write;
@@ -252,6 +254,16 @@ fn write_gate(home: &Path) -> Arc<Gate> {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     Arc::clone(gates.entry(key).or_default())
+}
+
+/// What [`Store::prelude`] hands back: the open connection, the database path,
+/// whether the file existed, and whether this open migrated it (the `.bak`
+/// then holds the pre-image).
+struct Prelude {
+    connection: Connection,
+    database: PathBuf,
+    existed: bool,
+    migrating: bool,
 }
 
 /// The process-local write gate: the lock one home's writers queue on.
@@ -595,6 +607,10 @@ impl Store {
     /// the busy window are the contention bound across processes, and the
     /// process-local gate queues this process's own threads within the same
     /// window (ADR 0031).
+    ///
+    /// A write also migrates a home that is behind, before its transaction:
+    /// the lazy trigger, kept as the backstop for a writer that never passed
+    /// startup. The eager one is [`Store::ensure_migrated`].
     pub fn write<T>(&self, actor: &Actor, body: impl FnOnce(&Write<'_>) -> Result<T>) -> Result<T> {
         self.home.ensure().map_err(|error| {
             StoreError::Io(format!(
@@ -607,40 +623,12 @@ impl Store {
         // and the busy window are the bound (ADR 0031).
         let gate = write_gate(self.home.directory());
         let _gate = enter_gate(&gate, self.home.directory(), self.gate_timeout)?;
-        // A writer killed mid-backup leaves its temp beside the database, and
-        // nothing renames it: the sweep under the gate clears it, the same rule
-        // the notes' vault applies to its notes' temps (ADR 0031).
-        sweep_orphans(self.home.directory());
-        let database = self.database();
-        let existed = database.exists();
-        let connection = open(&database)?;
-        // Refuse before any table is written and before the journal mode
-        // moves. A clean v5 file is left byte for byte; one carrying a hot
-        // journal has that journal rolled back by this open itself, which
-        // changes no row and no schema.
-        schema::refuse_legacy(&connection)?;
-        switch_to_wal(&connection)?;
-        // A migration commits in its own transaction, so the pre-migration
-        // image is rolled here, before it runs: rolled afterwards, `.bak`
-        // would already hold the new version and a previous build would
-        // have nothing to restore.
-        let behind = schema::behind(&connection)?;
-        let migrating = existed && behind;
-        if migrating {
-            backup_database(&database, &self.backup())?;
-        }
-        schema::migrate(&connection, actor)?;
-        if behind {
-            // Best-effort and once per upgrade (a fresh home included): the
-            // migrations that drop tables leave free pages, and VACUUM hands
-            // them back. It runs after the backup, so `.bak` keeps the
-            // pre-image, and outside any transaction, which VACUUM requires.
-            // It needs roughly the file's size in free disk and runs under
-            // the write gate, so no second writer races it. A failure is
-            // swallowed: the migration committed and `.bak` holds the
-            // pre-image. An up-to-date open is not behind and pays nothing.
-            let _ = connection.execute_batch("VACUUM");
-        }
+        let Prelude {
+            connection,
+            database,
+            existed,
+            migrating,
+        } = self.prelude(actor, schema::migrate)?;
 
         begin_immediate(&connection)?;
         let changes_before = connection.total_changes();
@@ -676,6 +664,102 @@ impl Store {
                 Err(error)
             }
         }
+    }
+
+    /// Move the home to this build's schema now, without a write.
+    ///
+    /// The eager trigger beside `write`'s lazy one (ADR 0031, amended): the CLI
+    /// calls it when a command starts and `tandem serve` when it starts, so an
+    /// upgrade moves the home on the first command a newer binary runs, not on
+    /// the first write. `write` stays the backstop for anything that never
+    /// passed startup, and `Store::new`, `read` and `read_snapshot` stay
+    /// write-free.
+    ///
+    /// No database yet is left alone: nothing exists to move, and creating one
+    /// would break the empty-home contract. A home already at the current
+    /// version pays one read-only version read, with no read-write open, no
+    /// gate and no backup. Otherwise it runs the same prelude as `write` (the
+    /// legacy and newer refusals first, then the pre-migration `.bak`, then
+    /// the migrations, one transaction each), takes no revision and records
+    /// the migration rows under `actor`. A refusal or a failed migration comes
+    /// back as the store's own error; every earlier step stays committed.
+    pub fn ensure_migrated(&self, actor: &Actor) -> Result<()> {
+        self.ensure_migrated_with(actor, schema::migrate)
+    }
+
+    /// [`Store::ensure_migrated`] over an explicit migrate step, so the suite
+    /// can drive a failing list through the same prelude.
+    pub(crate) fn ensure_migrated_with(
+        &self,
+        actor: &Actor,
+        migrate: impl FnOnce(&Connection, &Actor) -> Result<()>,
+    ) -> Result<()> {
+        if !self.database().exists() {
+            return Ok(());
+        }
+        // `schema_version` reads through `read`, which refuses a legacy or a
+        // newer file before it answers.
+        if self.schema_version()? == Some(schema::CURRENT_VERSION) {
+            return Ok(());
+        }
+        let gate = write_gate(self.home.directory());
+        let _gate = enter_gate(&gate, self.home.directory(), self.gate_timeout)?;
+        self.prelude(actor, migrate).map(|_| ())
+    }
+
+    /// The part of a write that precedes its transaction, shared by `write`
+    /// and `ensure_migrated` so the backup rule has one home: the process gate,
+    /// the orphan sweep, the read-write open, the refusal of a legacy or newer
+    /// file before anything moves, the WAL switch, the pre-migration `.bak`
+    /// when the file existed and is behind, then the migrations and, once per
+    /// upgrade, a best-effort VACUUM. The caller holds the process gate
+    /// (a guard cannot outlive this call's stack), so every step here runs
+    /// inside it.
+    fn prelude(
+        &self,
+        actor: &Actor,
+        migrate: impl FnOnce(&Connection, &Actor) -> Result<()>,
+    ) -> Result<Prelude> {
+        // A writer killed mid-backup leaves its temp beside the database, and
+        // nothing renames it: the sweep under the gate clears it, the same rule
+        // the notes' vault applies to its notes' temps (ADR 0031).
+        sweep_orphans(self.home.directory());
+        let database = self.database();
+        let existed = database.exists();
+        let connection = open(&database)?;
+        // Refuse before any table is written and before the journal mode
+        // moves. A clean v5 file is left byte for byte; one carrying a hot
+        // journal has that journal rolled back by this open itself, which
+        // changes no row and no schema.
+        schema::refuse_legacy(&connection)?;
+        switch_to_wal(&connection)?;
+        // A migration commits in its own transaction, so the pre-migration
+        // image is rolled here, before it runs: rolled afterwards, `.bak`
+        // would already hold the new version and a previous build would
+        // have nothing to restore.
+        let behind = schema::behind(&connection)?;
+        let migrating = existed && behind;
+        if migrating {
+            backup_database(&database, &self.backup())?;
+        }
+        migrate(&connection, actor)?;
+        if behind {
+            // Best-effort and once per upgrade (a fresh home included): the
+            // migrations that drop tables leave free pages, and VACUUM hands
+            // them back. It runs after the backup, so `.bak` keeps the
+            // pre-image, and outside any transaction, which VACUUM requires.
+            // It needs roughly the file's size in free disk and runs under
+            // the write gate, so no second writer races it. A failure is
+            // swallowed: the migration committed and `.bak` holds the
+            // pre-image. An up-to-date open is not behind and pays nothing.
+            let _ = connection.execute_batch("VACUUM");
+        }
+        Ok(Prelude {
+            connection,
+            database,
+            existed,
+            migrating,
+        })
     }
 
     /// The applied migration version, or `None` when there is no database yet.
