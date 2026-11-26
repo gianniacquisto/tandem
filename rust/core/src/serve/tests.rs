@@ -357,6 +357,43 @@ async fn a_ticket_in_a_stage_the_board_does_not_draw_still_lands_in_a_column() {
 }
 
 #[tokio::test]
+async fn an_empty_project_draws_its_copy_without_a_stray_comma() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-empty-project");
+    let store = sandbox.store();
+    let board = Board::with_actor(store.clone(), Actor::Human);
+    board
+        .add_project("Quiet", None)
+        .expect("the project is added");
+    board
+        .add_project("Busy", None)
+        .expect("the project is added");
+    board
+        .add(
+            "Elsewhere card",
+            AddTicket {
+                project: Some("Busy"),
+                status: Status::Backlog,
+                ..AddTicket::default()
+            },
+        )
+        .expect("the ticket is added");
+    let app = router(context(store));
+
+    let (status, _, body) = get(&app, "/?project=Quiet").await;
+    assert_eq!(status, StatusCode::OK, "the board answers: {body}");
+    assert!(
+        body.contains("No tickets in Quiet"),
+        "the title draws: {body}"
+    );
+    assert!(!body.contains("foot,."), "no stray comma: {body}");
+    assert!(
+        body.contains("foot.") || body.contains("foot.</"),
+        "the copy ends at the full stop: {body}"
+    );
+}
+
+#[tokio::test]
 async fn get_board_filters_by_project_focus_label_assignee_and_accent_folded_search() {
     let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("board-filters");

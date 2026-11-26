@@ -255,7 +255,7 @@ fn empty_view(
     {
         return Some(EmptyView {
             title: format!("No tickets in {}", filters.project),
-            subtitle: "Add a card from a column's foot,.".to_string(),
+            subtitle: "Add a card from a column's foot.".to_string(),
             hero: false,
         });
     }
