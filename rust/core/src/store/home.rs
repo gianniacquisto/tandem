@@ -178,6 +178,7 @@ fn normalize(path: PathBuf) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     // Every path here is platform-shaped: a `/users/test` literal resolves to
     // `D:\users\test` on Windows and the assertions would compare two homes
