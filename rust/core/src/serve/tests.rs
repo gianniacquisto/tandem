@@ -755,11 +755,17 @@ async fn the_new_form_files_into_its_own_project_and_label_selects() {
         "the focused project is preset: {focused}"
     );
     assert!(
-        focused.contains("<option value=\"alpha\" data-project=\"Alpha\" selected>"),
+        focused.contains(&format!(
+            "<option value=\"alpha\" data-project=\"Alpha\" data-tone=\"{}\" selected>",
+            super::board::label_tone("alpha")
+        )),
         "the filter's label is preset: {focused}"
     );
     assert!(
-        focused.contains("<option value=\"beta\" data-project=\"Beta\" hidden>"),
+        focused.contains(&format!(
+            "<option value=\"beta\" data-project=\"Beta\" data-tone=\"{}\" hidden>",
+            super::board::label_tone("beta")
+        )),
         "another project's label is hidden without the script: {focused}"
     );
     assert!(
@@ -1032,6 +1038,7 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 "renumberRun",
                 "Tab indents. Press Escape, then Tab, to leave the editor.",
                 "data-autosave",
+                "data-picker",
                 "/field'",
             ] {
                 assert!(body.contains(key), "tandem.js carries {key}");
@@ -1817,6 +1824,238 @@ async fn an_empty_title_field_save_is_refused_with_the_domain_message() {
         "{answer}"
     );
     assert_eq!(board.ticket(&id).expect("reads").title, "Café alpha");
+}
+
+fn create_body(value: &str, was: &str) -> String {
+    format!("{}&create=1", field_body("label", value, was))
+}
+
+#[tokio::test]
+async fn the_sheet_label_select_is_a_picker_with_toned_options() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-label-picker");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let id = by_title(&board, "Café alpha").id.to_string();
+    let app = router(context(store));
+    let (status, _, sheet) = send(&app, sheet_get(&format!("/tickets/{id}"))).await;
+    assert_eq!(status, StatusCode::OK, "{sheet}");
+    assert!(sheet.contains("data-picker"), "{sheet}");
+    assert!(
+        sheet.contains("data-picker-create=\"Create label\""),
+        "{sheet}"
+    );
+    assert!(
+        sheet.contains("data-picker-placeholder=\"Change label"),
+        "{sheet}"
+    );
+    for name in ["alpha", "shared"] {
+        let tone = super::board::label_tone(name);
+        assert!(
+            sheet.contains(&format!("<option value=\"{name}\" data-tone=\"{tone}\"")),
+            "{name} carries tone {tone}: {sheet}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_label_field_save_with_create_makes_the_label_in_the_tickets_project_and_applies_it() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-label-create");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let id = by_title(&board, "Café alpha").id.to_string();
+    let app = router(context(store.clone()));
+    let (status, answer) = save_field(&app, &id, &create_body("fresh", "alpha")).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert!(answer.contains("data-state=\"saved\""), "{answer}");
+    let tone = super::board::label_tone("fresh");
+    assert!(
+        answer.contains(&format!("data-tone=\"{tone}\"")),
+        "{answer}"
+    );
+    assert_eq!(
+        board.ticket(&id).expect("reads").label.as_deref(),
+        Some("fresh")
+    );
+    let projects = board.projects().expect("projects read");
+    let alpha = projects.iter().find(|p| p.name == "Alpha").expect("alpha");
+    assert!(
+        alpha.labels.iter().any(|l| l == "fresh"),
+        "{:?}",
+        alpha.labels
+    );
+    let tree = vault(&store).tree();
+    let found = tree
+        .iter()
+        .find(|n| n.name == "projects")
+        .and_then(|n| n.children.iter().find(|c| c.name == "Alpha"))
+        .and_then(|n| n.children.iter().find(|c| c.name == "fresh"));
+    assert!(found.is_some(), "the vault folder exists: {tree:?}");
+}
+
+#[tokio::test]
+async fn creating_a_label_whose_name_exists_in_another_project_is_refused_and_moves_nothing() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-label-create-dup");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let id = by_title(&board, "Café alpha").id.to_string();
+    let app = router(context(store));
+    let labels = board.labels().expect("labels read");
+    let (status, answer) = save_field(&app, &id, &create_body("beta", "alpha")).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert!(answer.contains("data-state=\"refused\""), "{answer}");
+    assert!(answer.contains("already exists"), "{answer}");
+    assert_eq!(
+        board.ticket(&id).expect("reads").label.as_deref(),
+        Some("alpha")
+    );
+    assert_eq!(board.labels().expect("labels read"), labels);
+}
+
+#[tokio::test]
+async fn a_label_create_with_a_stale_was_answers_conflict_and_creates_nothing() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-label-create-stale");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let id = by_title(&board, "Café alpha").id.to_string();
+    let app = router(context(store));
+    let labels = board.labels().expect("labels read");
+    let (_, answer) = save_field(&app, &id, &create_body("fresh", "shared")).await;
+    assert!(answer.contains("data-state=\"conflict\""), "{answer}");
+    assert_eq!(board.labels().expect("labels read"), labels);
+    assert_eq!(
+        board.ticket(&id).expect("reads").label.as_deref(),
+        Some("alpha")
+    );
+}
+
+#[tokio::test]
+async fn a_label_create_with_a_blank_name_is_refused_with_the_domain_message() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-label-create-blank");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let id = by_title(&board, "Café alpha").id.to_string();
+    let app = router(context(store));
+    let (_, answer) = save_field(&app, &id, &create_body("   ", "alpha")).await;
+    assert!(answer.contains("data-state=\"refused\""), "{answer}");
+    assert!(
+        answer.contains(&crate::domain::DomainError::EmptyLabelName.message()),
+        "{answer}"
+    );
+    assert_eq!(
+        board.ticket(&id).expect("reads").label.as_deref(),
+        Some("alpha")
+    );
+}
+
+#[tokio::test]
+async fn create_on_a_field_other_than_label_is_a_bad_request() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-create-other-field");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let id = by_title(&board, "Café alpha").id.to_string();
+    let app = router(context(store));
+    let body = format!("{}&create=1", field_body("title", "Renamed", "Café alpha"));
+    let (status, _) = save_field(&app, &id, &body).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(board.ticket(&id).expect("reads").title, "Café alpha");
+}
+
+#[tokio::test]
+async fn the_new_form_creates_a_new_label_in_the_chosen_project_and_files_the_ticket_in_it() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("new-form-label-create");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let app = router(context(store.clone()));
+    let revision = store.revision().expect("the revision reads");
+    let body = format!(
+        "title=Filed&status=ready&ticket_project=Beta&ticket_label=brandnew&ticket_label_new=1&expected_revision={revision}&project=&show_all=&assignee=&text="
+    );
+    let (status, _, page) = send(&app, form_request("/tickets", &body)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    let filed = by_title(&board, "Filed");
+    assert_eq!(filed.project, "Beta");
+    assert_eq!(filed.label.as_deref(), Some("brandnew"));
+    let projects = board.projects().expect("projects read");
+    let beta = projects.iter().find(|p| p.name == "Beta").expect("beta");
+    assert!(beta.labels.iter().any(|l| l == "brandnew"));
+}
+
+#[tokio::test]
+async fn the_new_form_with_a_new_label_and_an_empty_title_creates_nothing() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("new-form-label-empty-title");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let app = router(context(store.clone()));
+    let labels = board.labels().expect("labels read");
+    let count = board
+        .list(&crate::domain::TicketQuery::default())
+        .expect("list")
+        .len();
+    let revision = store.revision().expect("the revision reads");
+    let body = format!(
+        "title=%20%20&status=ready&ticket_project=Beta&ticket_label=brandnew&ticket_label_new=1&expected_revision={revision}&project=&show_all=&assignee=&text="
+    );
+    let (status, _, page) = send(&app, form_request("/tickets", &body)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(
+        page.contains(&crate::domain::DomainError::EmptyTitle.message()),
+        "{page}"
+    );
+    assert_eq!(board.labels().expect("labels read"), labels);
+    assert_eq!(
+        board
+            .list(&crate::domain::TicketQuery::default())
+            .expect("list")
+            .len(),
+        count
+    );
+}
+
+#[tokio::test]
+async fn the_new_form_without_the_new_flag_still_refuses_an_unknown_label() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("new-form-label-unknown");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let app = router(context(store.clone()));
+    let labels = board.labels().expect("labels read");
+    let revision = store.revision().expect("the revision reads");
+    let body = format!(
+        "title=Typo&status=ready&ticket_project=Beta&ticket_label=brandnew&expected_revision={revision}&project=&show_all=&assignee=&text="
+    );
+    let (status, _, page) = send(&app, form_request("/tickets", &body)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(page.contains("shell__notice"), "{page}");
+    assert_eq!(board.labels().expect("labels read"), labels);
+}
+
+#[tokio::test]
+async fn the_new_form_label_select_is_a_picker_with_toned_options() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("new-form-label-picker");
+    let store = sandbox.store();
+    let _board = setup_board(&store);
+    let app = router(context(store));
+    let (_, _, page) = get(&app, "/?project=Alpha").await;
+    let tone = super::board::label_tone("shared");
+    assert!(
+        page.contains(&format!(
+            "<option value=\"shared\" data-project=\"Alpha\" data-tone=\"{tone}\""
+        )),
+        "{page}"
+    );
+    assert!(
+        page.contains("data-picker-create=\"Create label\""),
+        "{page}"
+    );
 }
 
 #[tokio::test]
@@ -10814,12 +11053,20 @@ async fn the_new_form_starts_on_the_label_only_when_one_named_label_is_checked()
 
     let (_, _, one) = get(&app, "/?project=Alpha&label=alpha").await;
     assert!(
-        one.contains("<option value=\"alpha\" data-project=\"Alpha\" selected"),
+        one.contains(&format!(
+            "<option value=\"alpha\" data-project=\"Alpha\" data-tone=\"{}\" selected",
+            super::board::label_tone("alpha")
+        )),
         "one named label presets the New form: {one}"
     );
     let (_, _, two) = get(&app, "/?project=Alpha&label=alpha&label=shared").await;
     assert!(
-        !two.contains("data-project=\"Alpha\" selected"),
+        ["alpha", "shared"]
+            .iter()
+            .all(|name| !two.contains(&format!(
+                "<option value=\"{name}\" data-project=\"Alpha\" data-tone=\"{}\" selected",
+                super::board::label_tone(name)
+            ))),
         "two labels leave the New form on No label: {two}"
     );
 }

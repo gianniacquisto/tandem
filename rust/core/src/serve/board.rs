@@ -117,6 +117,8 @@ pub(super) struct LabelOption {
     pub(super) value: String,
     pub(super) label: String,
     pub(super) selected: bool,
+    /// The label's chip tone, or empty for "No label".
+    pub(super) tone: &'static str,
 }
 
 struct NewProjectOption {
@@ -127,6 +129,7 @@ struct NewProjectOption {
 struct NewLabelOption {
     name: String,
     project: String,
+    tone: &'static str,
     selected: bool,
     /// Not the preset project's: hidden until the script shows it, so a page
     /// without the script still draws one project's labels.
@@ -178,7 +181,7 @@ const LABEL_TONES: [&str; 7] = ["moss", "ember", "accent", "sun", "skin", "hill"
 /// The tone a label's chip draws: the label name hashed over the palette tokens,
 /// exactly as the renderer's board module did, so a label keeps its colour and
 /// no colour is stored.
-fn label_tone(name: &str) -> &'static str {
+pub(super) fn label_tone(name: &str) -> &'static str {
     let mut hash: u32 = 0;
     for character in name.chars() {
         hash = hash.wrapping_mul(31).wrapping_add(character as u32);
@@ -299,6 +302,7 @@ fn render_board(
             value: " ".to_string(),
             label: "No label".to_string(),
             selected: filters.labels.iter().any(|checked| checked == " "),
+            tone: "",
         }];
         for label in &labels {
             let checked = filters.labels.contains(label);
@@ -316,6 +320,7 @@ fn render_board(
                 value: label.clone(),
                 label: label.clone(),
                 selected: checked,
+                tone: label_tone(label),
             });
         }
         // A checked name the board no longer holds (an old link) is never an
@@ -326,6 +331,7 @@ fn render_board(
                     value: checked.clone(),
                     label: checked.clone(),
                     selected: true,
+                    tone: label_tone(checked),
                 });
             }
         }
@@ -380,6 +386,7 @@ fn render_board(
             project.labels.iter().map(|label| NewLabelOption {
                 name: label.clone(),
                 project: project.name.clone(),
+                tone: label_tone(label),
                 selected: Some(project.name.as_str()) == preset
                     && single_label == Some(label.as_str()),
                 hidden: Some(project.name.as_str()) != preset,
@@ -722,6 +729,30 @@ pub(super) async fn add_ticket(
             StatusCode::OK,
         )
     };
+    // A label named only by the Create row is made here, before the ticket, and
+    // only once the title would let the ticket follow.
+    let create_label = field(&params, "ticket_label_new") == "1" && !label.trim().is_empty();
+    if create_label {
+        if title.trim().is_empty() {
+            return refused(DomainError::EmptyTitle);
+        }
+        let project_name = Some(project).filter(|name| !name.is_empty());
+        let made = context.board().add_label(label, project_name);
+        if let Err(error) = made {
+            return refused(error);
+        }
+        let _ = crate::rpc::vault::added(
+            &context.store,
+            &context.board(),
+            project_name,
+            Some(label.trim()),
+        );
+        tracing::info!(
+            actor = ?context.actor.as_str(),
+            revision = context.revision(),
+            "label added"
+        );
+    }
     match context.board().add(
         title,
         AddTicket {

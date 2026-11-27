@@ -114,10 +114,10 @@
           <option value="{{ project.name }}"{% if project.selected %} selected{% endif %}>{{ project.name }}</option>
           {% endfor %}
         </select>
-        <select class="new-form__status" name="ticket_label" aria-label="Label"{% if !project_chosen %} disabled{% endif %}>
+        <select class="new-form__status" name="ticket_label" aria-label="Label" data-picker data-picker-create="Create label" data-picker-placeholder="Change label…" data-picker-empty="This project has no labels yet. Type a name to create one."{% if !project_chosen %} disabled{% endif %}>
           <option value="">No label</option>
           {% for label in new_labels %}
-          <option value="{{ label.name }}" data-project="{{ label.project }}"{% if label.selected %} selected{% endif %}{% if label.hidden %} hidden{% endif %}>{{ label.name }}</option>
+          <option value="{{ label.name }}" data-project="{{ label.project }}" data-tone="{{ label.tone }}"{% if label.selected %} selected{% endif %}{% if label.hidden %} hidden{% endif %}>{{ label.name }}</option>
           {% endfor %}
         </select>
         <select class="new-form__status" name="status" aria-label="Column"{% if no_projects %} disabled{% endif %}>

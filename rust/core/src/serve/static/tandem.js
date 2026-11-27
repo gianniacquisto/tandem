@@ -281,6 +281,7 @@
       option.disabled = !show;
     });
     label.disabled = chosen === '';
+    label.dispatchEvent(new CustomEvent('picker:refresh'));
   }
 
   // The shell's project switcher: a change submits its plain GET form, so the
@@ -296,8 +297,39 @@
   document.addEventListener('change', function (event) {
     var project = closest(event.target, 'select[name="ticket_project"]');
     if (!project || !project.form) return;
-    project.form.elements.ticket_label.value = '';
+    var label = project.form.elements.ticket_label;
+    // A label made by the picker belongs to the project it was made for.
+    Array.prototype.slice.call(label.options).forEach(function (option) {
+      if (option.hasAttribute('data-new')) option.remove();
+    });
+    label.value = '';
+    syncNewFlag(label);
     syncNewLabels(project.form);
+    label.dispatchEvent(new CustomEvent('picker:refresh'));
+  });
+
+  // A label picked from the Create row is named to the server by a hidden
+  // ticket_label_new, so only that explicit pick ever makes a label.
+  function syncNewFlag(select) {
+    var form = select.form;
+    if (!form) return;
+    var flag = form.querySelector('input[name="ticket_label_new"]');
+    var option = select.selectedOptions[0];
+    var made = !!option && option.hasAttribute('data-new');
+    if (made && !flag) {
+      flag = document.createElement('input');
+      flag.type = 'hidden';
+      flag.name = 'ticket_label_new';
+      flag.value = '1';
+      form.appendChild(flag);
+    } else if (!made && flag) {
+      flag.remove();
+    }
+  }
+
+  document.addEventListener('change', function (event) {
+    var label = closest(event.target, 'select[name="ticket_label"]');
+    if (label) syncNewFlag(label);
   });
 
   function setUpNewForm() {
@@ -404,10 +436,21 @@
         note.appendChild(noteButton('Use theirs', 'data-field-theirs'));
       } else {
         note.appendChild(document.createTextNode('Not saved: ' + failure.reason + '. '));
-        note.appendChild(noteButton('Retry', 'data-field-retry'));
+        if (!failure.final) note.appendChild(noteButton('Retry', 'data-field-retry'));
       }
+      note.classList.remove('is-notice');
       note.hidden = false;
     }
+  }
+
+  // A side effect that did not land while the write stood (a label's vault
+  // folder): one plain line in the field's slot, not a failure.
+  function showNotice(sheet, field, text) {
+    var note = sheet.querySelector('[data-field-note="' + field + '"]');
+    if (!note) return;
+    note.textContent = text;
+    note.classList.add('is-notice');
+    note.hidden = false;
   }
 
   function clearFailure(sheet, field) {
@@ -417,6 +460,7 @@
     if (control) control.classList.remove('is-failed');
     if (note) {
       note.textContent = '';
+      note.classList.remove('is-notice');
       note.hidden = true;
     }
   }
@@ -425,12 +469,20 @@
   // sent as the page closes is a plain fetch, which the close may cancel.
   var KEEPALIVE_MAX = 60000;
 
+  // The option a picker's Create row made and nothing has saved yet.
+  function provisional(control) {
+    var option = control.tagName === 'SELECT' ? control.selectedOptions[0] : null;
+    return option && option.hasAttribute('data-new') ? option : null;
+  }
+
   function fieldBody(control, was) {
-    return new URLSearchParams({
+    var params = {
       field: control.getAttribute('data-autosave'),
       value: control.value,
       was: was
-    }).toString();
+    };
+    if (provisional(control)) params.create = '1';
+    return new URLSearchParams(params).toString();
   }
 
   // One write. Resolves once the answer is applied; never rejects.
@@ -438,6 +490,7 @@
     var field = control.getAttribute('data-autosave');
     var value = control.value;
     var body = fieldBody(control, was);
+    var made = provisional(control);
     var failed = function (reason) { return { state: 'failed', reason: reason }; };
     return fetch('/tickets/' + encodeURIComponent(sheet.getAttribute('data-ticket')) + '/field', {
       method: 'POST',
@@ -463,7 +516,9 @@
             state: result.getAttribute('data-state'),
             was: result.getAttribute('data-was'),
             theirs: result.getAttribute('data-theirs'),
-            reason: result.getAttribute('data-reason')
+            reason: result.getAttribute('data-reason'),
+            tone: result.getAttribute('data-tone'),
+            notice: result.getAttribute('data-notice')
           };
         });
       }, function () {
@@ -476,6 +531,21 @@
           control.__landed = value;
           sheetEverSaved = true;
           clearFailure(sheet, field);
+          if (made && made.isConnected) {
+            // The label now exists: it is an ordinary option in its colour.
+            made.removeAttribute('data-new');
+            if (answer.tone) made.setAttribute('data-tone', answer.tone);
+            control.dispatchEvent(new CustomEvent('picker:refresh'));
+          }
+          if (answer.notice) showNotice(sheet, field, answer.notice);
+        } else if (made && answer.state === 'refused') {
+          // A refused create would only refuse again: the provisional option
+          // goes, the select returns to what it was, and the reason shows
+          // without a Retry. The human reopens the picker.
+          if (made.isConnected) made.remove();
+          control.value = was;
+          control.dispatchEvent(new CustomEvent('picker:refresh'));
+          showFailure(sheet, field, { reason: answer.reason || 'the server did not answer', final: true });
         } else if (answer.state === 'conflict') {
           showFailure(sheet, field, { theirs: answer.theirs });
         } else {
@@ -615,6 +685,7 @@
       }
       control.setAttribute('data-was', failure.theirs);
       control.__landed = failure.theirs;
+      control.dispatchEvent(new CustomEvent('picker:refresh'));
       if (field === 'status') control.dispatchEvent(new Event('change', { bubbles: true }));
       clearFailure(sheet, field);
       renderSaveState(sheet);
@@ -2849,6 +2920,331 @@
       event.stopPropagation();
     }
   }, true);
+})();
+
+// MARK: - The picker
+//
+// A generic popover that enhances a native `<select data-picker>` (TAN-878).
+// The select stays in the DOM, hidden, as the form value and the source of the
+// options; the picker draws a trigger button and, when open, a filterable
+// listbox of the offered options (hidden and disabled ones are not offered).
+// Nothing here names labels: the placeholder, the create verb and the hint for
+// an empty list come from `data-picker-placeholder`, `data-picker-create` and
+// `data-picker-empty`, and a chip colour from an option's `data-tone`, which
+// the server owns. Picking sets `select.value` and fires a bubbling `change`,
+// so every listener on the select works unchanged. The Create row appends an
+// `<option data-new>` and selects it; the owner of the select decides what a
+// new option means. The rows are built with textContent, never innerHTML.
+(function () {
+  var counter = 0;
+  var openPicker = null;
+  var SVG = 'http://www.w3.org/2000/svg';
+
+  function el(tag, className) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    return node;
+  }
+
+  function offered(select) {
+    return Array.prototype.filter.call(select.options, function (option) {
+      return !option.hidden && !option.disabled;
+    });
+  }
+
+  function plus() {
+    var svg = document.createElementNS(SVG, 'svg');
+    svg.setAttribute('viewBox', '0 0 16 16');
+    svg.setAttribute('class', 'picker__plus');
+    svg.setAttribute('aria-hidden', 'true');
+    var path = document.createElementNS(SVG, 'path');
+    path.setAttribute('d', 'M8 3v10M3 8h10');
+    svg.appendChild(path);
+    return svg;
+  }
+
+  function enhance(select) {
+    if (select.__picker) return;
+    counter += 1;
+    var id = 'picker-' + counter;
+    var wrap = el('div', 'picker');
+    var trigger = el('button', 'picker__trigger ' + select.className);
+    trigger.type = 'button';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-label', select.getAttribute('aria-label') || '');
+    var panel = el('div', 'picker__panel');
+    panel.hidden = true;
+    var input = el('input', 'picker__filter');
+    input.type = 'text';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-expanded', 'true');
+    input.setAttribute('aria-controls', id + '-list');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-label', select.getAttribute('aria-label') || '');
+    input.placeholder = select.getAttribute('data-picker-placeholder') || '';
+    var list = el('ul', 'picker__list');
+    list.id = id + '-list';
+    list.setAttribute('role', 'listbox');
+    var hint = el('p', 'picker__hint');
+    hint.hidden = true;
+    panel.appendChild(input);
+    panel.appendChild(list);
+    panel.appendChild(hint);
+    wrap.appendChild(trigger);
+    wrap.appendChild(panel);
+    // Before the select, so a click on the field's <label> reaches the trigger.
+    select.parentNode.insertBefore(wrap, select);
+    select.hidden = true;
+    select.tabIndex = -1;
+    // Code that focuses the select (a failed field) lands on the trigger.
+    select.focus = function () { trigger.focus(); };
+
+    var state = { rows: [], active: -1 };
+
+    function drawTrigger() {
+      trigger.textContent = '';
+      trigger.disabled = select.disabled;
+      var option = select.selectedOptions[0];
+      if (!option || option.value === '') {
+        var none = el('span', 'picker__none');
+        none.textContent = option ? option.textContent : '';
+        trigger.appendChild(none);
+        return;
+      }
+      var tone = option.getAttribute('data-tone');
+      var text = el('span', 'picker__text');
+      text.textContent = option.textContent;
+      if (tone) {
+        var chip = el('span', 'picker__chip');
+        chip.setAttribute('data-tone', tone);
+        chip.appendChild(el('span', 'picker__dot'));
+        chip.appendChild(text);
+        trigger.appendChild(chip);
+      } else {
+        trigger.appendChild(text);
+      }
+    }
+
+    // A provisional option that is no longer the selected one is dropped.
+    function refresh() {
+      Array.prototype.slice.call(select.options).forEach(function (option) {
+        if (option.hasAttribute('data-new') && !option.selected) option.remove();
+      });
+      drawTrigger();
+    }
+
+    function setActive(index) {
+      state.active = index;
+      state.rows.forEach(function (row, i) {
+        row.node.classList.toggle('is-active', i === index);
+      });
+      var row = state.rows[index];
+      if (row) {
+        input.setAttribute('aria-activedescendant', row.node.id);
+        if (row.node.scrollIntoView) row.node.scrollIntoView({ block: 'nearest' });
+      } else {
+        input.removeAttribute('aria-activedescendant');
+      }
+    }
+
+    function render() {
+      var needle = input.value.trim();
+      var lower = needle.toLowerCase();
+      var options = offered(select);
+      list.textContent = '';
+      state.rows = [];
+      options.forEach(function (option) {
+        var text = option.textContent;
+        var none = option.value === '';
+        if (none ? lower !== '' : text.toLowerCase().indexOf(lower) === -1) return;
+        var node = el('li', 'picker__option');
+        node.id = id + '-opt-' + state.rows.length;
+        node.setAttribute('role', 'option');
+        node.setAttribute('aria-selected', option.selected ? 'true' : 'false');
+        node.title = text;
+        var tone = option.getAttribute('data-tone');
+        if (tone && !none) {
+          var dot = el('span', 'picker__dot');
+          dot.setAttribute('data-tone', tone);
+          node.appendChild(dot);
+        }
+        var label = el('span', none ? 'picker__none' : 'picker__text');
+        label.textContent = text;
+        node.appendChild(label);
+        if (option.selected) {
+          var tick = el('span', 'picker__tick');
+          tick.setAttribute('aria-hidden', 'true');
+          tick.textContent = '✓';
+          node.appendChild(tick);
+        }
+        list.appendChild(node);
+        state.rows.push({ node: node, option: option });
+      });
+      var verb = select.getAttribute('data-picker-create');
+      var exact = options.some(function (option) {
+        return option.value !== '' && option.textContent.trim().toLowerCase() === lower;
+      });
+      if (verb && needle !== '' && !exact) {
+        var create = el('li', 'picker__option picker__option--create');
+        create.id = id + '-opt-' + state.rows.length;
+        create.setAttribute('role', 'option');
+        create.setAttribute('aria-selected', 'false');
+        create.appendChild(plus());
+        var words = el('span', 'picker__text');
+        words.textContent = verb + ' "' + needle + '"';
+        create.appendChild(words);
+        list.appendChild(create);
+        state.rows.push({ node: create, create: needle });
+      }
+      var named = options.some(function (option) { return option.value !== ''; });
+      var emptyHint = select.getAttribute('data-picker-empty');
+      hint.hidden = !(emptyHint && !named && needle === '');
+      hint.textContent = hint.hidden ? '' : emptyHint;
+      // The first match is active; the Create row when it is the only row.
+      var first = state.rows.findIndex(function (row) { return row.create === undefined; });
+      setActive(state.rows.length === 0 ? -1 : first === -1 ? 0 : first);
+    }
+
+    function place() {
+      panel.style.transform = '';
+      panel.style.top = '';
+      panel.style.bottom = '';
+      var gutter = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--space-gutter')) || 20;
+      var vw = document.documentElement.clientWidth;
+      var vh = document.documentElement.clientHeight;
+      var rect = panel.getBoundingClientRect();
+      var box = trigger.getBoundingClientRect();
+      var dx = 0;
+      if (rect.right > vw - gutter) dx = vw - gutter - rect.right;
+      if (rect.left + dx < gutter) dx = gutter - rect.left;
+      if (dx) panel.style.transform = 'translateX(' + Math.round(dx) + 'px)';
+      if (rect.bottom > vh - gutter && box.top - 6 - rect.height >= gutter) {
+        panel.style.top = 'auto';
+        panel.style.bottom = 'calc(100% + 6px)';
+      }
+    }
+
+    function open() {
+      if (openPicker && openPicker !== api) openPicker.close(false);
+      if (select.disabled || !panel.hidden) return;
+      input.value = '';
+      render();
+      panel.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+      openPicker = api;
+      place();
+      input.focus();
+    }
+
+    function close(refocus) {
+      if (panel.hidden) return;
+      panel.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+      if (openPicker === api) openPicker = null;
+      if (refocus) trigger.focus();
+    }
+
+    function pick(row) {
+      if (!row) return;
+      if (row.create !== undefined) {
+        Array.prototype.slice.call(select.options).forEach(function (option) {
+          if (option.hasAttribute('data-new')) option.remove();
+        });
+        var made = document.createElement('option');
+        made.value = row.create;
+        made.textContent = row.create;
+        made.setAttribute('data-new', '');
+        select.appendChild(made);
+        select.value = row.create;
+      } else {
+        select.value = row.option.value;
+      }
+      close(true);
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    var api = { wrap: wrap, panel: panel, close: close };
+
+    trigger.addEventListener('click', function () {
+      if (panel.hidden) open(); else close(true);
+    });
+    trigger.addEventListener('keydown', function (event) {
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        open();
+      }
+    });
+    input.addEventListener('input', render);
+    input.addEventListener('keydown', function (event) {
+      if (event.isComposing) return;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (!state.rows.length) return;
+        var step = event.key === 'ArrowDown' ? 1 : -1;
+        setActive((state.active + step + state.rows.length) % state.rows.length);
+      } else if (event.key === 'Enter') {
+        // Never submits the form the picker sits in.
+        event.preventDefault();
+        event.stopPropagation();
+        pick(state.rows[state.active]);
+      } else if (event.key === 'Tab') {
+        close(false);
+      }
+    });
+    list.addEventListener('mousedown', function (event) { event.preventDefault(); });
+    list.addEventListener('click', function (event) {
+      var node = event.target.closest ? event.target.closest('.picker__option') : null;
+      if (!node) return;
+      pick(state.rows.filter(function (row) { return row.node === node; })[0]);
+    });
+    list.addEventListener('mousemove', function (event) {
+      var node = event.target.closest ? event.target.closest('.picker__option') : null;
+      if (!node) return;
+      var index = state.rows.findIndex(function (row) { return row.node === node; });
+      if (index !== -1 && index !== state.active) setActive(index);
+    });
+    select.addEventListener('picker:refresh', refresh);
+    select.addEventListener('change', refresh);
+    select.__picker = api;
+    drawTrigger();
+  }
+
+  function enhanceAll() {
+    Array.prototype.forEach.call(document.querySelectorAll('select[data-picker]'), enhance);
+    // A swap that replaced a picker took its panel with it.
+    if (openPicker && !openPicker.wrap.isConnected) openPicker = null;
+  }
+  document.addEventListener('DOMContentLoaded', enhanceAll);
+  document.addEventListener('htmx:afterSwap', enhanceAll);
+  if (document.readyState !== 'loading') enhanceAll();
+
+  // Escape closes the picker and nothing under it. Captured on the document
+  // ahead of the popover menus' and the sheet's own Escape handlers.
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape' || !openPicker) return;
+    if (!openPicker.wrap.contains(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    openPicker.close(true);
+  }, true);
+
+  document.addEventListener('pointerdown', function (event) {
+    if (openPicker && !openPicker.wrap.contains(event.target)) openPicker.close(false);
+  }, true);
+
+  // A select changed from code (a project switch resets the label) is redrawn.
+  document.addEventListener('change', function (event) {
+    var select = event.target;
+    if (!select.matches || !select.matches('select[data-picker]')) {
+      Array.prototype.forEach.call(document.querySelectorAll('select[data-picker]'), function (each) {
+        each.dispatchEvent(new CustomEvent('picker:refresh'));
+      });
+    }
+  });
 })();
 
 // MARK: - Popover menus

@@ -310,4 +310,40 @@ test.describe('Tandem serve browser suite', () => {
       await srv.stop();
     }
   });
+
+  test('10. the label picker creates a label from the sheet by keyboard, and Escape closes only the picker', async ({ page }, testInfo) => {
+    const srv = await startServer();
+    try {
+      await page.goto(`${srv.baseURL}/tickets/${srv.ticket.id}`);
+      const trigger = page.locator('.sheet .picker__trigger');
+      await trigger.focus();
+      await page.keyboard.press('Enter');
+      const filter = page.locator('.sheet .picker__filter');
+      await expect(filter).toBeFocused();
+
+      // Escape closes the picker and leaves the sheet open.
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.sheet .picker__panel')).toBeHidden();
+      await expect(page.locator('.sheet')).toBeVisible();
+
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.type('fresh-label');
+      await expect(page.locator('.sheet .picker__option--create')).toContainText('Create label "fresh-label"');
+      const saved = page.waitForResponse((res) => res.url().includes('/field') && res.status() === 200);
+      await page.keyboard.press('Enter');
+      await saved;
+
+      await expect(trigger).toContainText('fresh-label');
+      await expect(page.locator('.sheet .picker__chip')).toHaveAttribute('data-tone', /\w+/);
+      const shown = JSON.parse(srv.cli(['ticket', 'show', '--id', srv.ticket.ref]));
+      expect(shown.label).toBe('fresh-label');
+
+      await testInfo.attach('end-state', {
+        body: await page.screenshot({ fullPage: true }),
+        contentType: 'image/png',
+      });
+    } finally {
+      await srv.stop();
+    }
+  });
 });
