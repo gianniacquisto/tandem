@@ -509,7 +509,10 @@ fn empty_folders_travel_as_directory_entries_and_import_back() {
     let archive = export_bytes(&source);
 
     let dirs = directory_names(&archive);
-    assert!(dirs.contains(&"notes/projects/empty".to_string()), "{dirs:?}");
+    assert!(
+        dirs.contains(&"notes/projects/empty".to_string()),
+        "{dirs:?}"
+    );
     assert!(
         dirs.contains(&"notes/projects/empty/label".to_string()),
         "{dirs:?}"
@@ -518,7 +521,12 @@ fn empty_folders_travel_as_directory_entries_and_import_back() {
     let target = sandbox.home("target");
     let summary = import(&target, archive.as_slice(), None).expect("the import lands");
     assert_eq!(summary.notes, 2, "folders are not counted as notes");
-    assert!(target.directory().join("notes/projects/empty/label").is_dir());
+    assert!(
+        target
+            .directory()
+            .join("notes/projects/empty/label")
+            .is_dir()
+    );
 }
 
 // MARK: - 6 to 12: import refusals
