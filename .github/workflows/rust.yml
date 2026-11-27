@@ -224,6 +224,15 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: bash Scripts/test_install.sh
 
+      - name: "Gate: the dev script suite"
+        # TAN-455: Scripts/dev.sh is the documented way to run the board from
+        # source; the suite drives it against a scratch root and proves it
+        # leaves the real home and the committed fixture alone. It builds the
+        # binary, so it rides the cargo cache restored above.
+        if: needs.changes.outputs.code != 'false' && runner.os != 'Windows'
+        working-directory: ${{ github.workspace }}
+        run: bash Scripts/test_dev.sh
+
       - name: Save the cache (main pushes only)
         if: github.event_name == 'push' && steps.setup.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
