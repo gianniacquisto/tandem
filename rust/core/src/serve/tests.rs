@@ -299,6 +299,14 @@ async fn get_board_renders_six_status_columns_in_order_and_empty_copy() {
         body.contains("Nothing on the board"),
         "an empty store draws its copy: {body}"
     );
+    assert!(
+        body.contains("Add a card with New, or from the CLI."),
+        "an empty home names the New control: {body}"
+    );
+    assert!(
+        !body.contains("column's foot"),
+        "no column has a foot to add from: {body}"
+    );
 
     let partial = Request::builder()
         .uri("/board")
@@ -386,10 +394,14 @@ async fn an_empty_project_draws_its_copy_without_a_stray_comma() {
         body.contains("No tickets in Quiet"),
         "the title draws: {body}"
     );
-    assert!(!body.contains("foot,."), "no stray comma: {body}");
+    assert!(!body.contains("with New,."), "no stray comma: {body}");
     assert!(
-        body.contains("foot.") || body.contains("foot.</"),
-        "the copy ends at the full stop: {body}"
+        body.contains("Add a card with New.</"),
+        "the empty project names the New control and ends at the full stop: {body}"
+    );
+    assert!(
+        !body.contains("column's foot"),
+        "no column has a foot to add from: {body}"
     );
 }
 
