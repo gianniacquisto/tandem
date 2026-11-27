@@ -214,7 +214,7 @@ tandem-cli project delete --name <name>
 | Verb | Notes |
 | --- | --- |
 | `project list` | Every project with its key and its labels, in board order. Answers `{"projects": [{"name", "key", "labels"}]}`. |
-| `project add` | A new, empty project. `--abbr` is its key: upper-case letters and digits, unique across projects. Default: the first three letters of the name (`Tandem` becomes `TAN`). Also creates the notes folder `projects/<name>/`; an existing folder that matches ignoring case is reused. |
+| `project add` | A new, empty project. `--abbr` is its key: upper-case letters and digits, unique across projects. Default: the first three letters of the name (`Tandem` becomes `TAN`). Also creates the notes folder `projects/<name>/`; an existing folder that matches ignoring case is reused. A name that differs from an existing project only in case is refused. |
 | `project rename` | Renames a project. Its labels, tickets and refs move with it. `--abbr` changes the key, and is refused once the project has filed a ticket. Also moves the notes folder `projects/<old>/` to `projects/<new>/` and rewrites every `[[project:Old]]` link, keeping its fragment and alias. |
 | `project delete` | Deletes an empty project. A project that still holds labels or tickets is refused, and the refusal names them. Its notes folder and notes are left alone; `note links` lists the folder as unmatched. |
 
@@ -233,7 +233,7 @@ tandem-cli label move --name <name> [--index <number>]
 | Verb | Notes |
 | --- | --- |
 | `label list` | Every label, empty ones included, in board order. Answers `{"labels": [...]}`. |
-| `label add` | A new label in a project. `--project` is required. A name that is already a label is refused. |
+| `label add` | A new label in a project. `--project` is required. A name that is already a label, or differs from one only in case, is refused. |
 | `label rename` | Renames a label; its tickets move with it. `--project` moves the label to another project, and is refused while the label holds any ticket. |
 | `label delete` | Deletes a label. Its tickets lose the label and stay in their project with their refs. |
 | `label move` | Moves a label to a 0-based position in the list; leaving out `--index` moves it to the end. |
