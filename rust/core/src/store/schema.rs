@@ -17,6 +17,12 @@
 //! answers one error pointing at the one-off import's record (ADR 0031,
 //! the git history), and exits non-zero.
 //!
+//! **Two triggers move a home.** The lazy one runs inside the first
+//! `Store::write` of a home that is behind; the eager one, `Store::ensure_migrated`,
+//! runs when a CLI command or `tandem serve` starts, so an upgrade moves the
+//! home before any write. Both call [`migrate`] after the same prelude (refusal,
+//! then the pre-migration backup), and library reads still never migrate.
+//!
 //! All SQL lives under this module.
 
 use rusqlite::{Connection, params};

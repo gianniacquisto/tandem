@@ -576,6 +576,17 @@ fn run(cli: &Cli) -> Result<(), Failure> {
     let home = Home::resolve(cli.home.as_deref(), environment.as_deref(), &user_home);
     let command = cli.command.as_ref().ok_or_else(Failure::usage)?;
 
+    // A newer binary moves an older home before its first command runs, so an
+    // upgrade does not wait on a write (ADR 0031, amended). `doctor` reports
+    // the version as a fact and stays read-only; `serve` migrates in its own
+    // start, after its flags are checked. A home with no database is left for
+    // its first write.
+    if !matches!(command, Command::Doctor | Command::Serve(_)) {
+        Store::new(home.clone())
+            .ensure_migrated(&Actor::current())
+            .map_err(|error| Failure::domain(error.into()))?;
+    }
+
     match command {
         Command::Doctor => doctor(&home),
         Command::Export(args) => export(&home, args),
@@ -1328,6 +1339,12 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
         // An older home moves its notes folder once, before the first request;
         // a clash refuses to start rather than serve an empty notes.
         tandem_core::notes::migrate::migrate_home(home).map_err(Failure::domain)?;
+        // The store moves the same way, before the first request; a refusal or
+        // a failed migration stops the serve rather than answer from an older
+        // home.
+        Store::new(home.clone())
+            .ensure_migrated(&Actor::current())
+            .map_err(|error| Failure::domain(error.into()))?;
         let context = tandem_core::serve::SessionContext {
             store: Store::new(home.clone()),
             actor: Actor::current(),

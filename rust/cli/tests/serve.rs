@@ -1246,3 +1246,47 @@ fn serve_in_open_mode_refuses_to_start_when_the_home_holds_members() {
     let server = Server::start(&sandbox);
     assert_eq!(get(server.port, "/").status, 200);
 }
+
+#[test]
+fn serve_start_migrates_an_older_home_before_the_first_request() {
+    let sandbox = Sandbox::new("migrate-at-start");
+    let home = sandbox.home();
+    tandem_core::store::testing::home_at_version(&home, 15).expect("v15 applies");
+    tandem_core::store::testing::execute(
+        &home,
+        "INSERT INTO projects (name, position, author) VALUES ('P', 0, 'human');
+         INSERT INTO labels (name, key, last_number, position, project, author)
+             VALUES ('P', 'P', 1, 0, 'P', 'human');
+         INSERT INTO tickets
+            (id, title, status, archived, label, number, origin, position, created_at, author)
+         VALUES ('00000000-0000-0000-0000-000000000001', 'older home ticket', 'ready', 0,
+                 'P', 1, 'human', 0, '2026-10-01T00:00:00Z', 'human');",
+    )
+    .expect("the ticket lands");
+
+    let server = Server::start(&sandbox);
+    let page = get(server.port, "/");
+    assert_eq!(page.status, 200);
+    assert!(
+        page.body.contains("older home ticket"),
+        "the ticket is on the board"
+    );
+
+    // Moved by the start itself: no request of ours wrote anything.
+    let output = sandbox
+        .command()
+        .arg("doctor")
+        .output()
+        .expect("doctor runs");
+    let report = String::from_utf8_lossy(&output.stdout);
+    assert!(report.contains("store schema v16"), "{report}");
+    assert!(
+        home.join("tandem.db.bak").exists(),
+        "the pre-image is rolled"
+    );
+    let backup = home.join("tandem.db.bak");
+    assert!(
+        fs::metadata(&backup).map(|m| m.len() > 0).unwrap_or(false),
+        "the backup holds the v15 image"
+    );
+}
