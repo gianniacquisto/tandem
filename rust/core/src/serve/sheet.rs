@@ -1,7 +1,7 @@
 //! The ticket sheet: one ticket drawn over the board it was opened from, the
 //! per-field autosave write it posts, and the comment form.
 
-use super::board::{FiltersView, LabelOption, board_with_sheet};
+use super::board::{FiltersView, LabelOption, board_with_sheet, label_tone};
 use super::*;
 
 // MARK: - The ticket sheet
@@ -127,12 +127,14 @@ fn sheet_label_options(ticket: &Ticket, labels: &[String]) -> Vec<LabelOption> {
         value: String::new(),
         label: "No label".to_string(),
         selected: current.is_none(),
+        tone: "",
     }];
     for label in labels {
         options.push(LabelOption {
             value: label.clone(),
             label: label.clone(),
             selected: current == Some(label.as_str()),
+            tone: label_tone(label),
         });
     }
     if let Some(current) = current
@@ -142,6 +144,7 @@ fn sheet_label_options(ticket: &Ticket, labels: &[String]) -> Vec<LabelOption> {
             value: current.to_string(),
             label: current.to_string(),
             selected: true,
+            tone: label_tone(current),
         });
     }
     options
@@ -371,6 +374,11 @@ struct FieldResult {
     was: String,
     theirs: Option<String>,
     reason: Option<String>,
+    /// A created label's chip tone, for the script to draw the trigger with.
+    tone: Option<&'static str>,
+    /// A side effect that did not land (the label's vault folder): shown as a
+    /// plain line, the write stands.
+    notice: Option<String>,
 }
 
 fn field_answer(result: FieldResult) -> Response {
@@ -399,6 +407,10 @@ pub(super) async fn save_field(
     let Some(kind) = SheetField::parse(field(&params, "field")) else {
         return bad_request("the field is not one the sheet saves");
     };
+    let create = params.get("create").is_some_and(|flag| flag == "1");
+    if create && !matches!(kind, SheetField::Label) {
+        return bad_request("create applies to the label field only");
+    }
     let Some(was) = params.get("was") else {
         return bad_request("was is missing");
     };
@@ -423,8 +435,12 @@ pub(super) async fn save_field(
             was: was.clone(),
             theirs: Some(stored),
             reason: None,
+            tone: None,
+            notice: None,
         });
     }
+    let mut created_tone = None;
+    let mut notice = None;
     let outcome = match kind {
         SheetField::Title => {
             let title = kind.normalise(value);
@@ -461,8 +477,26 @@ pub(super) async fn save_field(
         ),
         SheetField::Label => {
             let label = kind.normalise(value);
+            let made = if create {
+                board.add_label(&label, Some(&ticket.project)).map(|_| {
+                    notice = crate::rpc::vault::added(
+                        &context.store,
+                        &board,
+                        Some(&ticket.project),
+                        Some(&label),
+                    );
+                    created_tone = Some(label_tone(&label));
+                    tracing::info!(
+                        actor = ?context.actor.as_str(),
+                        revision = context.revision(),
+                        "label added"
+                    );
+                })
+            } else {
+                Ok(())
+            };
             let label = (!label.is_empty()).then_some(label);
-            board.move_ticket(&id, label.as_deref(), usize::MAX)
+            made.and_then(|()| board.move_ticket(&id, label.as_deref(), usize::MAX))
         }
     };
     match outcome {
@@ -480,6 +514,8 @@ pub(super) async fn save_field(
                 was: kind.stored(&saved),
                 theirs: None,
                 reason: None,
+                tone: created_tone,
+                notice,
             })
         }
         Err(error) => {
@@ -495,6 +531,8 @@ pub(super) async fn save_field(
                 was: was.clone(),
                 theirs: None,
                 reason: Some(error.message()),
+                tone: None,
+                notice: None,
             })
         }
     }

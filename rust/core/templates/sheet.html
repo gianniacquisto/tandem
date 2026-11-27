@@ -56,9 +56,10 @@
               <span class="sheet__fact-label">Label</span>
             </span>
             <select class="sheet__select" data-autosave="label" data-was="{{ label }}"
+                    data-picker data-picker-create="Create label" data-picker-placeholder="Change label…" data-picker-empty="This project has no labels yet. Type a name to create one."
                     aria-label="Label">
               {% for option in label_options %}
-              <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+              <option value="{{ option.value }}"{% if !option.tone.is_empty() %} data-tone="{{ option.tone }}"{% endif %}{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
               {% endfor %}
             </select>
           </label>
