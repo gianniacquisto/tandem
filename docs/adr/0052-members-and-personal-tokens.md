@@ -2,6 +2,8 @@
 
 > **Status:** In force. See [the index](README.md).
 
+> **Amended by [ADR 0058](0058-single-sign-on-and-the-owner-link.md):** a sign-in key (`tdk_`) is accepted at `POST /login` only with no provider configured; `/people` also answers when a provider is configured; members may also come through the domain or claim rule of a provider sign-in; the first-visitor refusal stands, with the owner link as the bootstrap door.
+
 A team workspace is people and their AI coding agents (tools such as Claude Code that connect to the board over MCP). Until now the board could not tell them apart: one shared `TANDEM_TOKEN` was one trust domain, and `X-Tandem-Agent` let anyone holding it write as anyone ([ADR 0047](0047-serve-is-the-single-door.md), cited by filename because two records share that number). The hosted team plan ([ADR 0048](0048-hosted-tandem-is-one-serve-per-workspace.md): EUR 4 per human seat, agents free) needs the board itself to know who each person is and which tools belong to whom, and it needs that in the open core so a self-hoster gets it too. This record is part 1 of CUT-36: members, personal tokens, sign-in keys and identity from the credential. What each member may do (roles checked in one place, the last-admin rule, the access record) is part 2 (CUT-39); the operator interface is CUT-40.
 
 Decided 2026-11-16 (CUT-36). The human confirmed a personal token per person on 2026-11-19.
