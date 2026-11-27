@@ -73,21 +73,23 @@ To add a case for your own UI change, add a `test(...)` to `e2e/tests/board.spec
 
 ## Run from source
 
-To try a change in the real board, build the `tandem` binary and serve a
-throwaway home. The installed release binary in `~/.local/bin` is not your
-source build: run the one under `rust/target/` by its path.
-
-In `rust/`:
+One command builds the `tandem` binary from your checkout and serves the board on a throwaway dev home, from any directory:
 
 ```sh
-cargo build -p tandem
-TANDEM_HOME="$(mktemp -d)" ./target/debug/tandem serve --open
+Scripts/dev.sh
 ```
 
-This binds loopback (`127.0.0.1`) on port 7700 and opens the board in your
-browser. Pass `--port <n>` to use another port, for example when an installed
-`tandem serve` already holds 7700. A fresh `TANDEM_HOME` keeps your real
-`~/.tandem` out of the test.
+It runs `cargo run -p tandem -- serve --open`, binds loopback on port 7700 and opens the board in your browser. The dev home is `.dev-home/` at the repo root (gitignored), seeded on first run with a copy of the committed `Fixtures/port/Board` (78 tickets), so the board starts populated and your real `~/.tandem` is never touched. The fixture itself is only copied, never written. To reseed, stop the server and run `rm -rf .dev-home`.
+
+- **Other commands**: any arguments pass through to `tandem` verbatim, so `Scripts/dev.sh serve --port 7701` picks another port (an installed `tandem serve` may hold 7700) and `Scripts/dev.sh mcp` runs the agent face on the same dev home. To use a dev build from an agent host, point the host's MCP command at `Scripts/dev.sh mcp`, or at `rust/target/debug/tandem mcp` with `TANDEM_HOME` set.
+- **Another home**: when `TANDEM_HOME` is set, or `--home` is in the arguments, the script uses that and does not create `.dev-home/`. `TANDEM_HOME=~/.tandem Scripts/dev.sh` is the way to reach the real home.
+- **Rebuild on change**: template and static asset edits need a rebuild. `Scripts/dev.sh --watch` reruns the same command whenever something under `rust/` changes, and needs `cargo-watch` (`cargo install cargo-watch`) or `watchexec`. Without either, stop the server (Ctrl-C) and run it again.
+- **Windows**: there is no `.ps1`. Run `cargo run --manifest-path rust/Cargo.toml -p tandem -- serve --open --home .dev-home`.
+- **Agents**: `Scripts/scratch-serve.sh` is the agent's equivalent (a fresh scratch home and port 7790, with a verbose log).
+
+By hand, in `rust/`: `cargo build -p tandem`, then `TANDEM_HOME="$(mktemp -d)" ./target/debug/tandem serve --open`.
+
+Run the binary by its path (`rust/target/debug/tandem`), not the installed release in `~/.local/bin`, which is not your source build.
 
 ### Team mode from source
 
