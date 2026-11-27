@@ -3512,59 +3512,31 @@ a.menu__option {
   field-sizing: content;
 }
 
-/* The rendered description: with JS the box is hidden until Edit. */
-.sheet__description-view,
+/* The description's live surface: always rendered, typed into where it
+ * stands. No border at rest, on hover or on focus; the text cursor and the
+ * caret are the cues (the notes face draws none either). */
+.sheet__description-live {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: calc(4 * 1.55em);
+  padding: 10px 12px;
+  border: var(--hairline) solid transparent;
+  border-radius: var(--radius-control);
+  color: var(--ink);
+  font-size: var(--text-body);
+  line-height: 1.55;
+  cursor: text;
+  overflow-wrap: anywhere;
+}
+
+.sheet__description-live.is-failed {
+  border: var(--hairline) solid var(--ember);
+}
+
 .sheet__comment .markdown {
   font-size: var(--text-body);
   line-height: 1.55;
 }
-
-.sheet__description-view {
-  padding: 10px 12px;
-  border: var(--hairline) solid transparent;
-  border-radius: var(--radius-control);
-}
-
-.sheet__description:not(.is-reading) .sheet__description-view,
-.sheet__description:not(.is-reading) .sheet__edit {
-  display: none;
-}
-
-.sheet__description.is-reading .sheet__description-field {
-  display: none;
-}
-
-.sheet__edit {
-  padding: 2px 10px;
-  border: var(--hairline) solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--paper);
-  color: var(--ink);
-  font: inherit;
-  font-size: var(--text-ui);
-  cursor: pointer;
-  opacity: 0;
-}
-
-.sheet__description:hover .sheet__edit,
-.sheet__edit:focus {
-  opacity: 1;
-}
-
-.sheet__edit:hover {
-  border-color: var(--accent);
-}
-
-.sheet__description-field:hover {
-  border-color: var(--line);
-}
-
-.sheet__description-field:focus {
-  border-color: var(--accent);
-  outline: none;
-  background: var(--paper);
-}
-
 
 /* Notes: a sidebar of quiet rows with icons, a page with a large title. */
 .notes__tree {
