@@ -40,6 +40,7 @@ mod diagnostics;
 mod export;
 mod home;
 mod members;
+pub(crate) mod private;
 mod rekey;
 // Reachable from the schema suite, which builds a v2 home to prove a read of
 // an older file never fails on a column a later migration adds.
@@ -726,6 +727,9 @@ impl Store {
         sweep_orphans(self.home.directory());
         let database = self.database();
         let existed = database.exists();
+        private::create_private_file(&database).map_err(|error| {
+            StoreError::Io(format!("could not create {}: {error}", database.display()))
+        })?;
         let connection = open(&database)?;
         // Refuse before any table is written and before the journal mode
         // moves. A clean v5 file is left byte for byte; one carrying a hot
@@ -1044,6 +1048,12 @@ fn backup_database(database: &Path, target: &Path) -> Result<()> {
 /// put back in rollback-journal mode so the one-file backup opens without a
 /// `-shm` beside it.
 fn copy_into(database: &Path, temp: &Path) -> Result<()> {
+    private::create_private_file(temp).map_err(|error| {
+        StoreError::Io(format!(
+            "could not create the backup at {}: {error}",
+            temp.display()
+        ))
+    })?;
     let source = open_read_only(database)?;
     let mut destination = Connection::open(temp).map_err(|error| {
         StoreError::Io(format!(
