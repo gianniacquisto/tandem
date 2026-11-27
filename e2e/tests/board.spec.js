@@ -279,4 +279,35 @@ test.describe('Tandem serve browser suite', () => {
       await srv.stop();
     }
   });
+
+  test('9. two label boxes checked while the board redraws are both kept, and focus lands on the last', async ({ page }, testInfo) => {
+    const srv = await startServer();
+    try {
+      srv.cli(['label', 'add', '--project', 'Tandem', '--name', 'api']);
+      await page.goto(`${srv.baseURL}/board?project=Tandem`);
+
+      // Hold every filter answer back so the second click lands mid-redraw.
+      await page.route(/\/board\?.*label=/, async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        await route.continue();
+      });
+
+      await page.locator('.filter-menu summary').click();
+      const boxes = page.locator('.filter-menu input[name="label"]');
+      await boxes.nth(0).check();
+      await boxes.nth(1).check();
+
+      await expect(page).toHaveURL(/label=.*label=/);
+      const checked = page.locator('.filter-menu input[name="label"]:checked');
+      await expect(checked).toHaveCount(2);
+      await expect(page.locator('.filter-menu input[name="label"]').nth(1)).toBeFocused();
+
+      await testInfo.attach('end-state', {
+        body: await page.screenshot({ fullPage: true }),
+        contentType: 'image/png',
+      });
+    } finally {
+      await srv.stop();
+    }
+  });
 });
