@@ -227,7 +227,7 @@ fn empty_view(
     if tickets.is_empty() {
         return Some(EmptyView {
             title: "Nothing on the board".to_string(),
-            subtitle: "Add a card from a column's foot, or from the CLI.".to_string(),
+            subtitle: "Add a card with New, or from the CLI.".to_string(),
             hero: true,
         });
     }
@@ -255,13 +255,13 @@ fn empty_view(
     {
         return Some(EmptyView {
             title: format!("No tickets in {}", filters.project),
-            subtitle: "Add a card from a column's foot.".to_string(),
+            subtitle: "Add a card with New.".to_string(),
             hero: false,
         });
     }
     Some(EmptyView {
         title: "The board is empty".to_string(),
-        subtitle: "Add a card from a column's foot.".to_string(),
+        subtitle: "Add a card with New.".to_string(),
         hero: false,
     })
 }
