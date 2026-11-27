@@ -1043,3 +1043,128 @@ fn a_name_that_is_not_one_path_component_gets_no_folder_and_is_listed() {
     );
     assert_eq!(health["result"]["health"]["counts"]["missingFolders"], 1);
 }
+
+fn error_message(answer: &Value) -> String {
+    answer["error"]["message"]
+        .as_str()
+        .unwrap_or_else(|| panic!("an error was expected: {answer}"))
+        .to_string()
+}
+
+#[test]
+fn a_project_name_differing_only_in_case_is_refused() {
+    let sandbox = Sandbox::new("rpc-case-project");
+    let store = sandbox.store();
+    handle(&store, &frame(1, "project.add", json!({"name": "Website"})));
+    let dup = handle(&store, &frame(2, "project.add", json!({"name": "website"})));
+    assert_eq!(
+        error_message(&dup),
+        "A project named \"Website\" already exists."
+    );
+    assert!(
+        !vault_dir(&sandbox)
+            .join("projects/website/keep.md")
+            .exists()
+    );
+
+    // A case-only rename of the one project works and the folder follows.
+    write_note(&store, "projects/Website/keep.md", "x");
+    let renamed = handle(
+        &store,
+        &frame(
+            4,
+            "project.rename",
+            json!({"from": "Website", "to": "website"}),
+        ),
+    );
+    assert!(renamed.get("error").is_none(), "{renamed}");
+    assert!(
+        vault_dir(&sandbox)
+            .join("projects/website/keep.md")
+            .is_file()
+    );
+
+    // Renaming another project onto the same name ignoring case is refused.
+    handle(&store, &frame(5, "project.add", json!({"name": "Other"})));
+    let clash = handle(
+        &store,
+        &frame(
+            6,
+            "project.rename",
+            json!({"from": "Other", "to": "WEBSITE"}),
+        ),
+    );
+    assert_eq!(
+        error_message(&clash),
+        "A project named \"website\" already exists."
+    );
+}
+
+#[test]
+fn a_label_name_differing_only_in_case_is_refused() {
+    let sandbox = Sandbox::new("rpc-case-label");
+    let store = sandbox.store();
+    handle(&store, &frame(1, "project.add", json!({"name": "P"})));
+    handle(
+        &store,
+        &frame(2, "label.add", json!({"name": "ui", "project": "P"})),
+    );
+    let dup = handle(
+        &store,
+        &frame(3, "label.add", json!({"name": "UI", "project": "P"})),
+    );
+    assert!(error_message(&dup).contains("ui"), "{dup}");
+    handle(
+        &store,
+        &frame(4, "label.add", json!({"name": "api", "project": "P"})),
+    );
+    let clash = handle(
+        &store,
+        &frame(5, "label.rename", json!({"from": "api", "to": "UI"})),
+    );
+    assert!(error_message(&clash).contains("ui"), "{clash}");
+    let renamed = handle(
+        &store,
+        &frame(6, "label.rename", json!({"from": "ui", "to": "UI"})),
+    );
+    assert!(renamed.get("error").is_none(), "{renamed}");
+    assert!(vault_dir(&sandbox).join("projects/P/UI").is_dir());
+}
+
+#[test]
+fn a_home_already_holding_a_case_clash_keeps_the_shared_folder_on_rename() {
+    let sandbox = Sandbox::new("rpc-case-seeded");
+    let store = sandbox.store();
+    handle(&store, &frame(1, "project.add", json!({"name": "Website"})));
+    write_note(&store, "projects/Website/keep.md", "x");
+    let connection = rusqlite::Connection::open(sandbox.database()).expect("db opens");
+    connection
+        .execute(
+            "INSERT INTO projects (name, key, last_number, position, author)
+             VALUES ('website', 'WEBS', 0, 9, 'human')",
+            [],
+        )
+        .expect("clash seeded");
+    drop(connection);
+    let renamed = handle(
+        &store,
+        &frame(
+            2,
+            "project.rename",
+            json!({"from": "website", "to": "Other"}),
+        ),
+    );
+    assert!(renamed.get("error").is_none(), "{renamed}");
+    assert!(
+        vault_dir(&sandbox)
+            .join("projects/Website/keep.md")
+            .is_file()
+    );
+    assert!(vault_dir(&sandbox).join("projects/Other").is_dir());
+    assert!(
+        renamed["result"]["note"]
+            .as_str()
+            .is_some_and(|note| note.contains("another project still uses")),
+        "{renamed}"
+    );
+}

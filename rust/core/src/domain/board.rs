@@ -222,8 +222,12 @@ impl Board {
         }
         let project = project.map(str::trim).filter(|raw| !raw.is_empty());
         self.mutate(|contents| {
-            if contents.known_labels().iter().any(|known| known == name) {
-                return Err(DomainError::DuplicateLabel(name.to_string()));
+            if let Some(known) = contents
+                .known_labels()
+                .iter()
+                .find(|known| known.to_lowercase() == name.to_lowercase())
+            {
+                return Err(DomainError::DuplicateLabel(known.clone()));
             }
             let known = contents.known_projects();
             let Some(parent) = project else {
@@ -308,8 +312,12 @@ impl Board {
                 contents.normalize();
                 return Ok((contents.known_labels(), true));
             }
-            if contents.known_labels().iter().any(|known| known == to) {
-                return Err(DomainError::DuplicateLabel(to.to_string()));
+            if let Some(known) = contents
+                .known_labels()
+                .iter()
+                .find(|known| known.as_str() != from && known.to_lowercase() == to.to_lowercase())
+            {
+                return Err(DomainError::DuplicateLabel(known.clone()));
             }
             contents.labels[i].name = to.to_string();
             if let Some(parent) = new_parent {
@@ -410,8 +418,12 @@ impl Board {
         }
         let requested = abbr.map(ProjectKey::normalize).transpose()?;
         self.mutate(|contents| {
-            if contents.projects.iter().any(|p| p.name == name) {
-                return Err(DomainError::DuplicateProject(name.to_string()));
+            if let Some(known) = contents
+                .projects
+                .iter()
+                .find(|p| p.name.to_lowercase() == name.to_lowercase())
+            {
+                return Err(DomainError::DuplicateProject(known.name.clone()));
             }
             let key = match requested {
                 Some(key) => unique_key(&key, contents, None)?,
@@ -461,8 +473,14 @@ impl Board {
                 changed = true;
             }
             if from != to {
-                if contents.projects.iter().any(|p| p.name == to) {
-                    return Err(DomainError::DuplicateProject(to.to_string()));
+                if let Some(known) = contents
+                    .projects
+                    .iter()
+                    .enumerate()
+                    .find(|(at, p)| *at != i && p.name.to_lowercase() == to.to_lowercase())
+                    .map(|(_, p)| p)
+                {
+                    return Err(DomainError::DuplicateProject(known.name.clone()));
                 }
                 contents.projects[i].name = to.to_string();
                 for label in &mut contents.labels {
