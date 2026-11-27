@@ -58,6 +58,15 @@ pub(crate) fn try_names(board: &Board) -> DomainResult<BoardNames> {
     })
 }
 
+/// The board's project names.
+fn board_projects(board: &Board) -> Vec<String> {
+    names(board)
+        .projects
+        .into_iter()
+        .map(|project| project.name)
+        .collect()
+}
+
 /// The project a label sits in, as the board spells both.
 fn project_of<'a>(names: &'a BoardNames, label: &str) -> Option<&'a str> {
     names
@@ -213,8 +222,13 @@ pub(crate) fn project_renamed(
     };
     let mut notes = Vec::new();
     if from != to {
+        let shared = board_projects(board)
+            .iter()
+            .any(|name| name != to && name.to_lowercase() == from.to_lowercase());
         if let Some(old) = existing(&vault, from, None) {
-            let target = if !is_component(to) {
+            let target = if shared {
+                Err("another project still uses that folder".to_string())
+            } else if !is_component(to) {
                 Err(format!(
                     "\"{to}\" is not a single path component, so the folder has no new name"
                 ))
@@ -281,7 +295,16 @@ pub(crate) fn label_renamed(
         && old_project.to_lowercase() != from.to_lowercase()
         && let Some(old) = existing(&vault, old_project, Some(from))
     {
-        let target = if new_project.to_lowercase() == to.to_lowercase() {
+        let shared = after.projects.iter().any(|project| {
+            project.name == old_project
+                && project
+                    .labels
+                    .iter()
+                    .any(|name| name != to && name.to_lowercase() == from.to_lowercase())
+        });
+        let target = if shared {
+            Err("another label still uses that folder".to_string())
+        } else if new_project.to_lowercase() == to.to_lowercase() {
             Err("the label is named like its project, so it has no folder of its own".to_string())
         } else if !is_component(to) || !is_component(new_project) {
             Err(format!(
