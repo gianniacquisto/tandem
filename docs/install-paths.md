@@ -2,7 +2,7 @@
 
 Tandem ships as one binary per platform. This page covers installing, upgrading, pinning or rolling back a version, uninstalling, and verifying what you downloaded.
 
-A release publishes five archives, `install.sh` and one `SHA256SUMS`:
+A release publishes five archives, `install.sh`, `install.ps1` and one `SHA256SUMS`:
 
 | asset | for | verified by |
 | --- | --- | --- |
@@ -12,6 +12,7 @@ A release publishes five archives, `install.sh` and one `SHA256SUMS`:
 | `tandem-<version>-linux-arm64.tar.gz` | Linux on arm64, static musl | a line in `SHA256SUMS` |
 | `tandem-<version>-windows-x86_64.zip` | Windows on x86_64 | a line in `SHA256SUMS` |
 | `install.sh` | macOS and Linux, one line | a line in `SHA256SUMS`, and `DEFAULT_VERSION` stamped to the tag |
+| `install.ps1` | Windows, one line | a line in `SHA256SUMS`, and `$DefaultVersion` stamped to the tag |
 | `SHA256SUMS` | the manifest | the `release` job runs the digest check over `dist` before publishing |
 
 ## The one-liner
@@ -73,7 +74,23 @@ On macOS the script strips `com.apple.quarantine` from the installed binary; an 
 
 ## Windows
 
-`install.sh` does not run on Windows. Download `tandem-<version>-windows-x86_64.zip`, extract `tandem.exe`, and put it on PATH. To upgrade, stop `tandem serve` first (Windows will not overwrite a running executable), then replace `tandem.exe`. There is no PowerShell installer yet; the archive's digest is the same `SHA256SUMS` line, checked with `Get-FileHash -Algorithm SHA256`.
+`install.sh` does not run on Windows; `install.ps1` is its twin, for Windows PowerShell 5.1 (stock Windows) and later:
+
+```powershell
+irm https://github.com/gianniacquisto/tandem/releases/latest/download/install.ps1 | iex
+```
+
+It downloads `tandem-<version>-windows-x86_64.zip` and `SHA256SUMS`, finds the digest line for exactly that zip, compares it with `Get-FileHash -Algorithm SHA256` and extracts `tandem.exe` only after a match; a mismatch exits 1 and installs nothing. The binary goes to `%LOCALAPPDATA%\Programs\tandem` (or `$env:TANDEM_INSTALL_DIR`, or `-InstallDir`), and that folder is added to the **user** PATH only when absent. It never uses elevation or the machine PATH. Open a new shell to pick up the PATH change.
+
+`irm ... | iex` cannot pass arguments, so pin a version with `$env:TANDEM_VERSION = '2.4.0'` first. Save the script to run it with parameters:
+
+```powershell
+irm https://github.com/gianniacquisto/tandem/releases/latest/download/install.ps1 -OutFile install.ps1
+.\install.ps1 -Version 2.4.0      # a specific tag (first install)
+.\install.ps1 -Reinstall          # replace an existing tandem.exe
+```
+
+Without `-Reinstall` an existing `tandem.exe` is left alone, as with `install.sh`. Stop `tandem serve` first when replacing, because Windows will not overwrite a running executable. There is no `-Uninstall` yet: delete the folder and its user PATH entry. The zip can still be extracted by hand and checked against its `SHA256SUMS` line.
 
 ## Verify by hand
 

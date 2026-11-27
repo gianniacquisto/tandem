@@ -1,6 +1,6 @@
 #!/bin/sh
-# The publication step's staging half (CUT-16): stamp the installer with the
-# tag's version and write the manifest that covers it.
+# The publication step's staging half (CUT-16): stamp the installers with the
+# tag's version and write the manifest that covers them.
 #
 # Usage: Scripts/stage-release-assets.sh <version> <dist-dir>
 #
@@ -8,9 +8,11 @@
 # archives the build jobs produced, `tandem-<version>-darwin-arm64.tar.gz`,
 # `-darwin-x86_64.tar.gz`, `-linux-x86_64.tar.gz`, `-linux-arm64.tar.gz` and
 # `tandem-<version>-windows-x86_64.zip`. The script copies Scripts/install.sh to
-# <dist-dir>/install.sh with its DEFAULT_VERSION set to <version>, then writes
-# <dist-dir>/SHA256SUMS with one line per published verifiable asset: every
-# `tandem-<version>-*` archive present and the staged script. The release job
+# <dist-dir>/install.sh with its DEFAULT_VERSION set to <version>, and
+# Scripts/install.ps1 to <dist-dir>/install.ps1 with its $DefaultVersion set the
+# same way, then writes <dist-dir>/SHA256SUMS with one line per published
+# verifiable asset: every `tandem-<version>-*` archive present and the two
+# staged scripts. The release job
 # uploads them and `sha256sum -c SHA256SUMS` (or `shasum -a 256 -c`) over dist
 # stays the handoff check.
 set -eu
@@ -31,6 +33,15 @@ top=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 src="$top/Scripts/install.sh"
 if [ ! -f "$src" ]; then
   echo "stage-release-assets.sh: no installer at $src" >&2
+  exit 1
+fi
+src_ps1="$top/Scripts/install.ps1"
+if [ ! -f "$src_ps1" ]; then
+  echo "stage-release-assets.sh: no installer at $src_ps1" >&2
+  exit 1
+fi
+if ! grep -q '^\$DefaultVersion = "latest"$' "$src_ps1"; then
+  echo "stage-release-assets.sh: $src_ps1 has no \$DefaultVersion = \"latest\" line to stamp" >&2
   exit 1
 fi
 if [ ! -d "$dist" ]; then
@@ -54,6 +65,7 @@ fi
 
 sed "s/^DEFAULT_VERSION=\"latest\"$/DEFAULT_VERSION=\"$version\"/" "$src" > "$dist/install.sh"
 chmod +x "$dist/install.sh"
+sed "s/^\$DefaultVersion = \"latest\"$/\$DefaultVersion = \"$version\"/" "$src_ps1" > "$dist/install.ps1"
 
 sum256() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -70,5 +82,6 @@ sum256() {
     sum256 "$archive"
   done
   sum256 install.sh
+  sum256 install.ps1
 ) > "$dist/SHA256SUMS"
 cat "$dist/SHA256SUMS"

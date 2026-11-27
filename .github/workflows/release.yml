@@ -230,6 +230,13 @@ jobs:
         shell: pwsh
         run: ./Scripts/smoke-binary.ps1 -Archive "dist\tandem-$($env:version)-${{ matrix.target }}.zip" -Version $env:version
 
+      - name: "Test: install.ps1 installs the zip just built (Windows PowerShell 5.1)"
+        if: needs.changes.outputs.code != 'false' && matrix.ext == 'zip'
+        # `shell: powershell` is Windows PowerShell 5.1, what a stock Windows
+        # user runs; the suite starts the installer in a child powershell.exe.
+        shell: powershell
+        run: ./Scripts/test_install.ps1 -Archive "dist\tandem-$($env:version)-${{ matrix.target }}.zip" -Version $env:version
+
       - name: Upload the archive
         if: needs.changes.outputs.code != 'false'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -296,7 +303,7 @@ jobs:
           test -f "dist/tandem-$version-windows-x86_64.zip"
           ls -l dist
 
-      - name: Stage install.sh and SHA256SUMS
+      - name: Stage install.sh, install.ps1 and SHA256SUMS
         if: needs.changes.outputs.code != 'false'
         run: |
           Scripts/stage-release-assets.sh "$version" dist
@@ -312,6 +319,7 @@ jobs:
             shasum -a 256 -c SHA256SUMS
           fi
           grep -q "DEFAULT_VERSION=\"$version\"" install.sh
+          grep -q "\$DefaultVersion = \"$version\"" install.ps1
 
       - name: Attest the archives' provenance (tag runs only)
         if: startsWith(github.ref, 'refs/tags/v')
@@ -341,7 +349,7 @@ jobs:
             "dist/tandem-$version-linux-x86_64.tar.gz"
             "dist/tandem-$version-linux-arm64.tar.gz"
             "dist/tandem-$version-windows-x86_64.zip"
-            dist/install.sh dist/SHA256SUMS
+            dist/install.sh dist/install.ps1 dist/SHA256SUMS
           )
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
