@@ -21,7 +21,7 @@
   <div class="tickets__barwrap">
   <form class="tickets__bar tickets__bar--board" method="get" action="/board"
         hx-get="/board" hx-target="#board-root" hx-swap="outerHTML" hx-push-url="true"
-        hx-trigger="change, submit">
+        hx-trigger="change, submit" hx-sync="this:replace">
     <input type="hidden" name="project" value="{{ form.project }}">
     <div class="search search--board">
       <svg class="search__icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/></svg>
