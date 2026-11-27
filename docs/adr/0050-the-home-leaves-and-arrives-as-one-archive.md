@@ -8,6 +8,8 @@ Decided 2026-11-17 (CUT-35, refined 2026-11-16; the board's download is CUT-38).
 
 > **Amended by [ADR 0052](0052-members-and-personal-tokens.md):** the export permission is bound to the admin role of a team workspace, and the board's door writes a durable row of the access record (schema v15, carried by the archive).
 
+> **Amended 2026-11-27 (TAN-930):** every folder under `notes/` is archived as a directory entry, empty or not, before the files it holds, so an empty project or label folder survives the move. Directory entries are not listed in the manifest (they carry no digest), and the archive format stays 1, since the import already accepted them.
+
 ## Decision
 
 - **One `.tar.gz`, written as a stream.** `tandem export --out <path|->` writes entries in this order: `tandem.db`, every regular file under `bikeshed/` by its vault-relative path, and `manifest.json` last. The manifest holds the archive format version (1), the store's schema version, the tandem version, the creation time and, for every other entry, its path, size and SHA-256. It is last because the digests are computed while the bytes stream, so a cut archive has no manifest and is refused as damaged. Never archived: `tandem.db.bak`, lock files, temp files, WAL and journal files, symlinks (the rule of COR-14). Zip was rejected: its directory sits at the end and wants a seekable output, while tar.gz streams from the first byte and opens with stock tools on macOS, Linux and current Windows.

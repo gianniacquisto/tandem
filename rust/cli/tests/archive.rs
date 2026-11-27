@@ -183,6 +183,38 @@ fn export_to_stdout_pipes_into_import_from_stdin() {
 }
 
 #[test]
+fn an_empty_notes_folder_survives_export_and_import() {
+    let sandbox = Sandbox::new("empty-folder");
+    sandbox.seed("source");
+    fs::create_dir_all(sandbox.home("source").join("notes/projects/empty/label")).unwrap();
+    let exported = sandbox.run("source", &["export", "--out", "-"]);
+    assert!(exported.status.success(), "{}", text(&exported.stderr));
+
+    let mut child = sandbox
+        .command("target")
+        .args(["import", "-"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("import starts");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&exported.stdout)
+        .expect("the archive pipes in");
+    let output = child.wait_with_output().expect("import ends");
+    assert!(output.status.success(), "{}", text(&output.stderr));
+    assert!(
+        sandbox
+            .home("target")
+            .join("notes/projects/empty/label")
+            .is_dir()
+    );
+}
+
+#[test]
 fn export_runs_with_no_serve_and_writes_one_record_line_to_stderr() {
     let sandbox = Sandbox::new("record");
     sandbox.seed("source");
