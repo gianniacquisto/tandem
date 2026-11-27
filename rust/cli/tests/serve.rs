@@ -1290,3 +1290,42 @@ fn serve_start_migrates_an_older_home_before_the_first_request() {
         "the backup holds the v15 image"
     );
 }
+
+#[test]
+fn serve_migrates_before_it_prints_listening() {
+    let sandbox = Sandbox::new("migrate-before-listening");
+    let home = sandbox.home();
+    tandem_core::store::testing::home_at_version(&home, 15).expect("v15 applies");
+
+    // `start` returns once the listening line is read; no request is made.
+    let _server = Server::start(&sandbox);
+
+    let output = sandbox
+        .command()
+        .arg("doctor")
+        .output()
+        .expect("doctor runs");
+    let report = String::from_utf8_lossy(&output.stdout);
+    assert!(report.contains("store schema v16"), "{report}");
+}
+
+#[test]
+fn serve_on_a_taken_port_leaves_an_older_home_alone() {
+    let sandbox = Sandbox::new("taken-port-older");
+    let home = sandbox.home();
+    tandem_core::store::testing::home_at_version(&home, 15).expect("v15 applies");
+    let before = fs::read(home.join("tandem.db")).unwrap();
+    let held = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("a port binds");
+    let port = held.local_addr().unwrap().port().to_string();
+
+    let output = sandbox
+        .command()
+        .args(["serve", "--host", "127.0.0.1", "--port", &port])
+        .stdin(Stdio::null())
+        .output()
+        .expect("serve runs");
+
+    assert!(!output.status.success(), "the bind failure exits non-zero");
+    assert_eq!(fs::read(home.join("tandem.db")).unwrap(), before);
+    assert!(!home.join("tandem.db.bak").exists());
+}
