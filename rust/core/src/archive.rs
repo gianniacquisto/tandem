@@ -308,7 +308,15 @@ pub fn export<W: Write>(home: &Home, out: W) -> Result<ExportSummary, ArchiveErr
         .len();
     entries.push(append(&mut builder, STORE_ENTRY, &mut file, size)?);
 
-    for (relative, path) in walk_notes(&home.directory().join(NOTES_ENTRY))? {
+    for (relative, path, is_dir) in walk_notes(&home.directory().join(NOTES_ENTRY))? {
+        let archived = format!("{NOTES_ENTRY}/{relative}");
+        if is_dir {
+            // A folder travels as its own entry, so an empty one survives.
+            builder
+                .append_data(&mut dir_header(), &archived, io::empty())
+                .map_err(io_error(&format!("write {archived} into the archive")))?;
+            continue;
+        }
         let mut file = File::open(&path).map_err(io_error(&format!("read the note {relative}")))?;
         let metadata = file
             .metadata()
@@ -316,12 +324,7 @@ pub fn export<W: Write>(home: &Home, out: W) -> Result<ExportSummary, ArchiveErr
         if !metadata.is_file() {
             continue;
         }
-        entries.push(append(
-            &mut builder,
-            &format!("{NOTES_ENTRY}/{relative}"),
-            &mut file,
-            metadata.len(),
-        )?);
+        entries.push(append(&mut builder, &archived, &mut file, metadata.len())?);
     }
 
     let manifest = Manifest {
@@ -381,6 +384,17 @@ fn append<W: Write>(
     })
 }
 
+fn dir_header() -> tar::Header {
+    let mut header = tar::Header::new_gnu();
+    header.set_entry_type(tar::EntryType::Directory);
+    header.set_size(0);
+    header.set_mode(0o700);
+    header.set_uid(0);
+    header.set_gid(0);
+    header.set_mtime(0);
+    header
+}
+
 fn header_for(size: u64, mtime: u64) -> tar::Header {
     let mut header = tar::Header::new_gnu();
     header.set_entry_type(tar::EntryType::Regular);
@@ -392,10 +406,11 @@ fn header_for(size: u64, mtime: u64) -> tar::Header {
     header
 }
 
-/// Every regular file under the notes root, vault-relative and `/`-separated,
-/// sorted. Symlinks are neither followed nor archived, and Tandem's own temp
-/// files are skipped.
-fn walk_notes(root: &Path) -> Result<Vec<(String, PathBuf)>, ArchiveError> {
+/// Every regular file and folder under the notes root, vault-relative and
+/// `/`-separated, sorted, so a folder comes before the files it holds. The flag
+/// is true for a folder. Symlinks are neither followed nor archived, and
+/// Tandem's own temp files are skipped.
+fn walk_notes(root: &Path) -> Result<Vec<(String, PathBuf, bool)>, ArchiveError> {
     let mut found = Vec::new();
     match fs::symlink_metadata(root) {
         Ok(metadata) if metadata.is_dir() && !crate::notes::is_link(&metadata) => {}
@@ -409,7 +424,7 @@ fn walk_notes(root: &Path) -> Result<Vec<(String, PathBuf)>, ArchiveError> {
 fn walk_into(
     directory: &Path,
     prefix: &str,
-    found: &mut Vec<(String, PathBuf)>,
+    found: &mut Vec<(String, PathBuf, bool)>,
 ) -> Result<(), ArchiveError> {
     let entries = fs::read_dir(directory).map_err(io_error("read the notes folder"))?;
     for entry in entries {
@@ -433,9 +448,10 @@ fn walk_into(
             format!("{prefix}/{name}")
         };
         if metadata.is_dir() {
+            found.push((relative.clone(), entry.path(), true));
             walk_into(&entry.path(), &relative, found)?;
         } else if metadata.is_file() {
-            found.push((relative, entry.path()));
+            found.push((relative, entry.path(), false));
         }
     }
     Ok(())

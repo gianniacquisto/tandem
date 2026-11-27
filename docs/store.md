@@ -99,7 +99,7 @@ tandem export --out ~/tandem-2026-11-17.tar.gz          # beside a running serve
 tandem --home ~/new-home import ~/tandem-2026-11-17.tar.gz   # serve stopped on that home
 ```
 
-What the archive holds, in order: `tandem.db` (one committed generation of the store), every note under `notes/`, and `manifest.json` (the format, the schema version and each entry's size and SHA-256) last. `tar -tzf` lists it. It never holds `tandem.db.bak`, a lock file, a temp file, a WAL, or a symlink.
+What the archive holds, in order: `tandem.db` (one committed generation of the store), every folder and note under `notes/` (a folder is a directory entry, so an empty project or label folder survives the move, and each folder comes before the files it holds), and `manifest.json` (the format, the schema version and each file's size and SHA-256; folders carry no digest and are not listed) last. `tar -tzf` lists it. It never holds `tandem.db.bak`, a lock file, a temp file, a WAL, or a symlink.
 
 - **No sign-ins and no tokens travel.** Browser sessions and token digests are left out on purpose: after a move everyone signs in again and agents get new tokens, and a mislaid archive opens no workspace. The member names and roles and the access record do travel. The file is **not encrypted**, and it holds every ticket and note, so keeping it safe is your job.
 - **Consistent means a store at one instant and whole notes.** The store is one committed generation; each note is a whole version. The two are taken moments apart, not in one transaction, so a note you edit by hand in another program during an export may be caught on either side of the edit.

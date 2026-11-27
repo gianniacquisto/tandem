@@ -117,6 +117,25 @@ fn entries_of(archive: &[u8]) -> Vec<(String, Vec<u8>)> {
         .collect()
 }
 
+/// Names of the directory entries in `archive`, in archive order.
+fn directory_names(archive: &[u8]) -> Vec<String> {
+    let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(archive));
+    tar.entries()
+        .expect("the archive reads")
+        .filter_map(|entry| {
+            let entry = entry.expect("an entry reads");
+            entry.header().entry_type().is_dir().then(|| {
+                entry
+                    .path()
+                    .expect("a name")
+                    .to_string_lossy()
+                    .trim_end_matches('/')
+                    .to_string()
+            })
+        })
+        .collect()
+}
+
 fn count(home: &Home, table: &str) -> i64 {
     let connection = Connection::open_with_flags(
         home.directory().join("tandem.db"),
@@ -345,6 +364,8 @@ fn the_archive_holds_the_store_the_notes_and_the_manifest_last_and_nothing_else(
         [
             "tandem.db",
             "notes/Index.md",
+            "notes/projects",
+            "notes/projects/p",
             "notes/projects/p/p.md",
             "manifest.json"
         ]
@@ -393,8 +414,15 @@ fn the_manifest_names_the_format_the_schema_and_each_entrys_size_and_digest() {
     assert_eq!(manifest.schema_version, store::CURRENT_VERSION);
     assert_eq!(manifest.tandem_version, crate::release_version());
     assert!(decode_time(&manifest.created_at));
-    assert_eq!(manifest.entries.len(), entries.len() - 1);
-    for (listed, (name, bytes)) in manifest.entries.iter().zip(&entries) {
+    // Folders are entries of the archive but carry no bytes to digest, so the
+    // manifest lists the files alone.
+    let folders = directory_names(&export_bytes(&source));
+    let files: Vec<&(String, Vec<u8>)> = entries
+        .iter()
+        .filter(|(name, _)| !folders.contains(name))
+        .collect();
+    assert_eq!(manifest.entries.len(), files.len() - 1);
+    for (listed, (name, bytes)) in manifest.entries.iter().zip(&files) {
         assert_eq!(&listed.path, name);
         assert_eq!(listed.size, bytes.len() as u64);
         assert_eq!(listed.sha256, sha(bytes));
@@ -463,11 +491,34 @@ fn export_skips_symlinks_and_temp_files_under_the_notes_root() {
         [
             "tandem.db",
             "notes/Index.md",
+            "notes/projects",
+            "notes/projects/p",
             "notes/projects/p/p.md",
             "manifest.json"
         ],
         "{names:?}"
     );
+}
+
+#[test]
+fn empty_folders_travel_as_directory_entries_and_import_back() {
+    let sandbox = Sandbox::new("empty-folders");
+    let source = sandbox.home("source");
+    seed(&source, 1);
+    fs::create_dir_all(source.directory().join("notes/projects/empty/label")).unwrap();
+    let archive = export_bytes(&source);
+
+    let dirs = directory_names(&archive);
+    assert!(dirs.contains(&"notes/projects/empty".to_string()), "{dirs:?}");
+    assert!(
+        dirs.contains(&"notes/projects/empty/label".to_string()),
+        "{dirs:?}"
+    );
+
+    let target = sandbox.home("target");
+    let summary = import(&target, archive.as_slice(), None).expect("the import lands");
+    assert_eq!(summary.notes, 2, "folders are not counted as notes");
+    assert!(target.directory().join("notes/projects/empty/label").is_dir());
 }
 
 // MARK: - 6 to 12: import refusals
