@@ -64,6 +64,8 @@ pub struct Facts {
     pub notes_migration: Pending,
     /// The older folder's path, for the advice.
     pub legacy_notes_path: PathBuf,
+    /// The home's Unix permission bits, `None` on Windows or when the home is absent.
+    pub home_mode: Option<u32>,
 }
 
 /// Assemble the report from observed `facts`. Pure.
@@ -73,11 +75,7 @@ pub fn report(facts: &Facts) -> DoctorReport {
         DoctorCheck {
             name: "home".to_string(),
             ok: true,
-            detail: format!(
-                "{} ({})",
-                slashed_path(&facts.home_path),
-                home_why(facts.home_source)
-            ),
+            detail: home_detail(facts),
         },
         store_check(facts),
         integrity_check(facts),
@@ -95,6 +93,39 @@ pub fn report(facts: &Facts) -> DoctorReport {
 
     let ok = checks.iter().all(|check| check.ok);
     DoctorReport { ok, checks }
+}
+
+/// The `home` row's detail: the path and why, plus one sentence when other
+/// local users can read the home. The row stays green: it is advice.
+fn home_detail(facts: &Facts) -> String {
+    let mut detail = format!(
+        "{} ({})",
+        slashed_path(&facts.home_path),
+        home_why(facts.home_source)
+    );
+    if facts.home_mode.is_some_and(|mode| mode & 0o077 != 0) {
+        detail.push_str(&format!(
+            ". The home is readable by other local users; `chmod -R go-rwx {}` makes it private.",
+            slashed_path(&facts.home_path)
+        ));
+    }
+    detail
+}
+
+/// The home's permission bits on Unix, `None` elsewhere or when it is absent.
+fn home_mode(path: &std::path::Path) -> Option<u32> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(path)
+            .ok()
+            .map(|meta| meta.permissions().mode() & 0o777)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        None
+    }
 }
 
 /// Why the home resolved where it did, in the words `doctor` prints. There is one home (`~/.tandem`), so the only choices are the `--home` flag
@@ -405,6 +436,7 @@ pub fn gather(home: &Home) -> Facts {
         notes_is_file,
         notes_migration: migration,
         legacy_notes_path: home.legacy_notes_directory(),
+        home_mode: home_mode(home.directory()),
     }
 }
 

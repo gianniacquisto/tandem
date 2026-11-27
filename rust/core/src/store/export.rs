@@ -114,7 +114,9 @@ impl Store {
         }
         let temp = sibling(&database, ".tandem-export-");
         let outcome = (|| {
-            create_private(&temp)?;
+            super::private::create_new_private_file(&temp).map_err(|error| {
+                StoreError::Io(format!("could not create {}: {error}", temp.display()))
+            })?;
             copy_into(&database, &temp)?;
             scrub(&temp, CARRIED_TABLES, EMPTIED_TABLES)?;
             let connection = open_read_only(&temp)?;
@@ -131,20 +133,6 @@ impl Store {
             }
         }
     }
-}
-
-/// Create `path` empty and private to the owner (0600 on unix) before any byte
-/// of the store lands in it, so a copy is never readable by others, even
-/// briefly.
-fn create_private(path: &Path) -> Result<()> {
-    let mut options = fs::OpenOptions::new();
-    options.write(true).create_new(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    options
-        .open(path)
-        .map(|_| ())
-        .map_err(|error| StoreError::Io(format!("could not create {}: {error}", path.display())))
 }
 
 /// Empty the secret tables of the copy at `path`, then vacuum it and leave it a

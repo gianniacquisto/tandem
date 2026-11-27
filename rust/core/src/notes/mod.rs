@@ -536,7 +536,7 @@ impl Notes {
             if let Some(taken) = self.file_collision(path, false) {
                 return Err(DomainError::NoteAlreadyExists(taken));
             }
-            fs::create_dir_all(&url).map_err(|error| {
+            crate::store::private::create_dir_all_private(&url).map_err(|error| {
                 DomainError::NotesIo(format!("could not create folder \"{path}\": {error}"))
             })?;
             Ok(Operation {
@@ -700,7 +700,7 @@ impl Notes {
             mapping.insert(from.to_string(), canonical_link_target(to, &post_rename));
             self.apply_link_rewrite(&notes, &mapping)?;
             if let Some(parent) = new_url.parent() {
-                fs::create_dir_all(parent).map_err(|error| {
+                crate::store::private::create_dir_all_private(parent).map_err(|error| {
                     DomainError::NotesIo(format!(
                         "could not create \"{}\": {error}",
                         parent.display()
@@ -772,7 +772,7 @@ impl Notes {
             }
             self.apply_link_rewrite(&notes, &mapping)?;
             if let Some(parent) = new_url.parent() {
-                fs::create_dir_all(parent).map_err(|error| {
+                crate::store::private::create_dir_all_private(parent).map_err(|error| {
                     DomainError::NotesIo(format!(
                         "could not create \"{}\": {error}",
                         parent.display()
@@ -920,7 +920,7 @@ impl Notes {
             }
             self.apply_link_rewrite(&notes, &mapping)?;
             if let Some(parent) = new_url.parent() {
-                fs::create_dir_all(parent).map_err(|error| {
+                crate::store::private::create_dir_all_private(parent).map_err(|error| {
                     DomainError::NotesIo(format!(
                         "could not create \"{}\": {error}",
                         parent.display()
@@ -976,7 +976,7 @@ impl Notes {
                 return Err(DomainError::NoteAlreadyExists(id.clone()));
             }
             if let Some(parent) = trash_url.parent() {
-                fs::create_dir_all(parent).map_err(|error| {
+                crate::store::private::create_dir_all_private(parent).map_err(|error| {
                     DomainError::NotesIo(format!(
                         "could not create \"{}\": {error}",
                         parent.display()
@@ -1021,7 +1021,7 @@ impl Notes {
                 return Err(DomainError::NoteAlreadyExists(taken));
             }
             if let Some(parent) = destination.parent() {
-                fs::create_dir_all(parent).map_err(|error| {
+                crate::store::private::create_dir_all_private(parent).map_err(|error| {
                     DomainError::NotesIo(format!(
                         "could not create \"{}\": {error}",
                         parent.display()

@@ -260,14 +260,14 @@ impl LockedDirectory {
     /// lands the same way a file's did (ADR 0001).
     pub(crate) fn atomic_write(&self, bytes: &[u8], target: &Path) -> Result<()> {
         let parent = target.parent().unwrap_or_else(|| Path::new("."));
-        fs::create_dir_all(parent).map_err(|error| {
+        crate::store::private::create_dir_all_private(parent).map_err(|error| {
             StoreError::Io(format!(
                 "could not create the directory {}: {error}",
                 parent.display()
             ))
         })?;
         let temp = self.temp_for(target);
-        fs::write(&temp, bytes).map_err(|error| {
+        crate::store::private::write_private(&temp, bytes).map_err(|error| {
             StoreError::Io(format!(
                 "could not write the temp at {}: {error}",
                 temp.display()
@@ -301,24 +301,22 @@ impl LockedDirectory {
     /// retry for a holder outside it. The returned guard releases both when it
     /// drops.
     fn acquire(&self) -> Result<LockGuard> {
-        fs::create_dir_all(&self.root).map_err(|error| {
+        crate::store::private::create_dir_all_private(&self.root).map_err(|error| {
             StoreError::Io(format!(
                 "could not create the directory {}: {error}",
                 self.root.display()
             ))
         })?;
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&self.lock_file)
-            .map_err(|error| {
-                StoreError::Io(format!(
-                    "could not open the lock file {}: {error}",
-                    self.lock_file.display()
-                ))
-            })?;
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let file = options.open(&self.lock_file).map_err(|error| {
+            StoreError::Io(format!(
+                "could not open the lock file {}: {error}",
+                self.lock_file.display()
+            ))
+        })?;
         let key = queue_key(&self.lock_file)?;
         let queue = queue_for(&key);
         // One window for the whole wait, as before the queue: the turn in the

@@ -42,6 +42,7 @@ fn facts() -> Facts {
         notes_is_file: false,
         notes_migration: Pending::Nothing,
         legacy_notes_path: PathBuf::from("/Users/tester/.tandem-dev/bikeshed"),
+        home_mode: Some(0o700),
     }
 }
 
@@ -109,6 +110,27 @@ fn a_healthy_machine_passes_with_every_check_in_the_pinned_order() {
         alias.detail,
         "deprecated: renamed to notes. /Users/tester/.tandem-dev/notes \u{2014} 4 note(s)"
     );
+}
+
+#[test]
+fn a_loose_home_adds_the_chmod_sentence_and_stays_green() {
+    let mut loose = facts();
+    loose.home_mode = Some(0o755);
+    let loose_report = report(&loose);
+    assert!(loose_report.ok);
+    let row = check(&loose_report, "home");
+    assert!(row.ok);
+    assert!(
+        row.detail
+            .contains("chmod -R go-rwx /Users/tester/.tandem-dev"),
+        "{}",
+        row.detail
+    );
+    let private = report(&facts());
+    assert!(!check(&private, "home").detail.contains("chmod"));
+    let mut windows = facts();
+    windows.home_mode = None;
+    assert!(!check(&report(&windows), "home").detail.contains("chmod"));
 }
 
 #[test]
