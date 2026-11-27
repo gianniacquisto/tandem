@@ -576,17 +576,11 @@ fn run(cli: &Cli) -> Result<(), Failure> {
     let home = Home::resolve(cli.home.as_deref(), environment.as_deref(), &user_home);
     let command = cli.command.as_ref().ok_or_else(Failure::usage)?;
 
-    // A newer binary moves an older home before its first command runs, so an
-    // upgrade does not wait on a write (ADR 0031, amended). `doctor` reports
-    // the version as a fact and stays read-only; `serve` migrates in its own
-    // start, after its flags are checked. A home with no database is left for
-    // its first write.
-    if !matches!(command, Command::Doctor | Command::Serve(_)) {
-        Store::new(home.clone())
-            .ensure_migrated(&Actor::current())
-            .map_err(|error| Failure::domain(error.into()))?;
-    }
-
+    // A newer binary moves an older home when the first command that opens the
+    // store runs, so an upgrade does not wait on a write (ADR 0031, amended).
+    // Each verb calls `migrated_store` only after its own argument checks have
+    // passed, so a mistyped command moves nothing. `doctor` and `import` never
+    // migrate, and `serve` migrates in its own start, after it binds.
     match command {
         Command::Doctor => doctor(&home),
         Command::Export(args) => export(&home, args),
@@ -601,19 +595,8 @@ fn run(cli: &Cli) -> Result<(), Failure> {
 
 fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
     let command = command.ok_or_else(Failure::usage)?;
-    let store = if matches!(
-        command,
-        TicketCommand::List(_)
-            | TicketCommand::Show(_)
-            | TicketCommand::Comment {
-                command: Some(CommentCommand::List(_))
-            }
-    ) {
-        Store::new(home.clone())
-    } else {
-        write_store(home)?
-    };
-    let board = Board::new(store);
+    let read = || migrated_store(home).map(Board::new);
+    let write = || write_store(home).map(Board::new);
 
     match command {
         TicketCommand::List(args) => {
@@ -629,12 +612,14 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                 args.blocked,
             )
             .map_err(Failure::domain)?;
+            let board = read()?;
             let tickets = board.list(&query).map_err(Failure::domain)?;
             print(&TicketList {
                 tickets: tickets.iter().map(TicketSummary::new).collect(),
             })
         }
         TicketCommand::Show(args) => {
+            let board = read()?;
             let ticket = board
                 .ticket(args.id.as_deref().unwrap_or(""))
                 .map_err(Failure::domain)?;
@@ -648,6 +633,7 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
             let assignee = resolve_assignee(args.assignee.as_deref())?;
             let origin = resolve_origin(args.origin.as_deref())?;
             let description = add_description_body(args.description.as_deref())?;
+            let board = write()?;
             let ticket = board
                 .add(
                     args.title.as_deref().unwrap_or(""),
@@ -683,6 +669,7 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                 Some(raw) => Edit::Set(append_description_body(raw)?),
                 None => Edit::Unchanged,
             };
+            let board = write()?;
             let ticket = board
                 .set(
                     args.id.as_deref().unwrap_or(""),
@@ -720,12 +707,14 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                     }
                 },
             };
+            let board = write()?;
             let ticket = board
                 .move_ticket(args.id.as_deref().unwrap_or(""), args.label.as_deref(), at)
                 .map_err(Failure::domain)?;
             print(&TicketDetail::new(&ticket))
         }
         TicketCommand::Block(args) => {
+            let board = write()?;
             let ticket = board
                 .block(
                     args.id.as_deref().unwrap_or(""),
@@ -735,12 +724,14 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
             print(&TicketDetail::new(&ticket))
         }
         TicketCommand::Unblock(args) => {
+            let board = write()?;
             let ticket = board
                 .unblock(args.id.as_deref().unwrap_or(""), args.on.as_deref())
                 .map_err(Failure::domain)?;
             print(&TicketDetail::new(&ticket))
         }
         TicketCommand::Complete(args) => {
+            let board = write()?;
             let ticket = board
                 .complete(args.id.as_deref().unwrap_or(""))
                 .map_err(Failure::domain)?;
@@ -748,10 +739,12 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
         }
         TicketCommand::Archive(args) => match args.id.as_deref() {
             Some(id) => {
+                let board = write()?;
                 let ticket = board.archive(id).map_err(Failure::domain)?;
                 print(&TicketDetail::new(&ticket))
             }
             None => {
+                let board = write()?;
                 let archived = board.archive_done().map_err(Failure::domain)?;
                 print(&ArchivedView { archived })
             }
@@ -765,6 +758,7 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                         Some(body) => body.to_string(),
                         None => String::new(),
                     };
+                    let board = write()?;
                     let actor = Actor::current();
                     let comment = board
                         .append_comment(
@@ -782,6 +776,7 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
                     })
                 }
                 CommentCommand::List(args) => {
+                    let board = read()?;
                     let comments = board
                         .comments(args.id.as_deref().unwrap_or(""))
                         .map_err(Failure::domain)?;
@@ -796,25 +791,25 @@ fn ticket(home: &Home, command: Option<&TicketCommand>) -> Result<(), Failure> {
 
 fn label(home: &Home, command: Option<&LabelCommand>) -> Result<(), Failure> {
     let command = command.ok_or_else(Failure::usage)?;
-    let store = if matches!(command, LabelCommand::List) {
-        Store::new(home.clone())
-    } else {
-        write_store(home)?
-    };
-    let board = Board::new(store);
+    let write = || write_store(home).map(Board::new);
 
     match command {
-        LabelCommand::List => print(&LabelList {
-            labels: board.labels().map_err(Failure::domain)?,
-            note: None,
-        }),
+        LabelCommand::List => {
+            let board = Board::new(migrated_store(home)?);
+            print(&LabelList {
+                labels: board.labels().map_err(Failure::domain)?,
+                note: None,
+            })
+        }
         LabelCommand::Add(args) => {
+            let board = write()?;
             let labels = board
                 .add_label(args.name.as_deref().unwrap_or(""), args.project.as_deref())
                 .map_err(Failure::domain)?;
             print(&LabelList { labels, note: None })
         }
         LabelCommand::Rename(args) => {
+            let board = write()?;
             let labels = board
                 .rename_label(
                     args.from.as_deref().unwrap_or(""),
@@ -825,6 +820,7 @@ fn label(home: &Home, command: Option<&LabelCommand>) -> Result<(), Failure> {
             print(&LabelList { labels, note: None })
         }
         LabelCommand::Delete(args) => {
+            let board = write()?;
             let deletion = board
                 .delete_label(args.name.as_deref().unwrap_or(""))
                 .map_err(Failure::domain)?;
@@ -840,6 +836,7 @@ fn label(home: &Home, command: Option<&LabelCommand>) -> Result<(), Failure> {
                     }
                 },
             };
+            let board = write()?;
             let labels = board
                 .move_label(args.name.as_deref().unwrap_or(""), at)
                 .map_err(Failure::domain)?;
@@ -850,25 +847,23 @@ fn label(home: &Home, command: Option<&LabelCommand>) -> Result<(), Failure> {
 
 fn project(home: &Home, command: Option<&ProjectCommand>) -> Result<(), Failure> {
     let command = command.ok_or_else(Failure::usage)?;
-    let store = if matches!(command, ProjectCommand::List) {
-        Store::new(home.clone())
-    } else {
-        write_store(home)?
-    };
-    let board = Board::new(store);
+    let write = || write_store(home).map(Board::new);
 
     match command {
         ProjectCommand::List => {
+            let board = Board::new(migrated_store(home)?);
             let projects = board.projects().map_err(Failure::domain)?;
             print(&ProjectList::new(&projects, None))
         }
         ProjectCommand::Add(args) => {
+            let board = write()?;
             let projects = board
                 .add_project(args.name.as_deref().unwrap_or(""), args.abbr.as_deref())
                 .map_err(Failure::domain)?;
             print(&ProjectList::new(&projects, None))
         }
         ProjectCommand::Rename(args) => {
+            let board = write()?;
             let projects = board
                 .rename_project(
                     args.from.as_deref().unwrap_or(""),
@@ -879,6 +874,7 @@ fn project(home: &Home, command: Option<&ProjectCommand>) -> Result<(), Failure>
             print(&ProjectList::new(&projects, None))
         }
         ProjectCommand::Delete(args) => {
+            let board = write()?;
             let projects = board
                 .delete_project(args.name.as_deref().unwrap_or(""))
                 .map_err(Failure::domain)?;
@@ -917,7 +913,7 @@ fn note(home: &Home, command: Option<&NoteCommand>) -> Result<(), Failure> {
             print(&stats.value)
         }
         NoteCommand::Links => {
-            let projects = Board::new(Store::new(home.clone()))
+            let projects = Board::new(migrated_store(home)?)
                 .projects()
                 .map_err(Failure::domain)?;
             let names = BoardNames {
@@ -992,7 +988,18 @@ fn print<T: serde::Serialize>(value: &T) -> Result<(), Failure> {
 fn write_store(home: &Home) -> Result<Store, Failure> {
     home.ensure()
         .map_err(|error| home_failure(home.directory(), error))?;
-    Ok(Store::new(home.clone()))
+    migrated_store(home)
+}
+
+/// The one place a verb opens the store: it moves an older home to this
+/// binary's schema first (ADR 0031, amended). Callers run it only after their
+/// own argument checks have passed.
+fn migrated_store(home: &Home) -> Result<Store, Failure> {
+    let store = Store::new(home.clone());
+    store
+        .ensure_migrated(&Actor::current())
+        .map_err(|error| Failure::domain(error.into()))?;
+    Ok(store)
 }
 
 fn home_failure(path: &Path, error: io::Error) -> Failure {
@@ -1312,6 +1319,16 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
                 "tandem serve: the bound address is unreadable: {error}."
             ))
         })?;
+        // An older home moves its notes folder once, after the bind (a taken
+        // port leaves the home untouched) and before the listening line; a
+        // clash refuses to start rather than serve an empty notes. Until the
+        // line prints, the bound socket only queues connections.
+        tandem_core::notes::migrate::migrate_home(home).map_err(Failure::domain)?;
+        // The store moves the same way; a refusal or a failed migration stops
+        // the serve rather than answer from an older home.
+        Store::new(home.clone())
+            .ensure_migrated(&Actor::current())
+            .map_err(|error| Failure::domain(error.into()))?;
         println!("tandem serve: listening on http://{address}");
         if let Some(origin) = &public_origin {
             println!("tandem serve: public origin {origin}");
@@ -1336,15 +1353,6 @@ fn serve(home: &Home, args: &ServeArgs) -> Result<(), Failure> {
                 Failure::message(format!("tandem serve: the public origin {reason}"))
             })?;
         }
-        // An older home moves its notes folder once, before the first request;
-        // a clash refuses to start rather than serve an empty notes.
-        tandem_core::notes::migrate::migrate_home(home).map_err(Failure::domain)?;
-        // The store moves the same way, before the first request; a refusal or
-        // a failed migration stops the serve rather than answer from an older
-        // home.
-        Store::new(home.clone())
-            .ensure_migrated(&Actor::current())
-            .map_err(|error| Failure::domain(error.into()))?;
         let context = tandem_core::serve::SessionContext {
             store: Store::new(home.clone()),
             actor: Actor::current(),
@@ -1464,8 +1472,6 @@ fn doctor(home: &Home) -> Result<(), Failure> {
 /// log subscriber.
 fn export(home: &Home, args: &ExportArgs) -> Result<(), Failure> {
     let out = args.out.as_deref().ok_or_else(Failure::usage)?;
-    // An older home's notes move first, so the archive carries them.
-    tandem_core::notes::migrate::migrate_home(home).map_err(Failure::domain)?;
     let principal = archive::Principal {
         access: archive::Access::Local,
         actor: Actor::current(),
@@ -1477,6 +1483,10 @@ fn export(home: &Home, args: &ExportArgs) -> Result<(), Failure> {
                  standard output into a file or `tandem import -`.",
             ));
         }
+        // An older home's notes and store move first, so the archive carries
+        // them, once the checks above have passed.
+        tandem_core::notes::migrate::migrate_home(home).map_err(Failure::domain)?;
+        migrated_store(home)?;
         let line = start_export(&principal)?;
         eprintln!("{line}");
         let writer = io::BufWriter::new(io::stdout().lock());
@@ -1513,10 +1523,14 @@ fn export(home: &Home, args: &ExportArgs) -> Result<(), Failure> {
             ))
         }
     })?;
-    let outcome = start_export(&principal).and_then(|line| {
-        eprintln!("{line}");
-        archive::export(home, io::BufWriter::new(file)).map_err(archive_failure)
-    });
+    let outcome = tandem_core::notes::migrate::migrate_home(home)
+        .map_err(Failure::domain)
+        .and_then(|()| migrated_store(home).map(drop))
+        .and_then(|()| start_export(&principal))
+        .and_then(|line| {
+            eprintln!("{line}");
+            archive::export(home, io::BufWriter::new(file)).map_err(archive_failure)
+        });
     match outcome {
         Ok(summary) => {
             println!("{} ({} bytes)", path.display(), summary.bytes);

@@ -401,3 +401,117 @@ fn a_read_verb_on_a_newer_home_is_refused_and_writes_nothing() {
     assert_eq!(fs::read(home.join("tandem.db")).unwrap(), before);
     assert!(!home.join("tandem.db.bak").exists());
 }
+
+// MARK: - A command migrates only when it opens the store (TAN-912)
+
+/// "Unchanged" for an older home: the database bytes are identical, no
+/// pre-image was rolled, and `doctor` still reports v15.
+fn assert_home_unchanged(sandbox: &Sandbox, home: &Path, before: &[u8]) {
+    assert_eq!(fs::read(home.join("tandem.db")).unwrap(), before);
+    assert!(!home.join("tandem.db.bak").exists(), "no pre-image rolled");
+    let doctor = tandem(sandbox, Some(home), &["doctor"]);
+    assert!(
+        versions_detail(&doctor).ends_with("store schema v15"),
+        "{}",
+        versions_detail(&doctor)
+    );
+}
+
+#[test]
+fn import_into_a_populated_older_home_refuses_and_moves_nothing() {
+    let sandbox = Sandbox::new("import-older");
+    let scratch = sandbox.path().join("scratch");
+    let project = tandem(&sandbox, Some(&scratch), &["project", "add", "--name", "P"]);
+    assert!(project.status.success());
+    let archive = sandbox.path().join("a.tar.gz");
+    let exported = tandem(
+        &sandbox,
+        Some(&scratch),
+        &["export", "--out", archive.to_str().unwrap()],
+    );
+    assert!(
+        exported.status.success(),
+        "{}",
+        String::from_utf8_lossy(&exported.stderr)
+    );
+    let home = v15_home(&sandbox);
+    let before = fs::read(home.join("tandem.db")).unwrap();
+
+    let output = tandem(
+        &sandbox,
+        Some(&home),
+        &["import", archive.to_str().unwrap()],
+    );
+
+    assert!(!output.status.success(), "the import is refused");
+    assert_home_unchanged(&sandbox, &home, &before);
+}
+
+#[test]
+fn a_mistyped_ticket_command_on_an_older_home_moves_nothing() {
+    let sandbox = Sandbox::new("mistyped-older");
+    let home = v15_home(&sandbox);
+    let before = fs::read(home.join("tandem.db")).unwrap();
+    let id = "00000000-0000-0000-0000-000000000001";
+
+    for args in [
+        vec!["ticket"],
+        vec!["ticket", "add", "--title", "x", "--status", "bogus"],
+        vec![
+            "ticket",
+            "set",
+            id,
+            "--description",
+            "a",
+            "--append-description",
+            "b",
+        ],
+    ] {
+        let output = tandem(&sandbox, Some(&home), &args);
+        assert!(!output.status.success(), "{args:?} fails");
+        assert_home_unchanged(&sandbox, &home, &before);
+    }
+}
+
+#[test]
+fn a_note_verb_that_never_opens_the_store_leaves_an_older_home_alone() {
+    let sandbox = Sandbox::new("note-write-older");
+    let home = v15_home(&sandbox);
+    let before = fs::read(home.join("tandem.db")).unwrap();
+
+    let output = tandem(
+        &sandbox,
+        Some(&home),
+        &["note", "write", "--path", "a.md", "--text", "hi"],
+    );
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_home_unchanged(&sandbox, &home, &before);
+}
+
+#[test]
+fn note_links_and_label_list_migrate_an_older_home() {
+    for args in [vec!["note", "links"], vec!["label", "list"]] {
+        let sandbox = Sandbox::new("opens-store-older");
+        let home = v15_home(&sandbox);
+
+        let output = tandem(&sandbox, Some(&home), &args);
+
+        assert!(
+            output.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let doctor = tandem(&sandbox, Some(&home), &["doctor"]);
+        assert!(
+            versions_detail(&doctor).ends_with("store schema v16"),
+            "{args:?}: {}",
+            versions_detail(&doctor)
+        );
+        assert!(home.join("tandem.db.bak").exists(), "{args:?}: pre-image");
+    }
+}
