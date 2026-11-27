@@ -804,25 +804,21 @@ fn label(home: &Home, command: Option<&LabelCommand>) -> Result<(), Failure> {
                 note: None,
             })
         }
-        LabelCommand::Add(args) => {
-            run_rpc(
-                home,
-                Method::LabelAdd(LabelAddParams {
-                    name: args.name.clone(),
-                    project: args.project.clone(),
-                }),
-            )
-        }
-        LabelCommand::Rename(args) => {
-            run_rpc(
-                home,
-                Method::LabelRename(LabelRenameParams {
-                    from: args.from.clone(),
-                    to: args.to.clone(),
-                    project: args.project.clone(),
-                }),
-            )
-        }
+        LabelCommand::Add(args) => run_rpc(
+            home,
+            Method::LabelAdd(LabelAddParams {
+                name: args.name.clone(),
+                project: args.project.clone(),
+            }),
+        ),
+        LabelCommand::Rename(args) => run_rpc(
+            home,
+            Method::LabelRename(LabelRenameParams {
+                from: args.from.clone(),
+                to: args.to.clone(),
+                project: args.project.clone(),
+            }),
+        ),
         LabelCommand::Delete(args) => {
             let board = write()?;
             let deletion = board
@@ -859,25 +855,21 @@ fn project(home: &Home, command: Option<&ProjectCommand>) -> Result<(), Failure>
             let projects = board.projects().map_err(Failure::domain)?;
             print(&ProjectList::new(&projects, None))
         }
-        ProjectCommand::Add(args) => {
-            run_rpc(
-                home,
-                Method::ProjectAdd(ProjectAddParams {
-                    name: args.name.clone(),
-                    abbr: args.abbr.clone(),
-                }),
-            )
-        }
-        ProjectCommand::Rename(args) => {
-            run_rpc(
-                home,
-                Method::ProjectRename(ProjectRenameParams {
-                    from: args.from.clone(),
-                    to: args.to.clone(),
-                    abbr: args.abbr.clone(),
-                }),
-            )
-        }
+        ProjectCommand::Add(args) => run_rpc(
+            home,
+            Method::ProjectAdd(ProjectAddParams {
+                name: args.name.clone(),
+                abbr: args.abbr.clone(),
+            }),
+        ),
+        ProjectCommand::Rename(args) => run_rpc(
+            home,
+            Method::ProjectRename(ProjectRenameParams {
+                from: args.from.clone(),
+                to: args.to.clone(),
+                abbr: args.abbr.clone(),
+            }),
+        ),
         ProjectCommand::Delete(args) => {
             let board = write()?;
             let projects = board
