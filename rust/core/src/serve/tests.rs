@@ -5817,6 +5817,53 @@ async fn an_export_moves_neither_the_revision_nor_the_events_stream() {
     assert!(events.is_empty(), "the stream stayed quiet: {events:?}");
 }
 
+/// The route subscribes before it reads the revision (events.rs). A write that
+/// is broadcast in the gap between the two must still reach the stream; with the
+/// lines swapped the gap is before the subscribe and the frame never arrives.
+#[tokio::test]
+async fn a_write_broadcast_between_subscribe_and_revision_still_reaches_the_stream() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("events-order");
+    let store = sandbox.store();
+    let (changes, _receiver) = broadcast::channel(8);
+    let app = router_with(context(store), changes.clone());
+
+    // A revision no store in this test reaches, so its frame is unmistakable.
+    const WRITE: i64 = 1 << 40;
+    let writer = changes.clone();
+    events::run_between_subscribe_and_revision(move || {
+        let _ = writer.send(WRITE);
+    });
+    let request = Request::builder()
+        .uri("/events")
+        .header(header::HOST, "127.0.0.1:7700")
+        .body(Body::empty())
+        .expect("the request builds");
+    let response = app
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("the router answers");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let mut stream = response.into_body();
+    let mut text = String::new();
+    let wanted = format!("data: {WRITE}");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !text.contains(&wanted) && Instant::now() < deadline {
+        if let Ok(Some(Ok(frame))) =
+            tokio::time::timeout(Duration::from_millis(500), stream.frame()).await
+            && let Some(data) = frame.data_ref()
+        {
+            text.push_str(&String::from_utf8_lossy(data));
+        }
+    }
+    assert!(
+        text.contains(&wanted),
+        "a write broadcast between subscribe and the revision read never reached the stream: {text}"
+    );
+}
+
 // MARK: - Members and personal tokens (CUT-36, ADR 0052)
 
 const NOW: i64 = 1_800_000_000;
