@@ -433,6 +433,10 @@ impl Sandbox {
         fs::create_dir_all(&home).expect("the sandbox home is creatable");
         fs::create_dir_all(&user).expect("the sandbox user home is creatable");
         copy_dir(&repo_root().join("Fixtures/port/Home"), &home);
+        // A real home is owner-only; doctor adds advice to a loose one (TAN-915).
+        #[cfg(unix)]
+        fs::set_permissions(&home, std::os::unix::fs::PermissionsExt::from_mode(0o700))
+            .expect("the home is chmod-able");
         // The committed store is the fixture home's own, and `fixture_db.rs`
         // reads it where it sits. Every golden was captured on an empty board
         // beside the fixture notes, so the copy starts without the store.
