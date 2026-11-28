@@ -376,6 +376,40 @@
     return sheet.querySelector('[data-autosave="' + field + '"]');
   }
 
+  // The live root drawn over a hidden store control (the description), once
+  // the editor has taken it; else none.
+  function liveRootOf(control) {
+    if (!control.id) return null;
+    var roots = document.querySelectorAll('[data-live][data-live-store]');
+    for (var i = 0; i < roots.length; i++) {
+      if (roots[i].getAttribute('data-live-store') === control.id && roots[i].hasAttribute('data-live-ready') && !roots[i].hidden) {
+        return roots[i];
+      }
+    }
+    return null;
+  }
+
+  // What the human sees and types in: the live root, else the control itself.
+  function surfaceOf(control) {
+    return liveRootOf(control) || control;
+  }
+
+  function liveInstanceOf(control) {
+    var root = liveRootOf(control);
+    if (!root) return null;
+    for (var i = 0; i < lives.length; i++) if (lives[i].root === root) return lives[i];
+    return null;
+  }
+
+  // The store control a focus-out of a live root saves, else the control.
+  function autosaveOf(target) {
+    var control = closest(target, '[data-autosave]');
+    if (control) return control;
+    var root = closest(target, '[data-live][data-live-store]');
+    var store = root && document.getElementById(root.getAttribute('data-live-store'));
+    return store && store.hasAttribute('data-autosave') ? store : null;
+  }
+
   // The value the store is known to hold for the control: what it last
   // posted and landed, else what it was drawn with.
   function landed(control) {
@@ -426,7 +460,7 @@
     var control = sheetControl(sheet, field);
     var note = sheet.querySelector('[data-field-note="' + field + '"]');
     sheetFailures[field] = failure;
-    if (control) control.classList.add('is-failed');
+    if (control) surfaceOf(control).classList.add('is-failed');
     if (note) {
       note.textContent = '';
       if (failure.theirs !== undefined) {
@@ -457,7 +491,10 @@
     delete sheetFailures[field];
     var control = sheetControl(sheet, field);
     var note = sheet.querySelector('[data-field-note="' + field + '"]');
-    if (control) control.classList.remove('is-failed');
+    if (control) {
+      control.classList.remove('is-failed');
+      surfaceOf(control).classList.remove('is-failed');
+    }
     if (note) {
       note.textContent = '';
       note.classList.remove('is-notice');
@@ -613,7 +650,7 @@
   function focusFirstFailed(sheet) {
     var first = failedFields()[0];
     var control = first && sheetControl(sheet, first);
-    if (control) control.focus();
+    if (control) surfaceOf(control).focus();
   }
 
   // Close where the sheet was opened from, filters and all, once everything
@@ -638,7 +675,7 @@
   });
 
   document.addEventListener('focusout', function (event) {
-    var control = closest(event.target, '[data-autosave]');
+    var control = autosaveOf(event.target);
     if (!control || control.tagName === 'SELECT') return;
     var field = control.getAttribute('data-autosave');
     if (sheetTimers[field]) saveField(control, false);
@@ -675,6 +712,16 @@
     } else if (closest(event.target, '[data-field-keep]')) {
       saveField(control, true, failure.theirs);
     } else if (closest(event.target, '[data-field-theirs]')) {
+      var instance = liveInstanceOf(control);
+      if (instance) {
+        // The surface redraws from the text; its set() mirrors it to the store.
+        surfaceOf(control).focus();
+        instance.set(failure.theirs, { start: failure.theirs.length, end: failure.theirs.length });
+        if (sheetTimers[field]) {
+          window.clearTimeout(sheetTimers[field]);
+          delete sheetTimers[field];
+        }
+      }
       control.value = failure.theirs;
       if (control.value !== failure.theirs) {
         var option = document.createElement('option');
@@ -690,7 +737,7 @@
       clearFailure(sheet, field);
       renderSaveState(sheet);
       growField(control);
-      control.focus();
+      if (!instance) control.focus();
     }
   });
 
@@ -762,6 +809,14 @@
       }
       control.setAttribute('data-was', kept.was);
       if (kept.landed !== undefined) control.__landed = kept.landed;
+      var redrawn = liveInstanceOf(control);
+      if (redrawn) {
+        redrawn.set(kept.value, { start: kept.value.length, end: kept.value.length });
+        if (sheetTimers[field]) {
+          window.clearTimeout(sheetTimers[field]);
+          delete sheetTimers[field];
+        }
+      }
       showFailure(sheet, field, carry.failures[field]);
       growField(control);
     });
@@ -807,10 +862,40 @@
     var sheet = sheetRoot();
     if (!sheet) return;
     if (event.key === 'Escape') {
+      // An Escape a menu already took (the live editor's slash or link menu)
+      // closes the menu and nothing else.
+      if (event.defaultPrevented || event.isComposing) return;
       event.preventDefault();
+      // In the description the first Escape leaves the text (the blur saves it)
+      // and puts focus on the sheet; the next one closes.
+      var live = closest(event.target, '[data-live]');
+      if (live && sheet.contains(live)) {
+        live.blur();
+        sheet.focus();
+        return;
+      }
       closeSheet(sheet);
       return;
     }
+  });
+
+  // A wikilink followed in the description: the pending saves land first, and
+  // a failure keeps the sheet open with the failure showing.
+  document.addEventListener('live:follow', function (event) {
+    var sheet = event.target.closest ? event.target.closest('.sheet') : null;
+    if (!sheet) return;
+    sheetRoot();
+    var query = new URLSearchParams({
+      target: event.detail.link,
+      project: sheet.getAttribute('data-project') || ''
+    });
+    flushSheet(sheet).then(function () {
+      if (failedFields().length > 0) {
+        focusFirstFailed(sheet);
+        return;
+      }
+      window.location.href = '/notes/open?' + query.toString();
+    });
   });
 
   // Posting a comment is the one explicit write left on the sheet: Enter in the
@@ -837,9 +922,7 @@
     if (field) field.focus();
   });
 
-  // The description reads rendered; Edit swaps to the box. Without this script
-  // the box shows, so the plain form still saves. An empty description has no
-  // rendered block and keeps the box.
+  // The title grows with its text; the description is a live surface.
   function growField(field) {
     if (window.CSS && CSS.supports && CSS.supports('field-sizing', 'content')) return;
     field.style.height = 'auto';
@@ -847,26 +930,12 @@
   }
 
   function setUpSheet() {
-    var section = document.querySelector('[data-description]');
-    if (section && section.querySelector('[data-description-view]')) {
-      section.classList.add('is-reading');
-    }
-    var fields = document.querySelectorAll('.sheet__title, .sheet__description-field');
+    var fields = document.querySelectorAll('.sheet__title');
     for (var i = 0; i < fields.length; i++) growField(fields[i]);
   }
 
-  document.addEventListener('click', function (event) {
-    var button = closest(event.target, '[data-description-edit]');
-    if (!button) return;
-    var section = closest(button, '[data-description]');
-    section.classList.remove('is-reading');
-    var box = section.querySelector('.sheet__description-field');
-    growField(box);
-    box.focus();
-  });
-
   document.addEventListener('input', function (event) {
-    if (closest(event.target, '.sheet__title, .sheet__description-field')) {
+    if (closest(event.target, '.sheet__title')) {
       growField(event.target);
     }
   });

@@ -891,7 +891,7 @@ fn render_notes(
                 crumbs = crumbs_of(&labels);
                 // One resolver (ADR 0005): the notes store resolves every link in
                 // the text, and the renderer looks each target up here.
-                let occurrences = vault.links_with(&content.text, &names);
+                let (occurrences, broken) = links_and_broken(&vault, &content.text, &names);
                 let resolved: HashMap<String, LinkResolution> = occurrences
                     .iter()
                     .map(|occurrence| {
@@ -901,14 +901,7 @@ fn render_notes(
                         )
                     })
                     .collect();
-                let mut broken: Vec<String> = occurrences
-                    .iter()
-                    .filter(|occurrence| occurrence.resolution == LinkResolution::Broken)
-                    .map(|occurrence| broken_key(&occurrence.link.target))
-                    .collect();
-                broken.sort();
-                broken.dedup();
-                broken_links = serde_json::to_string(&broken).unwrap_or_else(|_| "[]".to_string());
+                broken_links = broken;
                 for occurrence in &occurrences {
                     let (kind, name) = match &occurrence.resolution {
                         LinkResolution::Project(name) => (ConceptKind::Project, name),
@@ -1143,6 +1136,26 @@ fn render_notes(
         tabs,
         tabs_state,
     })
+}
+
+/// The links in a text and the broken ones as the JSON list the live editor
+/// tints. The one resolver (ADR 0005): the notes store resolves every link, for
+/// the notes page and the ticket sheet alike.
+pub(super) fn links_and_broken(
+    vault: &crate::notes::Notes,
+    text: &str,
+    names: &BoardNames,
+) -> (Vec<crate::notes::wikilink::LinkOccurrence>, String) {
+    let occurrences = vault.links_with(text, names);
+    let mut broken: Vec<String> = occurrences
+        .iter()
+        .filter(|occurrence| occurrence.resolution == LinkResolution::Broken)
+        .map(|occurrence| broken_key(&occurrence.link.target))
+        .collect();
+    broken.sort();
+    broken.dedup();
+    let json = serde_json::to_string(&broken).unwrap_or_else(|_| "[]".to_string());
+    (occurrences, json)
 }
 
 /// The key the editor looks a broken link up by: the lowercased target, a typed

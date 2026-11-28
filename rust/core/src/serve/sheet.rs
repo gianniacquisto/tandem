@@ -40,6 +40,7 @@ struct SheetView {
     /// carries back.
     filters: FiltersView,
     handle: String,
+    project: String,
     origin: String,
     link: Option<String>,
     title: String,
@@ -52,6 +53,9 @@ struct SheetView {
     description: String,
     /// The description drawn by the comments' renderer; none when empty.
     description_html: Option<askama::filters::Safe<String>>,
+    /// The description's broken wikilink targets as a JSON list, the tint the
+    /// live surface draws (the notes page computes it the same way).
+    broken_links: String,
     comment_refusal: Option<String>,
     notice: Option<String>,
     comments: Vec<SheetComment>,
@@ -180,6 +184,11 @@ fn render_sheet(
         )))
     };
 
+    let broken_links = match crate::rpc::vault::try_names(&board) {
+        Ok(names) => super::notes::links_and_broken(&context.notes(), &description, &names).1,
+        Err(_) => "[]".to_string(),
+    };
+
     let comments = comments
         .into_iter()
         .map(|comment| SheetComment {
@@ -210,6 +219,7 @@ fn render_sheet(
             text: filters.text.clone(),
         },
         handle: sheet_handle(&ticket),
+        project: ticket.project.clone(),
         origin: ticket.origin.clone(),
         link: ticket.link.clone(),
         title: ticket.title.clone(),
@@ -220,6 +230,7 @@ fn render_sheet(
         label_options: sheet_label_options(&ticket, &labels),
         description,
         description_html,
+        broken_links,
         comment_refusal,
         notice,
         comments,
