@@ -32,8 +32,15 @@ pub(super) async fn mcp_post(context: Context, headers: HeaderMap, body: Bytes) 
     };
     // `handle_mcp` is synchronous and a write can wait out the store's busy
     // window; every session shares this one runtime, so it runs off it.
+    let redact_paths = context.redacts_paths();
     let answer = tokio::task::spawn_blocking(move || {
-        crate::mcp::handle_mcp(&frame, &context.store, &context.actor, &context.environment)
+        crate::mcp::handle_mcp_as(
+            &frame,
+            &context.store,
+            &context.actor,
+            &context.environment,
+            redact_paths,
+        )
     })
     .await;
     match answer {

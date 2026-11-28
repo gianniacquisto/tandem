@@ -281,6 +281,15 @@ impl Context {
             }
     }
 
+    /// Whether an answer about the server hides its absolute paths: a member's,
+    /// by session or token. The owner and the operator see the full report.
+    fn redacts_paths(&self) -> bool {
+        matches!(
+            self.principal,
+            guard::Principal::MemberSession(_) | guard::Principal::MemberToken(_)
+        )
+    }
+
     /// The prefix of the UI-state cookies this serve reads and the page writes.
     fn ui_cookie(&self) -> String {
         ui_state::prefix(self.access.port())

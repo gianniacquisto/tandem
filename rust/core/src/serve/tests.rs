@@ -6226,6 +6226,41 @@ fn is_ok_frame(body: &str) -> bool {
 }
 
 #[tokio::test]
+async fn a_members_doctor_report_hides_the_servers_paths_and_the_owners_does_not() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("member-doctor");
+    let store = sandbox.store();
+    let team = team(&store);
+    let app = remote_app(store.clone(), TOKEN);
+    let home = crate::wire::slashed_path(store.home().directory());
+    let call = tool_call_body("doctor_report", serde_json::json!({}));
+
+    let (status, _, member) = send(&app, bearer_mcp(&team.alice_token, None, &call)).await;
+    assert_eq!(status, StatusCode::OK, "{member}");
+    assert!(is_ok_frame(&member), "{member}");
+    assert!(!member.contains(&home), "no absolute home path: {member}");
+    assert!(!member.contains("TANDEM_HOME"), "no home source: {member}");
+    assert!(member.contains("<home>"), "{member}");
+
+    let (status, _, owner) = send(&app, bearer_mcp(TOKEN, None, &call)).await;
+    assert_eq!(status, StatusCode::OK, "{owner}");
+    assert!(owner.contains(&home), "the owner sees the path: {owner}");
+
+    let rows = |frame: &str| -> Vec<String> {
+        let frame: serde_json::Value = serde_json::from_str(frame).unwrap();
+        let text = frame["result"]["content"][0]["text"].as_str().unwrap();
+        let report: serde_json::Value = serde_json::from_str(text).unwrap();
+        report["report"]["checks"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{text}"))
+            .iter()
+            .map(|check| check["name"].as_str().unwrap().to_string())
+            .collect()
+    };
+    assert_eq!(rows(&member), rows(&owner));
+}
+
+#[tokio::test]
 async fn a_personal_token_reaches_mcp_and_records_its_member_as_the_actor() {
     let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("member-mcp");
