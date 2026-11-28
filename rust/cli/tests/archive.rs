@@ -128,7 +128,8 @@ fn export_writes_the_archive_and_prints_its_path_and_size() {
         use std::os::unix::fs::PermissionsExt;
         let mode = fs::metadata(&out).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
-        // Stock tools list it: the store, the notes, the manifest last.
+        // Stock tools list it: the store, the notes (with the folder
+        // `project add` creates for Main), the manifest last.
         if let Ok(listing) = Command::new("tar").arg("-tzf").arg(&out).output()
             && listing.status.success()
         {
@@ -136,7 +137,16 @@ fn export_writes_the_archive_and_prints_its_path_and_size() {
                 .lines()
                 .map(|line| line.trim_end_matches('/').to_string())
                 .collect();
-            assert_eq!(names, ["tandem.db", "notes/Index.md", "manifest.json"]);
+            assert_eq!(
+                names,
+                [
+                    "tandem.db",
+                    "notes/Index.md",
+                    "notes/projects",
+                    "notes/projects/Main",
+                    "manifest.json",
+                ]
+            );
         }
     }
 }
