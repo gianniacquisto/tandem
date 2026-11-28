@@ -40,6 +40,15 @@ pub enum DomainError {
     EmptyDescriptionBody,
     /// `set` named `--description` and `--append-description` together.
     ConflictingDescriptionEdit,
+    /// A guarded write found the field holding something other than what the
+    /// caller last saw, so another writer got there first. It carries the
+    /// stored value. The served face turns it into its conflict answer and it
+    /// never reaches the wire.
+    FieldConflict { theirs: String },
+    /// A guarded write found the store's revision past the one the caller read
+    /// at, so another writer committed in between. Served-face only, like
+    /// [`FieldConflict`](Self::FieldConflict).
+    StaleRevision,
     /// A stdin body was not UTF-8. A body is text, not a vault path, so this is
     /// its own failure rather than the notes store's I/O one.
     StandardInputNotUtf8,
@@ -178,6 +187,12 @@ impl DomainError {
             Self::ConflictingDescriptionEdit => "--description and --append-description cannot be \
                  combined. Use one or the other and try again."
                 .to_string(),
+            Self::FieldConflict { .. } => {
+                "The field changed since it was read. Reload it and try again.".to_string()
+            }
+            Self::StaleRevision => {
+                "The board changed since it was read. Reload it and try again.".to_string()
+            }
             Self::StandardInputNotUtf8 => "stdin is not valid UTF-8. Try again.".to_string(),
             Self::InvalidFilter(bad) => {
                 format!("filter must be one of open, done, all (got \"{bad}\").")

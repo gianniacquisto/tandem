@@ -819,12 +819,13 @@ pub(super) async fn move_ticket(
     // there writes nothing (the renderer's rule).
     if ticket.status != status {
         let to = status.as_str();
-        match board.set(
+        match board.set_at_revision(
             &id,
             SetFields {
                 status: Edit::Set(status),
                 ..SetFields::default()
             },
+            expected,
         ) {
             Ok(_) => tracing::info!(
                 actor = ?context.actor.as_str(),
@@ -834,6 +835,15 @@ pub(super) async fn move_ticket(
                 revision = context.revision(),
                 "ticket moved"
             ),
+            Err(DomainError::StaleRevision) => {
+                return render_response(
+                    &context,
+                    &filters,
+                    Some(CONFLICT_NOTICE.to_string()),
+                    &headers,
+                    StatusCode::OK,
+                );
+            }
             Err(error) => return bad_request(&error.message()),
         }
     }

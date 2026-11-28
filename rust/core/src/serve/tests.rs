@@ -550,6 +550,43 @@ async fn post_ticket_status_moves_card_across_columns_and_ignores_same_column_dr
     );
 }
 
+#[tokio::test]
+async fn a_drag_with_a_stale_revision_answers_the_conflict_notice_and_moves_nothing() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("board-status-stale");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let app = router(context(store.clone()));
+    let ticket = by_title(&board, "Beta one");
+    let stale = store.revision().expect("the revision reads");
+    // Another writer commits after the board was drawn.
+    board
+        .add(
+            "Elsewhere",
+            crate::domain::AddTicket {
+                project: Some("Alpha"),
+                ..crate::domain::AddTicket::default()
+            },
+        )
+        .expect("the other write lands");
+    let current = store.revision().expect("the revision reads");
+    let uri = format!("/tickets/{}/status", ticket.id);
+
+    let body = format!("status=in-review&expected_revision={stale}");
+    let (status, _, page) = send(&app, form_request(&uri, &body)).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(
+        page.contains("changed while you were writing"),
+        "the banner names the conflict: {page}"
+    );
+    assert_eq!(by_title(&board, "Beta one").status, ticket.status);
+    assert_eq!(
+        store.revision().expect("the revision reads"),
+        current,
+        "a conflict writes nothing"
+    );
+}
+
 /// The board refreshes itself over the change stream, so the client must be the
 /// htmx 2 extension: the htmx 1 build defines its `hx-trigger="sse:*"` listener
 /// and never registers it, reads the whole attribute as the event name, and

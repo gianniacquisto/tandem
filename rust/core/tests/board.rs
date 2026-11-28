@@ -7,7 +7,7 @@ mod support;
 
 use support::Sandbox;
 use tandem_core::domain::{
-    AddTicket, Board, DomainError, Status, Ticket, TicketBoard, TicketQuery,
+    AddTicket, Board, DomainError, Edit, SetFields, Status, Ticket, TicketBoard, TicketQuery,
 };
 
 fn ticket(title: &str, status: Status, label: Option<&str>) -> Ticket {
@@ -503,4 +503,163 @@ fn a_concurrent_edit_is_not_reverted_by_another_writers_snapshot() {
         "the concurrent edit was written back over: {}",
         reread.title
     );
+}
+
+// MARK: - Guarded writes: the compare and the write share one transaction
+
+fn title_is<'a>(expected: &'a str) -> impl Fn(&Ticket) -> Option<String> + 'a {
+    move |ticket| (ticket.title != expected).then(|| ticket.title.clone())
+}
+
+#[test]
+fn a_guarded_set_writes_when_the_field_holds_what_the_caller_saw() {
+    let sandbox = Sandbox::new("board-set-if-match");
+    let board = sandbox.board();
+    let ticket = board.add("one", support::ticket()).unwrap();
+    let check = title_is("one");
+
+    let saved = board
+        .set_if(
+            &ticket.id.to_string(),
+            SetFields {
+                title: Edit::Set("two"),
+                ..SetFields::default()
+            },
+            &check,
+        )
+        .unwrap();
+    assert_eq!(saved.title, "two");
+    assert_eq!(board.ticket(&ticket.id.to_string()).unwrap().title, "two");
+}
+
+#[test]
+fn a_guarded_set_that_does_not_match_is_refused_and_moves_nothing() {
+    let sandbox = Sandbox::new("board-set-if-refused");
+    let board = sandbox.board();
+    let ticket = board.add("one", support::ticket()).unwrap();
+    let id = ticket.id.to_string();
+    let before = sandbox.store().revision().unwrap();
+    let check = title_is("not what is stored");
+
+    let refused = board.set_if(
+        &id,
+        SetFields {
+            title: Edit::Set("two"),
+            ..SetFields::default()
+        },
+        &check,
+    );
+    assert_eq!(
+        refused,
+        Err(DomainError::FieldConflict {
+            theirs: "one".to_string()
+        })
+    );
+    assert_eq!(board.ticket(&id).unwrap().title, "one");
+    assert_eq!(sandbox.store().revision().unwrap(), before);
+}
+
+#[test]
+fn a_write_landing_between_the_read_and_the_guarded_set_is_not_overwritten() {
+    let sandbox = Sandbox::new("board-set-if-interleave");
+    let mine = sandbox.board();
+    let theirs = sandbox.board_as("agent");
+    let ticket = mine.add("one", support::ticket()).unwrap();
+    let id = ticket.id.to_string();
+
+    // My side reads the ticket and keeps the title it saw.
+    let seen = mine.ticket(&id).unwrap().title;
+    // Another writer on the same home (an MCP call) lands in the gap.
+    theirs
+        .set(
+            &id,
+            SetFields {
+                title: Edit::Set("from the agent"),
+                ..SetFields::default()
+            },
+        )
+        .unwrap();
+    let revision = sandbox.store().revision().unwrap();
+
+    let check = title_is(&seen);
+    let refused = mine.set_if(
+        &id,
+        SetFields {
+            title: Edit::Set("mine"),
+            ..SetFields::default()
+        },
+        &check,
+    );
+    assert_eq!(
+        refused,
+        Err(DomainError::FieldConflict {
+            theirs: "from the agent".to_string()
+        })
+    );
+    assert_eq!(mine.ticket(&id).unwrap().title, "from the agent");
+    assert_eq!(sandbox.store().revision().unwrap(), revision);
+}
+
+#[test]
+fn a_guarded_move_is_refused_when_the_label_changed_under_it() {
+    let sandbox = Sandbox::new("board-move-if");
+    let board = sandbox.board();
+    board.add_label("Board", Some(support::PROJECT)).unwrap();
+    board.add_label("Memory", Some(support::PROJECT)).unwrap();
+    let ticket = board.add("carry", support::ticket()).unwrap();
+    let id = ticket.id.to_string();
+    // The sheet last showed no label; another writer labelled it.
+    board.move_ticket(&id, Some("Memory"), usize::MAX).unwrap();
+    let revision = sandbox.store().revision().unwrap();
+    let check = |ticket: &Ticket| ticket.label.clone();
+
+    let refused = board.move_ticket_if(&id, Some("Board"), usize::MAX, &check);
+    assert_eq!(
+        refused,
+        Err(DomainError::FieldConflict {
+            theirs: "Memory".to_string()
+        })
+    );
+    assert_eq!(board.ticket(&id).unwrap().label.as_deref(), Some("Memory"));
+    assert_eq!(sandbox.store().revision().unwrap(), revision);
+}
+
+#[test]
+fn a_set_at_a_stale_revision_is_refused_and_one_at_the_current_revision_writes() {
+    let sandbox = Sandbox::new("board-set-at-revision");
+    let board = sandbox.board();
+    let ticket = board.add("one", support::ticket()).unwrap();
+    let id = ticket.id.to_string();
+    let seen = sandbox.store().revision().unwrap();
+    // Another writer commits after the caller read the revision.
+    sandbox
+        .board_as("agent")
+        .add("two", support::ticket())
+        .unwrap();
+    let now = sandbox.store().revision().unwrap();
+    assert!(now > seen);
+
+    let stale = board.set_at_revision(
+        &id,
+        SetFields {
+            status: Edit::Set(Status::Ready),
+            ..SetFields::default()
+        },
+        seen,
+    );
+    assert_eq!(stale, Err(DomainError::StaleRevision));
+    assert_eq!(board.ticket(&id).unwrap().status, Status::Backlog);
+    assert_eq!(sandbox.store().revision().unwrap(), now);
+
+    let moved = board
+        .set_at_revision(
+            &id,
+            SetFields {
+                status: Edit::Set(Status::Ready),
+                ..SetFields::default()
+            },
+            now,
+        )
+        .unwrap();
+    assert_eq!(moved.status, Status::Ready);
 }
