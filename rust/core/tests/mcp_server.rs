@@ -1373,6 +1373,13 @@ fn note_search_answers_a_hit_with_a_snippet_an_empty_query_with_no_rows_and_cuts
     );
     assert!(hit.get("total").is_none(), "total only when cut: {hit}");
 
+    seed(&store, "Note Ä renamed.md", "Heading\nnothing");
+    let (_, by_name) = result_of(&store, "note_search", json!({"query": "renamed"}));
+    let named = by_name["hits"].as_array().expect("rows");
+    assert_eq!(named.len(), 1, "{by_name}");
+    assert_eq!(named[0]["path"], "Note Ä renamed.md");
+    assert_eq!(named[0]["display"], "Heading");
+
     let (_, empty) = result_of(&store, "note_search", json!({"query": ""}));
     assert_eq!(empty["hits"], json!([]), "{empty}");
 

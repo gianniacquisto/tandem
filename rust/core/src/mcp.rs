@@ -858,7 +858,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "note_search",
             method_tag: "note.search",
-            description: "Find notes whose title or body contains the query, case-insensitive: one row per note with its path and the title or the snippet around the match. limit defaults to 20; total reports the matches when cut.",
+            description: "Find notes whose title, filename or body contains the query, case-insensitive: one row per note with its path and the title or the snippet around the match. limit defaults to 20; total reports the matches when cut.",
             input_schema: NoteSearchParams::schema(),
             annotations: Annotations::READ,
             method: Method::NoteSearch(NoteSearchParams::default()),

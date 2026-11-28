@@ -478,7 +478,7 @@ impl NoteSearchParams {
                 (
                     "query",
                     string(
-                        "text to find, case-insensitive, in a note's title or body; empty answers no rows",
+                        "text to find, case-insensitive, in a note's title, filename or body; empty answers no rows",
                     ),
                 ),
                 (

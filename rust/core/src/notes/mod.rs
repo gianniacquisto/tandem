@@ -1040,8 +1040,9 @@ impl Notes {
 
     // MARK: - search
 
-    /// `search(query)`: case-insensitive substring over title and body, one row
-    /// per note, sorted by path.
+    /// `search(query)`: case-insensitive substring over title, file name (the
+    /// last path component without `.md`, as the tree draws it) and body, one
+    /// row per note, sorted by path.
     pub fn search(&self, query: &str) -> DomainResult<Operation<Vec<SearchHit>>> {
         let needle = query.trim();
         if needle.is_empty() {
@@ -1058,7 +1059,9 @@ impl Notes {
             let title_end = content.text.find('\n').unwrap_or(content.text.len());
             let title = &content.text[..title_end];
             let body = &content.text[(title_end + 1).min(content.text.len())..];
-            if find_ci(title, needle).is_some() {
+            let file = note_path.rsplit('/').next().unwrap_or(&note_path);
+            let file = file.strip_suffix(".md").unwrap_or(file);
+            if find_ci(title, needle).is_some() || find_ci(file, needle).is_some() {
                 hits.push(SearchHit {
                     path: note_path,
                     display: title.to_string(),
