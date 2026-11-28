@@ -1024,6 +1024,7 @@ async fn static_assets_serve_css_htmx_and_js_and_html_sets_csp() {
                 "data-live-store",
                 "htmx:afterSwap', setUpNote",
                 "live:follow",
+                "/notes/open",
                 "data-live-final-newline",
                 "data-placeholder",
                 "enterToBody",
@@ -1561,9 +1562,10 @@ async fn get_ticket_sheet_renders_markdown_blocks_metadata_row_and_comments() {
         "name=\"assignee\"",
         "name=\"label\"",
         "Café alpha",
-        "sheet__description-field",
-        "sheet__description-view",
-        "data-description-edit",
+        "data-live",
+        "data-live-store=\"sheet-description-store\"",
+        "data-autosave=\"description\"",
+        "data-placeholder=\"Add a more detailed description",
         "<h",
         "<code",
         "## Why",
@@ -1572,6 +1574,13 @@ async fn get_ticket_sheet_renders_markdown_blocks_metadata_row_and_comments() {
         "Blocks",
     ] {
         assert!(body.contains(marker), "the sheet draws {marker}: {body}");
+    }
+    for gone in [
+        "data-description-edit",
+        "sheet__description-view",
+        "sheet__edit",
+    ] {
+        assert!(!body.contains(gone), "the sheet no longer draws {gone}");
     }
     assert!(
         !body.contains("<!doctype html>"),
@@ -1592,7 +1601,7 @@ async fn get_ticket_sheet_renders_markdown_blocks_metadata_row_and_comments() {
 }
 
 #[tokio::test]
-async fn a_sheet_without_a_description_draws_the_box_and_no_rendered_block() {
+async fn a_sheet_without_a_description_draws_the_live_surface_with_its_placeholder() {
     let _serial = ONE_AT_A_TIME.lock().await;
     let sandbox = Sandbox::new("sheet-empty-description");
     let store = sandbox.store();
@@ -1602,12 +1611,73 @@ async fn a_sheet_without_a_description_draws_the_box_and_no_rendered_block() {
     let (status, _, body) = send(&app, sheet_get(&format!("/tickets/{}", ticket.id))).await;
     assert_eq!(status, StatusCode::OK);
     assert!(
-        body.contains("sheet__description-field"),
-        "the box shows: {body}"
+        body.contains("sheet__description-live")
+            && body.contains("data-live-final-newline=\"none\"")
+            && body.contains("data-placeholder=\"Add a more detailed description"),
+        "the live surface shows with its placeholder: {body}"
     );
     assert!(
         !body.contains("sheet__description-view") && !body.contains("data-description-edit"),
-        "no empty rendered block: {body}"
+        "no rendered block and no Edit button: {body}"
+    );
+}
+
+#[tokio::test]
+async fn a_sheet_description_carries_its_broken_links() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-broken-links");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let notes = vault(&store);
+    notes
+        .create("An existing note.md")
+        .expect("the note is created");
+    board
+        .set(
+            &ticket.id.to_string(),
+            SetFields {
+                description: Edit::Set(Some("See [[No such note]] and [[An existing note]].")),
+                ..SetFields::default()
+            },
+        )
+        .expect("the description is set");
+    let app = router(context(store));
+    let (status, _, body) = send(&app, sheet_get(&format!("/tickets/{}", ticket.id))).await;
+    assert_eq!(status, StatusCode::OK);
+    let attr = body
+        .split("data-broken-links=\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .expect("the surface carries data-broken-links");
+    assert!(
+        attr.contains("no such note") && !attr.contains("an existing note"),
+        "only the missing link is broken: {attr}"
+    );
+}
+
+#[tokio::test]
+async fn a_description_field_save_keeps_no_trailing_newline() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("sheet-description-newline");
+    let store = sandbox.store();
+    let board = setup_board(&store);
+    let ticket = by_title(&board, "Café alpha");
+    let id = ticket.id.to_string();
+    let app = router(context(store));
+    let text = "Line one\n\n- item";
+    let (status, answer) = save_field(&app, &id, &field_body("description", text, "")).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert!(answer.contains("data-state=\"saved\""), "{answer}");
+    assert_eq!(
+        board.ticket(&id).expect("reads").description.as_deref(),
+        Some(text),
+        "the text reads back unchanged"
+    );
+    let (_, again) = save_field(&app, &id, &field_body("description", "Next", text)).await;
+    assert!(
+        again.contains("data-state=\"saved\""),
+        "was stayed equal to what the server holds: {again}"
     );
 }
 

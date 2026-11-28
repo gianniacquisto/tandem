@@ -346,4 +346,44 @@ test.describe('Tandem serve browser suite', () => {
       await srv.stop();
     }
   });
+  test('11. the sheet description is typed in place, autosaves, and Escape leaves it before it closes the sheet', async ({ page }, testInfo) => {
+    const srv = await startServer();
+    try {
+      await page.goto(`${srv.baseURL}/tickets/${srv.ticket.id}`);
+      const sheet = page.locator('.sheet');
+      await expect(sheet).toBeVisible();
+      await expect(sheet.locator('[data-description-edit]')).toHaveCount(0);
+
+      const live = sheet.locator('.sheet__description-live[data-live-ready]');
+      await expect(live).toBeVisible();
+      await expect(live).toHaveAttribute('contenteditable', 'plaintext-only');
+
+      const saved = page.waitForResponse((res) => res.url().includes('/field') && res.status() === 200);
+      await live.click();
+      await page.keyboard.press('ControlOrMeta+a');
+      await page.keyboard.type('Typed in place');
+      await saved;
+      await expect(sheet.locator('[data-save-state]')).toHaveText('All changes saved');
+      const shown = JSON.parse(srv.cli(['ticket', 'show', '--id', srv.ticket.ref]));
+      expect(shown.description).toBe('Typed in place');
+
+      // The first Escape leaves the text and keeps the sheet; the second closes it.
+      await page.keyboard.type(' more');
+      await page.keyboard.press('Escape');
+      await expect(sheet).toBeVisible();
+      await expect(live).not.toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.sheet')).toHaveCount(0);
+
+      const after = JSON.parse(srv.cli(['ticket', 'show', '--id', srv.ticket.ref]));
+      expect(after.description).toBe('Typed in place more');
+
+      await testInfo.attach('end-state', {
+        body: await page.screenshot({ fullPage: true }),
+        contentType: 'image/png',
+      });
+    } finally {
+      await srv.stop();
+    }
+  });
 });

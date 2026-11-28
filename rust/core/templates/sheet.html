@@ -1,5 +1,5 @@
 <div class="sheet-backdrop" data-sheet>
-  <div class="sheet" role="dialog" aria-modal="true" aria-label="{{ handle }}" tabindex="-1" data-ticket="{{ id }}">
+  <div class="sheet" role="dialog" aria-modal="true" aria-label="{{ handle }}" tabindex="-1" data-ticket="{{ id }}" data-project="{{ project }}">
     <header class="sheet__header">
       <span class="sheet__handle">{{ handle }}</span>
       <span class="sheet__origin">{% if origin == "human" %}you filed{% else %}@{{ origin }} filed{% endif %}</span>
@@ -106,17 +106,11 @@
       <section class="sheet__description" aria-label="Description" data-description>
         <div class="sheet__section-header">
           <h2 class="sheet__section-title">Description</h2>
-          {% if description_html.is_some() %}
-          <button class="sheet__edit" type="button" data-description-edit>Edit</button>
-          {% endif %}
         </div>
-        {% if let Some(html) = description_html %}
-        <div class="sheet__description-view" data-description-view>{{ html }}</div>
-        {% endif %}
-        <textarea class="sheet__description-field" data-autosave="description"
-                  data-was="{{ description }}" aria-label="Description" rows="6"
-                  placeholder="Add a more detailed description…">
+        <textarea class="sheet__description-field" id="sheet-description-store" data-autosave="description"
+                  data-was="{{ description }}" aria-label="Description" rows="6" hidden>
 {{ description }}</textarea>
+        <div class="sheet__description-live" data-live data-live-store="sheet-description-store" data-live-final-newline="none" data-broken-links="{{ broken_links }}" data-placeholder="Add a more detailed description…" aria-label="Description">{% if let Some(html) = description_html %}{{ html }}{% endif %}</div>
         <p class="sheet__field-note" data-field-note="description" hidden></p>
       </section>
 
