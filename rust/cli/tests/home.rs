@@ -140,9 +140,13 @@ fn home_row(value: &Value) -> &Value {
 /// The `home` row's detail is `<directory> (<why>)`, the directory ADR 0014's
 /// row reports and the branch of the rule that resolved it.
 fn home_detail(value: &Value) -> &str {
-    home_row(value)["detail"]
+    let detail = home_row(value)["detail"]
         .as_str()
-        .expect("the row names the home")
+        .expect("the row names the home");
+    // A home other local users can read adds one advice sentence (TAN-915).
+    detail
+        .split_once(". The home is readable by other local users")
+        .map_or(detail, |(head, _)| head)
 }
 
 fn reported_home(value: &Value) -> PathBuf {
@@ -514,4 +518,80 @@ fn note_links_and_label_list_migrate_an_older_home() {
         );
         assert!(home.join("tandem.db.bak").exists(), "{args:?}: pre-image");
     }
+}
+
+// MARK: - A fresh home is owner-only (TAN-915)
+
+/// Every directory under `root` is 0700 and every file 0600, as far as the
+/// group and other bits go: `mode & 0o077 == 0`.
+#[cfg(unix)]
+fn assert_owner_only(root: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let mode = fs::metadata(root)
+        .expect("the entry exists")
+        .permissions()
+        .mode();
+    assert_eq!(
+        mode & 0o077,
+        0,
+        "{} is readable by others (mode {:o})",
+        root.display(),
+        mode & 0o777
+    );
+    if root.is_dir() {
+        for entry in fs::read_dir(root).expect("the folder reads") {
+            assert_owner_only(&entry.expect("an entry").path());
+        }
+    }
+}
+
+/// A write verb under umask 022, so a permissive umask cannot hide a miss.
+#[cfg(unix)]
+fn tandem_umask_022(sandbox: &Sandbox, home: &Path, args: &[&str]) -> Output {
+    let user_home = sandbox.user_home();
+    fs::create_dir_all(&user_home).expect("the sandbox user home is creatable");
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg("umask 022; exec \"$0\" \"$@\"")
+        .arg(BINARY)
+        .args(args)
+        .env("HOME", &user_home)
+        .env("TANDEM_HOME", home)
+        .output()
+        .expect("the binary runs");
+    assert!(
+        output.status.success(),
+        "{args:?} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
+#[cfg(unix)]
+#[test]
+fn a_fresh_home_and_everything_in_it_are_owner_only_under_umask_022() {
+    let sandbox = Sandbox::new("private");
+    let home = sandbox.path().join("fresh");
+
+    tandem_umask_022(&sandbox, &home, &["project", "add", "--name", "P"]);
+    tandem_umask_022(
+        &sandbox,
+        &home,
+        &["ticket", "add", "--project", "P", "--title", "First"],
+    );
+    tandem_umask_022(
+        &sandbox,
+        &home,
+        &["note", "write", "--path", "a/b.md", "--text", "hi"],
+    );
+    // A second write rolls the backup.
+    tandem_umask_022(
+        &sandbox,
+        &home,
+        &["ticket", "add", "--project", "P", "--title", "Second"],
+    );
+
+    assert!(home.join("tandem.db.bak").exists(), "the backup was rolled");
+    assert!(home.join("notes").join("a").join("b.md").exists());
+    assert_owner_only(&home);
 }

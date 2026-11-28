@@ -25,6 +25,8 @@ Four credentials are involved. Each one opens one thing, and none of them stands
 
 The owner token and the operator key are environment variables, never flags (a flag shows in a process listing). Sign-in keys and personal tokens are made by the server and shown once.
 
+On Unix a new home is owner-only: the folder is 0700 and `tandem.db`, its backup and the notes are 0600, whatever the umask. A home an older release made keeps the modes it has; `tandem doctor` says so in its `home` row when other local users can read it, and `chmod -R go-rwx <home>` makes it private.
+
 ## Before you start
 
 You need:

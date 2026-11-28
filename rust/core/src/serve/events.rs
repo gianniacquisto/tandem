@@ -35,6 +35,31 @@ enum Wake {
     Credentials,
 }
 
+#[cfg(test)]
+thread_local! {
+    /// A test's write, run in the gap the route opens between subscribing and
+    /// reading the revision. Thread-local: the handler runs on the test thread.
+    static BETWEEN: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Installs the hook the next `events` call runs between its subscribe and its
+/// revision read.
+#[cfg(test)]
+pub(super) fn run_between_subscribe_and_revision(hook: impl FnOnce() + 'static) {
+    BETWEEN.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+}
+
+/// The seam between the two lines the route's order depends on. Nothing runs
+/// here outside a test.
+#[inline]
+fn between_subscribe_and_revision() {
+    #[cfg(test)]
+    if let Some(hook) = BETWEEN.with(|slot| slot.borrow_mut().take()) {
+        hook();
+    }
+}
+
 pub(super) async fn events(
     context: Context,
     session: Option<Extension<Session>>,
@@ -47,6 +72,7 @@ pub(super) async fn events(
     // write broadcast between reading the revision and subscribing would
     // otherwise reach neither the initial event nor the stream.
     let subscription = changes.subscribe();
+    between_subscribe_and_revision();
     let current = context.revision();
     tracing::debug!(revision = current, "events stream opened");
     let closed = StreamClosed;
