@@ -14,7 +14,7 @@ name: Release
 # steps skipped on such a PR, because a skipped matrix job reports under its
 # unexpanded name and a required check that never reports blocks the merge.
 # Tags and dispatches always run everything. The five builds are one matrix
-# job: a new target is one row. The publisher keeps the job name `release`:
+# job: a new target is one row. The `release` job keeps the job name:
 # `main` requires a status check by that name, and a required check that never
 # reports blocks every merge. It waits for the build matrix, and its step
 # turns a skipped or failed build into a red `release` (a skipped job reports
@@ -37,8 +37,10 @@ on:
   pull_request:
   workflow_dispatch:
 
-# Least privilege by default: the build jobs only read the repo. The `release`
-# job needs `contents: write` for `gh release create`, and no other job gets it.
+# Least privilege by default: every job only reads the repo. The `release` job
+# verifies and stages with read rights on every run, pull requests included.
+# Only the tag-gated `publish` job holds `contents: write`, `id-token: write`
+# and `attestations: write`, and it runs after `release` on a tag alone.
 permissions:
   contents: read
 
@@ -253,9 +255,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: write # `gh release create`; no other job has it
-      id-token: write # the attestation's signing identity; this job only
-      attestations: write # `actions/attest-build-provenance`; this job only
+      contents: read # verify and stage only; the write rights are in `publish`
     steps:
       - name: "Verify: the builds are green"
         env:
@@ -321,8 +321,54 @@ jobs:
           grep -q "DEFAULT_VERSION=\"$version\"" install.sh
           grep -q "\$DefaultVersion = \"$version\"" install.ps1
 
-      - name: Attest the archives' provenance (tag runs only)
+      - name: Hand the staged dist to publish (tag runs only)
         if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-dist
+          path: dist
+
+  publish:
+    name: publish
+    # Tag runs only. It holds the write, OIDC and attestation rights that
+    # `release` does not, and it publishes only the dist `release` verified.
+    needs: [release]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # `gh release create`; this job only
+      id-token: write # the attestation's signing identity; this job only
+      attestations: write # `actions/attest-build-provenance`; this job only
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # `Scripts/release-notes.sh` walks the tags and the merge history.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve the version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Download the staged dist from release
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-dist
+          path: dist
+
+      - name: "Verify: the downloaded manifest checks out"
+        run: |
+          cd dist
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum -c SHA256SUMS
+          else
+            shasum -a 256 -c SHA256SUMS
+          fi
+          grep -q "DEFAULT_VERSION=\"$version\"" install.sh
+          grep -q "\$DefaultVersion = \"$version\"" install.ps1
+
+      - name: Attest the archives' provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: |
@@ -332,8 +378,7 @@ jobs:
             dist/tandem-${{ env.version }}-linux-arm64.tar.gz
             dist/tandem-${{ env.version }}-windows-x86_64.zip
 
-      - name: Publish the GitHub release (tag runs only)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
