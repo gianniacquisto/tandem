@@ -2835,6 +2835,151 @@ async fn post_notes_daily_creates_the_days_page_once_and_opens_it_after() {
     );
 }
 
+/// An htmx request that says which URL the browser shows now.
+fn htmx_from(method: &str, uri: &str, current: &str, body: &str) -> Request<Body> {
+    Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::HOST, "127.0.0.1:7700")
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .header("hx-request", "true")
+        .header("hx-current-url", current)
+        .body(Body::from(body.to_string()))
+        .expect("the request builds")
+}
+
+#[tokio::test]
+async fn the_url_follows_the_open_note_push_for_a_new_note_replace_for_a_save() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-url-follows");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    notes.write("a.md", "one", None).expect("a is written");
+    notes.write("b.md", "two", None).expect("b is written");
+    let app = router(context(store));
+
+    let (status, headers, body) = send(
+        &app,
+        htmx_from(
+            "GET",
+            "/notes?path=b.md",
+            "http://127.0.0.1:7700/notes?path=a.md",
+            "",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let pushed = headers
+        .get("hx-push-url")
+        .expect("opening another note pushes")
+        .to_str()
+        .expect("text");
+    assert!(
+        pushed.starts_with("/notes?") && pushed.contains("path=b.md"),
+        "{pushed}"
+    );
+    assert!(headers.get("hx-replace-url").is_none());
+
+    let (_, headers, _) = send(
+        &app,
+        htmx_from(
+            "GET",
+            "/notes?path=b.md",
+            "http://127.0.0.1:7700/notes?path=b.md",
+            "",
+        ),
+    )
+    .await;
+    assert!(
+        headers.get("hx-push-url").is_none(),
+        "same note: no new entry"
+    );
+    assert!(
+        headers
+            .get("hx-replace-url")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|url| url.contains("path=b.md"))
+    );
+
+    let first = notes.read("a.md").expect("reads").value;
+    notes.write("a.md", "theirs", None).expect("other writer");
+    let (_, headers, body) = send(
+        &app,
+        htmx_from(
+            "POST",
+            "/notes/save",
+            "http://127.0.0.1:7700/notes?path=a.md",
+            &format!("path=a.md&text=mine&baseline_hash={}", first.hash),
+        ),
+    )
+    .await;
+    assert!(
+        body.contains("theirs"),
+        "the conflict form is drawn: {body}"
+    );
+    assert!(headers.get("hx-push-url").is_none());
+    assert!(
+        headers
+            .get("hx-replace-url")
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|url| url.contains("path=a.md"))
+    );
+
+    let (_, headers, _) = send(
+        &app,
+        htmx_from(
+            "GET",
+            "/notes?path=ghost.md",
+            "http://127.0.0.1:7700/notes?path=a.md",
+            "",
+        ),
+    )
+    .await;
+    assert!(
+        headers.get("hx-push-url").is_none() && headers.get("hx-replace-url").is_none(),
+        "an unknown note never reaches the address bar"
+    );
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn a_failed_daily_create_shows_its_error_and_an_existing_page_opens() {
+    let _serial = ONE_AT_A_TIME.lock().await;
+    let sandbox = Sandbox::new("notes-daily-error");
+    let store = sandbox.store();
+    let notes = vault(&store);
+    let root = store.home().directory().join("notes");
+    let app = router(context(store));
+
+    notes
+        .write("daily/2026-11-14.md", "kept", None)
+        .expect("the page exists");
+    let (status, _, body) = send(&app, form_request("/notes/daily", "date=2026-11-14")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        !body.contains("shell__error"),
+        "an existing page opens: {body}"
+    );
+    assert!(body.contains("kept"), "{body}");
+
+    // A read-only notes directory: the new page cannot be created, and the
+    // answer says why instead of opening a missing path.
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::remove_dir_all(root.join("daily")).expect("the folder goes");
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o555)).expect("locked");
+    let (status, _, body) = send(&app, form_request("/notes/daily", "date=2026-11-15")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        body.contains("<div class=\"banner\" role=\"alert\">"),
+        "the failure reaches the human: {body}"
+    );
+    assert!(
+        !body.contains("No note at"),
+        "not the unknown-note banner: {body}"
+    );
+    std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o755)).expect("unlocked");
+}
+
 #[tokio::test]
 async fn only_today_s_note_form_carries_the_daily_hook_and_the_script_matches_it() {
     let _serial = ONE_AT_A_TIME.lock().await;

@@ -386,4 +386,36 @@ test.describe('Tandem serve browser suite', () => {
       await srv.stop();
     }
   });
+
+  test('12. the address bar names the open note, reload keeps it, Back returns to the one before', async ({ page }, testInfo) => {
+    const srv = await startServer();
+    try {
+      srv.cli(['note', 'create', '--path', 'Second.md']);
+      const openPath = () => new URL(page.url()).searchParams.get('path');
+      await page.goto(`${srv.baseURL}/notes?path=Index.md`);
+      await expect(page.locator('[data-live]')).toBeVisible();
+
+      await page.locator('.tree__row[data-path="Second.md"] a.tree__label').click();
+      await expect.poll(openPath).toBe('Second.md');
+
+      await page.locator('[data-daily] button[type="submit"]').click();
+      await expect.poll(openPath).toMatch(/^daily\/\d{4}-\d{2}-\d{2}\.md$/);
+      const today = openPath();
+
+      await page.reload();
+      expect(openPath()).toBe(today);
+      await expect(page.locator('.page-title')).toHaveValue(today.replace('daily/', '').replace('.md', ''));
+
+      await page.goBack();
+      await expect.poll(openPath).toBe('Second.md');
+      await expect(page.locator('[data-live]')).toBeVisible();
+
+      await testInfo.attach('end-state', {
+        body: await page.screenshot({ fullPage: true }),
+        contentType: 'image/png',
+      });
+    } finally {
+      await srv.stop();
+    }
+  });
 });

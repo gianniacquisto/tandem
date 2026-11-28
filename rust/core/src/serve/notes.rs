@@ -1240,10 +1240,67 @@ fn notes_response(
             response.headers_mut().insert("hx-replace-url", value);
         }
     }
+    if is_partial(headers)
+        && field(params, "close").is_empty()
+        && let Some((url, same)) = address_for(headers, &view)
+        && let Ok(value) = HeaderValue::from_str(&url)
+    {
+        let name = if same {
+            "hx-replace-url"
+        } else {
+            "hx-push-url"
+        };
+        response.headers_mut().insert(name, value);
+    }
     if let Some(cookie) = tabs_cookie {
         response.headers_mut().append(header::SET_COOKIE, cookie);
     }
     response
+}
+
+/// The address a partial answer should leave in the bar, built from what the
+/// vault resolved (never from the raw query), and whether it names what the
+/// bar already names (replace) rather than a new place (push). `None` for an
+/// answer that draws no note and no graph, such as an unknown path.
+fn address_for(headers: &HeaderMap, view: &NotesView) -> Option<(String, bool)> {
+    let project = view.active_project.trim();
+    let url = if view.graph.is_some() {
+        graph_href(project)
+    } else if view.note.is_some() {
+        let mode = (view.mode == "read").then_some("read");
+        notes_href(project, view.path.as_deref(), mode)
+    } else {
+        return None;
+    };
+    let current = headers
+        .get("hx-current-url")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let same = current_place(current) == current_place(&url);
+    Some((url, same))
+}
+
+/// An answer that moves the address bar replaces the entry instead of adding one.
+fn replace_not_push(mut response: Response) -> Response {
+    if let Some(url) = response.headers_mut().remove("hx-push-url") {
+        response.headers_mut().insert("hx-replace-url", url);
+    }
+    response
+}
+
+/// The note or view a URL names: its path and its `path` parameter.
+fn current_place(url: &str) -> (String, String) {
+    let rest = url
+        .split_once("://")
+        .map_or(url, |(_, rest)| rest.find('/').map_or("", |at| &rest[at..]));
+    let (route, query) = rest.split_once('?').unwrap_or((rest, ""));
+    let query = query.split('#').next().unwrap_or_default();
+    let pairs: Vec<(String, String)> = serde_urlencoded::from_str(query).unwrap_or_default();
+    let path = pairs
+        .into_iter()
+        .find(|(key, _)| key == "path")
+        .map_or(String::new(), |(_, value)| value);
+    (route.to_string(), path)
 }
 
 /// The notes face's switcher. A project change keeps the open note and its
@@ -1629,7 +1686,19 @@ pub(super) async fn note_daily(
             }
             read.value
         }
-        Err(_) => path,
+        // The vault's own spelling of the page that is already there.
+        Err(crate::domain::DomainError::NoteAlreadyExists(taken)) => taken,
+        // Any other failure (a lock timeout, an I/O error) is shown as itself.
+        Err(error) => {
+            return notes_response(
+                &context,
+                &params,
+                None,
+                Some(error.message()),
+                None,
+                &headers,
+            );
+        }
     };
     tracing::info!(
         actor = ?context.actor.as_str(),
@@ -1695,6 +1764,7 @@ pub(super) async fn note_rename(
                     Some(field(&params, "mode")).filter(|mode| !mode.is_empty()),
                 );
                 if let Ok(value) = HeaderValue::from_str(&url) {
+                    response.headers_mut().remove("hx-push-url");
                     response.headers_mut().insert("hx-replace-url", value);
                 }
             }
@@ -1749,7 +1819,11 @@ pub(super) async fn note_delete(
     } else {
         params.insert("path".to_string(), open);
     }
-    notes_response(&context, &params, notice, error, None, &headers)
+    // A delete lands wherever the page falls back to: the bar follows without
+    // a new history entry for the page that is gone.
+    replace_not_push(notes_response(
+        &context, &params, notice, error, None, &headers,
+    ))
 }
 
 /// Undo a delete: move the trash entry back and open the note it returns. The

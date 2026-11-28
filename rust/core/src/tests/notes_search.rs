@@ -11,6 +11,29 @@ fn hits(vault: &Vault, query: &str) -> Vec<SearchHit> {
 }
 
 #[test]
+fn a_filename_hit_shows_the_title_line_mixed_case_and_non_ascii() {
+    let vault = Vault::new("search-filename");
+    vault.stage("Note Ä renamed.md", "Another Heading\nnothing");
+    vault.stage("sub/Plain.md", "Other\nbody");
+    let expected = vec![SearchHit {
+        path: "Note Ä renamed.md".to_string(),
+        display: "Another Heading".to_string(),
+    }];
+    assert_eq!(hits(&vault, "RENAMED"), expected);
+    assert_eq!(hits(&vault, "ä rena"), expected);
+    // The folder is not the file name, and `.md` is not part of it.
+    assert!(hits(&vault, "sub").is_empty());
+    assert!(hits(&vault, ".md").is_empty());
+}
+
+#[test]
+fn a_note_matching_by_title_and_filename_is_one_row() {
+    let vault = Vault::new("search-filename-once");
+    vault.stage("Needle.md", "Needle\nneedle");
+    assert_eq!(hits(&vault, "needle").len(), 1);
+}
+
+#[test]
 fn a_title_hit_shows_the_first_line_in_original_case() {
     let vault = Vault::new("search-title");
     vault.stage("note.md", "My Title\nbody text");

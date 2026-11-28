@@ -379,14 +379,14 @@ Writes. Destructive: it removes or overwrites.
 
 #### `note_search`
 
-Find notes whose title or body contains the query, case-insensitive: one row per note with its path and the title or the snippet around the match. limit defaults to 20; total reports the matches when cut.
+Find notes whose title, filename or body contains the query, case-insensitive: one row per note with its path and the title or the snippet around the match. limit defaults to 20; total reports the matches when cut.
 
 Read-only.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `limit` | integer | no | at most this many rows, default 20; total reports the matches when cut; 0 returns no rows and the total |
-| `query` | string | yes | text to find, case-insensitive, in a note's title or body; empty answers no rows |
+| `query` | string | yes | text to find, case-insensitive, in a note's title, filename or body; empty answers no rows |
 
 #### `note_backlinks`
 
