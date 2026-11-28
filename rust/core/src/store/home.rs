@@ -8,7 +8,6 @@
 //! and tests), and the CLI's tests run with a sandbox `HOME`.
 
 use std::env;
-use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -122,7 +121,7 @@ impl Home {
     /// files. An existing home is left untouched, so a read never changes a
     /// mtime.
     pub fn ensure(&self) -> io::Result<()> {
-        fs::create_dir_all(&self.directory)
+        super::private::create_dir_all_private(&self.directory)
     }
 }
 
@@ -179,6 +178,7 @@ fn normalize(path: PathBuf) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     // Every path here is platform-shaped: a `/users/test` literal resolves to
     // `D:\users\test` on Windows and the assertions would compare two homes
