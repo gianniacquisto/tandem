@@ -326,7 +326,7 @@ Writes. Destructive: it removes or overwrites.
 
 #### `doctor_report`
 
-Report where this machine's Tandem state lives and whether it is healthy.
+Report where this machine's Tandem state lives and whether it is healthy. A member's answer shows paths relative to <home>.
 
 Read-only.
 

@@ -36,7 +36,7 @@ use std::time::Instant;
 use serde_json::{Value, json};
 
 use crate::env::Environment;
-use crate::rpc::execute;
+use crate::rpc::execute_as;
 use crate::store::{Actor, Store};
 use crate::wire::rpc::Reply;
 use crate::wire::rpc::{
@@ -136,7 +136,19 @@ pub fn handle_mcp(
     frame: &str,
     store: &Store,
     actor: &Actor,
+    environment: &Environment,
+) -> Option<String> {
+    handle_mcp_as(frame, store, actor, environment, false)
+}
+
+/// [`handle_mcp`] for a caller that may be a member principal: `redact_paths`
+/// keeps the server's absolute paths out of a `doctor_report` answer.
+pub fn handle_mcp_as(
+    frame: &str,
+    store: &Store,
+    actor: &Actor,
     _environment: &Environment,
+    redact_paths: bool,
 ) -> Option<String> {
     let value: Value = match serde_json::from_str(frame) {
         Ok(value) => value,
@@ -200,6 +212,7 @@ pub fn handle_mcp(
                 store,
                 actor,
                 _environment,
+                redact_paths,
             ))
         }
         "" => {
@@ -312,6 +325,7 @@ fn call_frame(
     store: &Store,
     actor: &Actor,
     _environment: &Environment,
+    redact_paths: bool,
 ) -> String {
     let name = params
         .and_then(|params| params.get("name"))
@@ -353,7 +367,7 @@ fn call_frame(
         || (tool.method_tag == "ticket.set" && arguments.get("title").is_some());
     let started = Instant::now();
     let outcome = Method::from_call(tool.method_tag, arguments)
-        .and_then(|method| execute(method, store, actor));
+        .and_then(|method| execute_as(method, store, actor, redact_paths));
     let latency_ms = started.elapsed().as_millis() as u64;
     match outcome {
         Ok(reply) => {
@@ -818,7 +832,7 @@ fn build_tools() -> Vec<Tool> {
         Tool {
             name: "doctor_report",
             method_tag: "doctor.report",
-            description: "Report where this machine's Tandem state lives and whether it is healthy.",
+            description: "Report where this machine's Tandem state lives and whether it is healthy. A member's answer shows paths relative to <home>.",
             input_schema: EmptyParams::schema(),
             annotations: Annotations::READ,
             method: Method::DoctorReport(EmptyParams {}),

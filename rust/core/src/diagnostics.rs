@@ -70,12 +70,42 @@ pub struct Facts {
 
 /// Assemble the report from observed `facts`. Pure.
 pub fn report(facts: &Facts) -> DoctorReport {
+    report_for(facts, false)
+}
+
+/// [`report`], redacted for a member principal when `redact` is set: every
+/// absolute path in a row becomes a name (`<home>`, `<store>`, `<notes>`,
+/// `<legacy-notes>`, the home first so a path under it reads `<home>/...`), and
+/// the `home` row drops where the home came from. Row names, `ok` values and
+/// order are those of the full report.
+pub fn report_for(facts: &Facts, redact: bool) -> DoctorReport {
+    let mut report = build(facts);
+    if redact {
+        let names = [
+            (&facts.home_path, "<home>"),
+            (&facts.store_path, "<store>"),
+            (&facts.notes_path, "<notes>"),
+            (&facts.legacy_notes_path, "<legacy-notes>"),
+        ];
+        for check in &mut report.checks {
+            if check.name == "home" {
+                check.detail = home_detail(facts, false);
+            }
+            for (path, name) in names {
+                check.detail = check.detail.replace(&slashed_path(path), name);
+            }
+        }
+    }
+    report
+}
+
+fn build(facts: &Facts) -> DoctorReport {
     let notes = notes_check(facts);
     let mut checks = vec![
         DoctorCheck {
             name: "home".to_string(),
             ok: true,
-            detail: home_detail(facts),
+            detail: home_detail(facts, true),
         },
         store_check(facts),
         integrity_check(facts),
@@ -97,12 +127,16 @@ pub fn report(facts: &Facts) -> DoctorReport {
 
 /// The `home` row's detail: the path and why, plus one sentence when other
 /// local users can read the home. The row stays green: it is advice.
-fn home_detail(facts: &Facts) -> String {
-    let mut detail = format!(
-        "{} ({})",
-        slashed_path(&facts.home_path),
-        home_why(facts.home_source)
-    );
+fn home_detail(facts: &Facts, with_source: bool) -> String {
+    let mut detail = if with_source {
+        format!(
+            "{} ({})",
+            slashed_path(&facts.home_path),
+            home_why(facts.home_source)
+        )
+    } else {
+        slashed_path(&facts.home_path)
+    };
     if facts.home_mode.is_some_and(|mode| mode & 0o077 != 0) {
         detail.push_str(&format!(
             ". The home is readable by other local users; `chmod -R go-rwx {}` makes it private.",
@@ -402,7 +436,13 @@ pub fn age_text(age: f64) -> String {
 
 /// Gather the real machine's facts, then assemble. The CLI calls this.
 pub fn run(home: &Home) -> DoctorReport {
-    report(&gather(home))
+    run_for(home, false)
+}
+
+/// [`run`] for a caller that may be a member principal: `redact` as in
+/// [`report_for`].
+pub fn run_for(home: &Home, redact: bool) -> DoctorReport {
+    report_for(&gather(home), redact)
 }
 
 /// Gather the machine's facts. The only impure entry point besides [`run`].
@@ -445,4 +485,73 @@ fn note_count(nodes: &[NotesNode]) -> usize {
         .iter()
         .map(|node| usize::from(node.kind == NodeKind::Note) + note_count(&node.children))
         .sum()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn facts(home: &str) -> Facts {
+        Facts {
+            home_path: PathBuf::from(home),
+            home_source: HomeSource::Environment,
+            store_path: PathBuf::from(format!("{home}/tandem.db")),
+            store_version: Some(1),
+            store_health: Health::Counts { open: 1, done: 0 },
+            store_backup: BackupHealth::Present {
+                age: Duration::from_secs(5),
+            },
+            store_revision: 3,
+            store_inspection: None,
+            binary_version: "1.2.3".to_string(),
+            notes_path: PathBuf::from(format!("{home}/notes")),
+            notes_note_count: 1,
+            notes_is_file: false,
+            notes_migration: Pending::Clash,
+            legacy_notes_path: PathBuf::from(format!("{home}/bikeshed")),
+            home_mode: Some(0o755),
+        }
+    }
+
+    #[test]
+    fn redaction_replaces_every_path_and_keeps_the_rows() {
+        let facts = facts("/srv/secret-account/.tandem");
+        let full = report(&facts);
+        let redacted = report_for(&facts, true);
+        for check in &redacted.checks {
+            assert!(
+                !check.detail.contains("/srv/"),
+                "{}: {}",
+                check.name,
+                check.detail
+            );
+            assert!(!check.detail.contains("TANDEM_HOME"), "{}", check.name);
+        }
+        let names = |report: &DoctorReport| -> Vec<(String, bool)> {
+            report
+                .checks
+                .iter()
+                .map(|c| (c.name.clone(), c.ok))
+                .collect()
+        };
+        assert_eq!(names(&redacted), names(&full));
+        assert_eq!(redacted.ok, full.ok);
+        let home = &redacted.checks[0];
+        assert!(home.detail.starts_with("<home>"), "{}", home.detail);
+        let notes = redacted.checks.iter().find(|c| c.name == "notes").unwrap();
+        assert!(notes.detail.contains("<home>/notes"), "{}", notes.detail);
+        assert!(notes.detail.contains("<home>/bikeshed"), "{}", notes.detail);
+        assert_eq!(report_for(&facts, false), full);
+    }
+
+    #[test]
+    fn redaction_names_a_notes_folder_outside_the_home() {
+        let mut facts = facts("/srv/secret-account/.tandem");
+        facts.notes_path = PathBuf::from("/mnt/elsewhere/notes");
+        let redacted = report_for(&facts, true);
+        for check in &redacted.checks {
+            assert!(!check.detail.contains("/mnt/"), "{}", check.detail);
+        }
+    }
 }

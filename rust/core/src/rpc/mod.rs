@@ -40,6 +40,18 @@ pub const MAX_FRAME: usize = 4 * 1024 * 1024;
 /// One method through the domain. Every arm is the CLI verb's call, with the
 /// same defaults: the wire adds no rule of its own.
 pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, WireError> {
+    execute_as(method, store, actor, false)
+}
+
+/// [`execute`] for a caller that may be a member principal (ADR 0052): with
+/// `redact_paths` set, `doctor.report` answers without the server's absolute
+/// paths. The CLI and the stdio MCP door pass `false`.
+pub fn execute_as(
+    method: Method,
+    store: &Store,
+    actor: &Actor,
+    redact_paths: bool,
+) -> Result<Reply, WireError> {
     let board = Board::with_actor(store.clone(), actor.clone());
     match method {
         Method::TicketList(params) => {
@@ -310,7 +322,7 @@ pub fn execute(method: Method, store: &Store, actor: &Actor) -> Result<Reply, Wi
             }))
         }
         Method::DoctorReport(_) => Ok(Reply::Doctor(DoctorReply {
-            report: diagnostics::run(store.home()),
+            report: diagnostics::run_for(store.home(), redact_paths),
         })),
         Method::NoteTree(_) => {
             let notes = open_notes(store)?;
