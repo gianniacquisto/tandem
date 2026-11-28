@@ -610,8 +610,22 @@ impl Board {
         to_label: Option<&str>,
         at: usize,
     ) -> Result<Ticket, DomainError> {
+        self.move_ticket_if(handle, to_label, at, &|_| None)
+    }
+
+    /// [`move_ticket`](Self::move_ticket) guarded by `check`, which runs on the
+    /// ticket as the write transaction reads it: a `Some(stored)` answer
+    /// refuses with [`DomainError::FieldConflict`] and writes nothing.
+    pub fn move_ticket_if(
+        &self,
+        handle: &str,
+        to_label: Option<&str>,
+        at: usize,
+        check: FieldCheck<'_>,
+    ) -> Result<Ticket, DomainError> {
         self.mutate(|contents| {
             let from = contents.require_ticket(handle)?.1;
+            refuse_conflict(check, &contents.tickets[from])?;
             contents.validate_label(to_label)?;
             refuse_cross_project(contents, &contents.tickets[from], to_label)?;
             let mut moved = contents.tickets.remove(from);
@@ -679,6 +693,43 @@ impl Board {
     /// `set(id, ...)`: change the named fields in one write, leaving the rest
     /// untouched. A call that changes nothing writes nothing.
     pub fn set(&self, handle: &str, fields: SetFields<'_>) -> Result<Ticket, DomainError> {
+        self.set_guarded(handle, fields, None, &|_| None)
+    }
+
+    /// [`set`](Self::set) guarded by `check`, which runs on the ticket as the
+    /// write transaction reads it, before any change: a `Some(stored)` answer
+    /// refuses with [`DomainError::FieldConflict`], writing nothing and leaving
+    /// the revision where it was. The compare and the write share one
+    /// transaction, so a write that lands after the caller's read is refused
+    /// rather than overwritten.
+    pub fn set_if(
+        &self,
+        handle: &str,
+        fields: SetFields<'_>,
+        check: FieldCheck<'_>,
+    ) -> Result<Ticket, DomainError> {
+        self.set_guarded(handle, fields, None, check)
+    }
+
+    /// [`set`](Self::set) that runs only if the store's revision is still
+    /// `revision` when the write lock is held; otherwise it refuses with
+    /// [`DomainError::StaleRevision`] and writes nothing.
+    pub fn set_at_revision(
+        &self,
+        handle: &str,
+        fields: SetFields<'_>,
+        revision: i64,
+    ) -> Result<Ticket, DomainError> {
+        self.set_guarded(handle, fields, Some(revision), &|_| None)
+    }
+
+    fn set_guarded(
+        &self,
+        handle: &str,
+        fields: SetFields<'_>,
+        revision: Option<i64>,
+        check: FieldCheck<'_>,
+    ) -> Result<Ticket, DomainError> {
         if fields.description.is_set() && fields.append_description.is_set() {
             return Err(DomainError::ConflictingDescriptionEdit);
         }
@@ -707,8 +758,9 @@ impl Board {
             Edit::Set(raw) => Some(DescriptionBody::required(raw)?),
             Edit::Unchanged => None,
         };
-        self.mutate(|contents| {
+        self.mutate_guarded(revision, |contents| {
             let index = contents.require_ticket(handle)?.1;
+            refuse_conflict(check, &contents.tickets[index])?;
             let mut ticket = contents.tickets[index].clone();
             let mut changed = false;
             if let Some(new_title) = &new_title
@@ -1001,8 +1053,27 @@ impl Board {
         &self,
         body: impl FnOnce(&mut Contents) -> Result<(T, bool), DomainError>,
     ) -> Result<T, DomainError> {
+        self.mutate_guarded(None, body)
+    }
+
+    /// [`mutate`](Self::mutate) that first compares the store's revision with
+    /// `revision`, under the write lock, and refuses a stale one before it
+    /// reads a row.
+    fn mutate_guarded<T>(
+        &self,
+        revision: Option<i64>,
+        body: impl FnOnce(&mut Contents) -> Result<(T, bool), DomainError>,
+    ) -> Result<T, DomainError> {
         let refused: std::cell::RefCell<Option<DomainError>> = std::cell::RefCell::new(None);
         let outcome = self.store.write(&self.actor, |write| {
+            if let Some(expected) = revision
+                && write.revision()? != expected
+            {
+                *refused.borrow_mut() = Some(DomainError::StaleRevision);
+                return Err(crate::store::StoreError::Io(
+                    "the board moved since it was read".to_string(),
+                ));
+            }
             let before = write.board_rows()?;
             let mut contents = match Contents::from_rows(&before) {
                 Ok(contents) => contents,
@@ -1032,6 +1103,17 @@ impl Board {
             return Err(error);
         }
         outcome.map_err(map_store_error)
+    }
+}
+
+/// A guard on a ticket's field: it answers the stored value when the field no
+/// longer holds what the caller last saw, and `None` when it does.
+pub type FieldCheck<'a> = &'a dyn Fn(&Ticket) -> Option<String>;
+
+fn refuse_conflict(check: FieldCheck<'_>, ticket: &Ticket) -> Result<(), DomainError> {
+    match check(ticket) {
+        Some(theirs) => Err(DomainError::FieldConflict { theirs }),
+        None => Ok(()),
     }
 }
 

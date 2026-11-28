@@ -97,6 +97,13 @@ impl Write<'_> {
         self.actor
     }
 
+    /// The store's revision as this transaction sees it. The write lock is
+    /// already held, so no other writer can move it before this write commits:
+    /// a guard that compares it decides under the lock.
+    pub(crate) fn revision(&self) -> Result<i64> {
+        super::schema::revision(self.connection)
+    }
+
     pub fn insert_label(&self, label: NewLabel<'_>) -> Result<()> {
         self.before_mutation()?;
         self.execute(

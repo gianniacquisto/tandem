@@ -3,6 +3,7 @@
 
 use super::board::{FiltersView, LabelOption, board_with_sheet, label_tone};
 use super::*;
+use crate::domain::DomainError;
 
 // MARK: - The ticket sheet
 
@@ -403,6 +404,33 @@ fn field_answer(result: FieldResult) -> Response {
     }
 }
 
+/// The conflict answer: the field keeps what the other writer stored, and the
+/// sheet shows it beside the caller's own edit.
+fn field_conflict(
+    context: &Context,
+    id: &str,
+    kind: SheetField,
+    was: &str,
+    theirs: String,
+) -> Response {
+    tracing::info!(
+        actor = ?context.actor.as_str(),
+        id = ?id,
+        field = kind.name(),
+        revision = context.revision(),
+        "field save conflicted"
+    );
+    field_answer(FieldResult {
+        field: kind.name(),
+        state: "conflict",
+        was: was.to_string(),
+        theirs: Some(theirs),
+        reason: None,
+        tone: None,
+        notice: None,
+    })
+}
+
 /// One field of one ticket, written if the field still holds what the sheet
 /// last showed (`was`). The compare is per field: a write to another field or
 /// another ticket never makes this one conflict.
@@ -431,60 +459,58 @@ pub(super) async fn save_field(
         Ok((ticket, _)) => ticket,
         Err(error) => return bad_request(&error.message()),
     };
-    let stored = kind.stored(&ticket);
-    if kind.normalise(was) != stored {
-        tracing::info!(
-            actor = ?context.actor.as_str(),
-            id = ?id,
-            field = kind.name(),
-            revision = context.revision(),
-            "field save conflicted"
-        );
-        return field_answer(FieldResult {
-            field: kind.name(),
-            state: "conflict",
-            was: was.clone(),
-            theirs: Some(stored),
-            reason: None,
-            tone: None,
-            notice: None,
-        });
+    let expected = kind.normalise(was);
+    // The guard the write runs inside its own transaction: the stored value
+    // when it no longer matches what the sheet last showed.
+    let check = |ticket: &Ticket| {
+        let stored = kind.stored(ticket);
+        (stored != expected).then_some(stored)
+    };
+    // A label created here is a write of its own, made before the ticket's, so
+    // a stale `was` is refused before it creates anything. The guarded write
+    // below is the check that decides.
+    if create && let Some(stored) = check(&ticket) {
+        return field_conflict(&context, &id, kind, was, stored);
     }
     let mut created_tone = None;
     let mut notice = None;
     let outcome = match kind {
         SheetField::Title => {
             let title = kind.normalise(value);
-            board.set(
+            board.set_if(
                 &id,
                 SetFields {
                     title: Edit::Set(&title),
                     ..SetFields::default()
                 },
+                &check,
             )
         }
         SheetField::Status => Status::parse(value).and_then(|status| {
-            board.set(
+            board.set_if(
                 &id,
                 SetFields {
                     status: Edit::Set(status),
                     ..SetFields::default()
                 },
+                &check,
             )
         }),
-        SheetField::Assignee => board.set(
+        SheetField::Assignee => board.set_if(
             &id,
             SetFields {
                 assignee: Edit::Set(Some(value)),
                 ..SetFields::default()
             },
+            &check,
         ),
-        SheetField::Description => board.set(
+        SheetField::Description => board.set_if(
             &id,
             SetFields {
                 description: Edit::Set(Some(value)),
                 ..SetFields::default()
             },
+            &check,
         ),
         SheetField::Label => {
             let label = kind.normalise(value);
@@ -507,7 +533,7 @@ pub(super) async fn save_field(
                 Ok(())
             };
             let label = (!label.is_empty()).then_some(label);
-            made.and_then(|()| board.move_ticket(&id, label.as_deref(), usize::MAX))
+            made.and_then(|()| board.move_ticket_if(&id, label.as_deref(), usize::MAX, &check))
         }
     };
     match outcome {
@@ -528,6 +554,9 @@ pub(super) async fn save_field(
                 tone: created_tone,
                 notice,
             })
+        }
+        Err(DomainError::FieldConflict { theirs }) => {
+            field_conflict(&context, &id, kind, was, theirs)
         }
         Err(error) => {
             tracing::warn!(
