@@ -31,6 +31,9 @@ use tandem_core::domain::{
 use tandem_core::env::Environment;
 use tandem_core::notes::{BoardNames, BoardProject, Notes};
 use tandem_core::store::{self, Actor, Home, Store};
+use tandem_core::wire::rpc::{
+    LabelAddParams, LabelRenameParams, Method, ProjectAddParams, ProjectRenameParams,
+};
 use tandem_core::wire::{
     ArchivedView, CommentList, CommentResult, CommentView, LabelDeletionView, LabelList,
     NoteMoveView, NotePathView, NoteWriteView, ProjectList, TicketDetail, TicketList,
@@ -801,24 +804,21 @@ fn label(home: &Home, command: Option<&LabelCommand>) -> Result<(), Failure> {
                 note: None,
             })
         }
-        LabelCommand::Add(args) => {
-            let board = write()?;
-            let labels = board
-                .add_label(args.name.as_deref().unwrap_or(""), args.project.as_deref())
-                .map_err(Failure::domain)?;
-            print(&LabelList { labels, note: None })
-        }
-        LabelCommand::Rename(args) => {
-            let board = write()?;
-            let labels = board
-                .rename_label(
-                    args.from.as_deref().unwrap_or(""),
-                    args.to.as_deref().unwrap_or(""),
-                    args.project.as_deref(),
-                )
-                .map_err(Failure::domain)?;
-            print(&LabelList { labels, note: None })
-        }
+        LabelCommand::Add(args) => run_rpc(
+            home,
+            Method::LabelAdd(LabelAddParams {
+                name: args.name.clone(),
+                project: args.project.clone(),
+            }),
+        ),
+        LabelCommand::Rename(args) => run_rpc(
+            home,
+            Method::LabelRename(LabelRenameParams {
+                from: args.from.clone(),
+                to: args.to.clone(),
+                project: args.project.clone(),
+            }),
+        ),
         LabelCommand::Delete(args) => {
             let board = write()?;
             let deletion = board
@@ -855,24 +855,21 @@ fn project(home: &Home, command: Option<&ProjectCommand>) -> Result<(), Failure>
             let projects = board.projects().map_err(Failure::domain)?;
             print(&ProjectList::new(&projects, None))
         }
-        ProjectCommand::Add(args) => {
-            let board = write()?;
-            let projects = board
-                .add_project(args.name.as_deref().unwrap_or(""), args.abbr.as_deref())
-                .map_err(Failure::domain)?;
-            print(&ProjectList::new(&projects, None))
-        }
-        ProjectCommand::Rename(args) => {
-            let board = write()?;
-            let projects = board
-                .rename_project(
-                    args.from.as_deref().unwrap_or(""),
-                    args.to.as_deref().unwrap_or(""),
-                    args.abbr.as_deref(),
-                )
-                .map_err(Failure::domain)?;
-            print(&ProjectList::new(&projects, None))
-        }
+        ProjectCommand::Add(args) => run_rpc(
+            home,
+            Method::ProjectAdd(ProjectAddParams {
+                name: args.name.clone(),
+                abbr: args.abbr.clone(),
+            }),
+        ),
+        ProjectCommand::Rename(args) => run_rpc(
+            home,
+            Method::ProjectRename(ProjectRenameParams {
+                from: args.from.clone(),
+                to: args.to.clone(),
+                abbr: args.abbr.clone(),
+            }),
+        ),
         ProjectCommand::Delete(args) => {
             let board = write()?;
             let projects = board
@@ -983,6 +980,21 @@ fn print<T: serde::Serialize>(value: &T) -> Result<(), Failure> {
     let line = serde_json::to_string(value).map_err(|error| Failure::message(error.to_string()))?;
     println!("{line}");
     Ok(())
+}
+
+/// Runs one method through the core dispatch the MCP door uses, so the local
+/// verb also does the notes-folder step, and prints the reply without its
+/// `revision` (the rule `RemoteVerb::stdout` applies to the remote run).
+fn run_rpc(home: &Home, method: Method) -> Result<(), Failure> {
+    let store = write_store(home)?;
+    let reply = tandem_core::rpc::execute(method, &store, &Actor::current())
+        .map_err(|error| Failure::message(error.message))?;
+    let mut value =
+        serde_json::to_value(&reply).map_err(|error| Failure::message(error.to_string()))?;
+    if let Some(object) = value.as_object_mut() {
+        object.remove("revision");
+    }
+    print(&value)
 }
 
 fn write_store(home: &Home) -> Result<Store, Failure> {
