@@ -101,7 +101,7 @@ jobs:
           persist-credentials: false
 
       - name: "Gate: cargo deny check (advisories, licences, bans, sources)"
-        uses: EmbarkStudios/cargo-deny-action@70f81531115945ba6eb6b941ec9d39d063438eb9 # v2
+        uses: EmbarkStudios/cargo-deny-action@81891abc19297b21343b15ef67dc61e4aea74fda # v2
         with:
           manifest-path: rust/Cargo.toml
           command: check advisories licenses bans sources
@@ -334,7 +334,7 @@ jobs:
 
       - name: Set up Node
         if: needs.changes.outputs.e2e != 'false'
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
